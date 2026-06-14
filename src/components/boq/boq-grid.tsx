@@ -349,7 +349,7 @@ export function BoqGrid({
                   const v = raw?.[idx];
                   return (
                     <div key={colKey} className={baseClass} style={styleAttr}>
-                      <span className="block w-full truncate whitespace-pre-wrap text-foreground/80">
+                      <span className="block w-full whitespace-pre-wrap break-words text-foreground/80">
                         {v === null || v === undefined ? "" : String(v)}
                       </span>
                     </div>
