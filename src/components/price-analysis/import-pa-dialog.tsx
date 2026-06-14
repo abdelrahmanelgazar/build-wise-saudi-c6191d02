@@ -284,7 +284,8 @@ export function ImportPaDialog({ boqItemId }: { boqItemId: string }) {
         <DialogHeader>
           <DialogTitle>استيراد تحليل أسعار من Excel</DialogTitle>
           <DialogDescription>
-            الأعمدة المتوقعة: النوع (مواد/عمالة/معدات/مقاول باطن)، الوصف، الوحدة، الكمية، سعر الوحدة.
+            يدعم تنسيقين: (1) عمود <strong>النوع</strong> + الوصف/الوحدة/الكمية/سعر الوحدة، أو
+            (2) شيت Excel نمطي بأعمدة <strong>Task / Description / UOM / QTY / Rate</strong> حيث يُستنتج النوع من كود المهمة (MA/MP/EQ/SUB).
           </DialogDescription>
         </DialogHeader>
 
