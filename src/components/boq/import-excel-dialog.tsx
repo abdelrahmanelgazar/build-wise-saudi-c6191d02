@@ -417,7 +417,8 @@ export function ImportExcelDialog() {
         .from("projects")
         .update({ 
           excel_headers: allHeaders as unknown as never,
-          excel_pre_headers: allPreHeaders as unknown as never
+          excel_pre_headers: allPreHeaders as unknown as never,
+          excel_sheets_order: workbook.SheetNames as unknown as never
         })
         .eq("id", projectId);
 

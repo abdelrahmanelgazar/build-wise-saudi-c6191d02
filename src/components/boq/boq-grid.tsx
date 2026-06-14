@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { ChevronDown, ChevronLeft, TrendingUp, Trash2, Bold, Italic, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
+import { ChevronDown, ChevronLeft, TrendingUp, Trash2, Bold, Italic, AlignLeft, AlignCenter, AlignRight, X } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -72,6 +72,7 @@ export function BoqGrid({
   onDelete,
   extraHeaders,
   projectId,
+  grandTotal,
 }: {
   flatRows: { node: TreeNode; depth: number }[];
   expanded: Set<string>;
@@ -79,6 +80,8 @@ export function BoqGrid({
   onDelete: (n: TreeNode) => void;
   extraHeaders: RawHeader[];
   projectId: string;
+  grandTotal?: number;
+  onDeleteColumn?: (field: string) => void;
 }) {
   const qc = useQueryClient();
   const storageKey = `boq-grid:${projectId}`;
@@ -206,13 +209,24 @@ export function BoqGrid({
               key={c.key}
               style={{ width: c.width, minWidth: c.width }}
               className={cn(
-                "relative flex items-center border-l border-border/40 px-2 py-2 text-[11px] font-semibold text-muted-foreground",
+                "group/col relative flex items-center border-l border-border/40 px-2 py-2 text-[11px] font-semibold text-muted-foreground",
                 c.align === "center" && "justify-center text-center",
                 c.align === "left" && "justify-start text-left",
                 c.align === "right" && "justify-end text-right",
               )}
             >
               <span className="whitespace-normal break-words leading-tight">{c.label}</span>
+              {c.key !== "__actions" && !["item_no", "description_ar", "unit", "quantity", "unitRate", "total"].includes(c.key) && props.onDeleteColumn && (
+                <button
+                  onClick={() => {
+                    if (confirm("هل أنت متأكد من حذف هذا العمود؟")) props.onDeleteColumn!(c.key);
+                  }}
+                  className="mr-1 text-destructive hover:text-destructive/80 opacity-0 group-hover/col:opacity-100 transition-opacity"
+                  title="حذف العمود"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
               {c.key !== "__actions" && (
                 <span
                   onMouseDown={onResizeStart(c.key, c.width)}
@@ -289,6 +303,25 @@ export function BoqGrid({
             </div>
           );
         })}
+        {grandTotal !== undefined && (
+          <div className="sticky bottom-0 z-10 flex border-t-2 border-border bg-muted/90 backdrop-blur font-bold text-foreground">
+            {columns.map((c) => (
+              <div
+                key={c.key}
+                style={{ width: c.width, minWidth: c.width }}
+                className={cn(
+                  "flex items-center px-2 py-2.5 text-[12px]",
+                  c.align === "center" && "justify-center text-center",
+                  c.align === "left" && "justify-start text-left",
+                  c.align === "right" && "justify-end text-right",
+                )}
+              >
+                {c.key === "description_ar" && "الإجمالي الكلي"}
+                {c.key === "total" && grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

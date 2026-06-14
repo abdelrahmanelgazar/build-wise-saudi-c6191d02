@@ -49,6 +49,7 @@ export const Route = createFileRoute("/_authenticated/boq")({
 function buildTree(
   rows: BoqRow[],
   paSellingRates: Map<string, number>,
+  sheetTotals?: Record<string, number>
 ): TreeNode[] {
   const map = new Map<string, TreeNode>();
   rows.forEach((r) =>
@@ -73,17 +74,22 @@ function buildTree(
       n.unitRate = 0;
       n.rolledTotal = n.children.reduce((s, c) => s + computeTotal(c), 0);
     } else {
-      // Prefer the unit selling price computed from price analysis when present;
-      // otherwise fall back to the per-row cost breakdown columns.
-      const fromPa = paSellingRates.get(n.id);
-      n.unitRate =
-        typeof fromPa === "number" && fromPa > 0
-          ? fromPa
-          : Number(n.material_cost ?? 0) +
-            Number(n.labor_cost ?? 0) +
-            Number(n.equipment_cost ?? 0) +
-            Number(n.subcontractor_cost ?? 0);
-      n.rolledTotal = n.unitRate * Number(n.quantity ?? 0);
+      if (sheetTotals && n.description_ar && sheetTotals[n.description_ar] !== undefined) {
+        n.rolledTotal = sheetTotals[n.description_ar];
+        n.unitRate = Number(n.quantity) ? n.rolledTotal / Number(n.quantity) : n.rolledTotal;
+      } else {
+        // Prefer the unit selling price computed from price analysis when present;
+        // otherwise fall back to the per-row cost breakdown columns.
+        const fromPa = paSellingRates.get(n.id);
+        n.unitRate =
+          typeof fromPa === "number" && fromPa > 0
+            ? fromPa
+            : Number(n.material_cost ?? 0) +
+              Number(n.labor_cost ?? 0) +
+              Number(n.equipment_cost ?? 0) +
+              Number(n.subcontractor_cost ?? 0);
+        n.rolledTotal = n.unitRate * Number(n.quantity ?? 0);
+      }
     }
     return n.rolledTotal;
   };
@@ -110,11 +116,76 @@ function BoqPage() {
     },
   });
 
+  const addColumnMut = useMutation({
+    mutationFn: async (colName: string) => {
+      const currentHeaders = (project?.excel_headers as any) || {};
+      const sheetH = Array.isArray(currentHeaders) ? currentHeaders : (currentHeaders[activeSheet] || []);
+      
+      const newField = `custom_${Date.now()}`;
+      let newHeaders;
+      if (Array.isArray(currentHeaders)) {
+         newHeaders = { [activeSheet]: [...currentHeaders, { label: colName, field: newField }] };
+      } else {
+         newHeaders = { ...currentHeaders, [activeSheet]: [...sheetH, { label: colName, field: newField }] };
+      }
+      
+      const { error } = await supabase.from("projects").update({ excel_headers: newHeaders as any }).eq("id", projectId!);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["project", projectId] })
+  });
+
+  const deleteColumnMut = useMutation({
+    mutationFn: async (fieldToRemove: string) => {
+      const currentHeaders = (project?.excel_headers as any) || {};
+      const sheetH = Array.isArray(currentHeaders) ? currentHeaders : (currentHeaders[activeSheet] || []);
+      
+      let newHeaders;
+      if (Array.isArray(currentHeaders)) {
+         newHeaders = { [activeSheet]: currentHeaders.filter((h: any) => h.field !== fieldToRemove) };
+      } else {
+         newHeaders = { ...currentHeaders, [activeSheet]: sheetH.filter((h: any) => h.field !== fieldToRemove) };
+      }
+      
+      const { error } = await supabase.from("projects").update({ excel_headers: newHeaders as any }).eq("id", projectId!);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["project", projectId] })
+  });
+
+  const { isLoading: isProjLoading, data: project } = useQuery({
+    queryKey: ["project", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("id, name, excel_headers, excel_pre_headers, excel_sheets_order")
+        .eq("id", projectId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
   const sheetNames = useMemo(() => {
-    const names = Array.from(new Set(rows.map((r) => r.sheet_name || "Sheet1")));
+    let names = Array.from(new Set(rows.map((r) => r.sheet_name || "Sheet1")));
     if (names.length === 0) names.push("Sheet1");
+    
+    // Sort based on original excel_sheets_order if available
+    const order = project?.excel_sheets_order;
+    if (Array.isArray(order) && order.length > 0) {
+      names.sort((a, b) => {
+        const idxA = order.indexOf(a);
+        const idxB = order.indexOf(b);
+        // If not found in order array, put them at the end
+        if (idxA === -1 && idxB === -1) return a.localeCompare(b);
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+      });
+    }
     return names;
-  }, [rows]);
+  }, [rows, project?.excel_sheets_order]);
 
   useEffect(() => {
     if (!activeSheet && sheetNames.length > 0) {
@@ -125,20 +196,6 @@ function BoqPage() {
   }, [sheetNames, activeSheet]);
 
   const activeRows = useMemo(() => rows.filter(r => (r.sheet_name || "Sheet1") === activeSheet), [rows, activeSheet]);
-
-  const { isLoading: isProjLoading, data: project } = useQuery({
-    queryKey: ["project", projectId],
-    enabled: !!projectId,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("id, name, excel_headers, excel_pre_headers")
-        .eq("id", projectId!)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-  });
 
   const extraHeaders = useMemo(() => {
     const h = (project?.excel_headers as any);
@@ -212,6 +269,16 @@ function BoqPage() {
     return { direct, selling };
   }, [paItems, paMarkups]);
 
+  const sheetTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const name of sheetNames) {
+      const rowsForSheet = rows.filter(r => (r.sheet_name || "Sheet1") === name);
+      const builtTree = buildTree(rowsForSheet, paRates.selling);
+      totals[name] = builtTree.reduce((s, n) => s + n.rolledTotal, 0);
+    }
+    return totals;
+  }, [rows, sheetNames, paRates.selling]);
+
   useMemo(() => {
     if (activeRows.length && expanded.size === 0) {
       setExpanded(new Set(activeRows.filter((r) => r.is_group).map((r) => r.id)));
@@ -219,7 +286,7 @@ function BoqPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRows.length]);
 
-  const tree = useMemo(() => buildTree(activeRows, paRates.selling), [activeRows, paRates.selling]);
+  const tree = useMemo(() => buildTree(activeRows, paRates.selling, sheetTotals), [activeRows, paRates.selling, sheetTotals]);
   const grandTotal = tree.reduce((s, n) => s + n.rolledTotal, 0);
   const itemsCount = activeRows.filter((r) => !r.is_group).length;
   const groupsCount = activeRows.filter((r) => r.is_group).length;
@@ -300,6 +367,13 @@ function BoqPage() {
         subtitle="جدول تفاعلي مشابه لإكسل — أعمدة قابلة للتغيير، خلايا قابلة للتحرير، وسعر الوحدة يفتح تحليل الأسعار."
         action={
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => {
+              const name = prompt("أدخل اسم العمود الجديد:");
+              if (name) addColumnMut.mutate(name);
+            }}>
+              <Plus className="h-4 w-4 mr-1" />
+              إضافة عمود
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5" disabled={flatRows.length === 0}>
@@ -324,39 +398,52 @@ function BoqPage() {
         }
       />
 
-      <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-5">
-        <div className="col-span-2 lg:col-span-1 grid grid-cols-2 gap-2">
-          <KpiCard label="المجموعات" value={String(groupsCount)} />
-          <KpiCard label="البنود" value={String(itemsCount)} />
+      <div className="mt-2 flex flex-col gap-3">
+        {sheetNames.length > 1 && (
+          <div className="flex flex-wrap gap-1 overflow-x-auto border-b border-border">
+            {sheetNames.map((name) => (
+              <button
+                key={name}
+                onClick={() => setActiveSheet(name)}
+                className={cn(
+                  "px-4 py-2 text-sm font-semibold transition-all border-b-2 whitespace-nowrap",
+                  activeSheet === name
+                    ? "border-primary text-primary bg-primary/10"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                )}
+              >
+                {name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-4 bg-muted/30 p-2.5 rounded-lg border border-border/50">
+          <div className="flex flex-wrap items-center gap-6 px-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">سعر البيع:</span>
+              <span className="font-bold tabular-nums text-base text-primary">{fmtSAR(grandTotal)}</span>
+            </div>
+            <div className="w-px h-6 bg-border/60 hidden sm:block"></div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">التكلفة المباشرة:</span>
+              <span className="font-bold tabular-nums text-sm">{fmtSAR(totalDirectCost)}</span>
+            </div>
+            <div className="w-px h-6 bg-border/60 hidden sm:block"></div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">هامش الزيادة:</span>
+              <span className="font-bold tabular-nums text-sm text-emerald-600 dark:text-emerald-400">{markupMargin.toFixed(2)}%</span>
+            </div>
+            <div className="w-px h-6 bg-border/60 hidden sm:block"></div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">الصفوف:</span>
+              <span className="font-medium tabular-nums text-sm">{itemsCount + groupsCount}</span>
+            </div>
+          </div>
         </div>
-        <KpiCard label="إجمالي تكلفة المشروع" value={fmtSAR(totalDirectCost)} />
-        <KpiCard label="إجمالي سعر البيع للمشروع" value={fmtSAR(grandTotal)} accent />
-        <KpiCard
-          label="هامش الزيادة على التكلفة"
-          value={`${markupMargin.toFixed(2)}%`}
-        />
       </div>
 
-      {sheetNames.length > 1 && (
-        <div className="mt-4 flex flex-wrap gap-2 overflow-x-auto border-b border-border">
-          {sheetNames.map((name) => (
-            <button
-              key={name}
-              onClick={() => setActiveSheet(name)}
-              className={cn(
-                "px-4 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap",
-                activeSheet === name
-                  ? "border-primary text-primary bg-primary/5"
-                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              )}
-            >
-              {name}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className={cn("flex flex-1 flex-col overflow-hidden", sheetNames.length <= 1 ? "mt-5" : "mt-0")}>
+      <div className="mt-3 flex flex-1 flex-col overflow-hidden">
         <BoqGrid
           flatRows={flatRows}
           expanded={expanded}
@@ -368,8 +455,10 @@ function BoqPage() {
               delMut.mutate(n.id);
             }
           }}
-          extraHeaders={extraHeaders}
-          projectId={projectId}
+          extraHeaders={extraHeaders as any}
+          projectId={projectId!}
+          grandTotal={grandTotal}
+          onDeleteColumn={(field) => deleteColumnMut.mutate(field)}
         />
       </div>
     </div>
