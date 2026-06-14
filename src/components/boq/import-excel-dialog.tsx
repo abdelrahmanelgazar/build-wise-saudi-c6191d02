@@ -210,8 +210,16 @@ function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; preHeaders: un
       subcontractor_cost,
     ]);
 
+    let final_item_no = item_no || `AUTO-${data.length + 1}`;
+    let suffix = 1;
+    let base_no = final_item_no;
+    while (data.some(d => d.item_no === final_item_no)) {
+      final_item_no = `${base_no}-${suffix}`;
+      suffix++;
+    }
+
     data.push({
-      item_no: item_no || `AUTO-${data.length + 1}`,
+      item_no: final_item_no,
       description_ar,
       unit,
       quantity,
@@ -394,7 +402,7 @@ export function ImportExcelDialog() {
           sort_order: (indexOf.get(r._tmpId) ?? 0) + 1,
           raw_row: r._raw as unknown as never,
         }));
-        const { data, error } = await supabase.from("boq_items").insert(payload).select("id");
+        const { data, error } = await supabase.from("boq_items").upsert(payload, { onConflict: "user_id,project_id,item_no" }).select("id");
         if (error) throw error;
         (data ?? []).forEach((row, i) => tmpToDbId.set(batch[i]._tmpId, row.id));
       }
