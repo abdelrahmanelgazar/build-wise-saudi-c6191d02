@@ -209,7 +209,7 @@ export function BoqGrid({
                 const colKey = String(c.key);
                 const st = styles[colKey];
                 const baseClass = cn(
-                  "flex items-center gap-1 border-l border-border/40 px-2 py-1.5",
+                  "flex items-center gap-1 whitespace-normal break-words border-l border-border/40 px-2 py-1.5",
                   c.align === "center" && "justify-center",
                   c.align === "left" && "justify-start",
                   c.align === "right" && "justify-end",
