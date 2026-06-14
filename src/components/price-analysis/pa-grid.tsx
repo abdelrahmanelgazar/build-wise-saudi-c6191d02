@@ -272,7 +272,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                 إضافة صف
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" dir="rtl">
+            <DropdownMenuContent align="end">
               {(["material", "labor", "equipment", "subcontractor"] as ResourceType[]).map((t) => (
                 <DropdownMenuItem key={t} onClick={() => addMut.mutate(t)}>
                   {TYPE_LABEL[t]}
