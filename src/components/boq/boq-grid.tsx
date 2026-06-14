@@ -73,6 +73,7 @@ export function BoqGrid({
   extraHeaders,
   projectId,
   grandTotal,
+  onDeleteColumn,
 }: {
   flatRows: { node: TreeNode; depth: number }[];
   expanded: Set<string>;
