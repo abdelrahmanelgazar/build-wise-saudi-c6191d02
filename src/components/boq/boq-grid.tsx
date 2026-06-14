@@ -55,7 +55,7 @@ export function BoqGrid({
 }) {
   const qc = useQueryClient();
   const storageKey = `boq-grid:${projectId}`;
-  const rowHeightKey = `boq-row-h:${projectId}`;
+  const rowHeightsKey = `boq-row-heights:${projectId}`;
 
   // Column widths persisted to localStorage
   const [widths, setWidths] = useState<Record<string, number>>(() => {
@@ -66,17 +66,22 @@ export function BoqGrid({
       return {};
     }
   });
-  const [rowHeight, setRowHeight] = useState<number>(() => {
-    const v = Number(localStorage.getItem(rowHeightKey));
-    return Number.isFinite(v) && v > 0 ? v : 32;
+  // Per-row heights persisted to localStorage. 0/undefined => auto (wrap)
+  const [rowHeights, setRowHeights] = useState<Record<string, number>>(() => {
+    try {
+      const raw = localStorage.getItem(rowHeightsKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
   });
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(widths));
   }, [widths, storageKey]);
   useEffect(() => {
-    localStorage.setItem(rowHeightKey, String(rowHeight));
-  }, [rowHeight, rowHeightKey]);
+    localStorage.setItem(rowHeightsKey, JSON.stringify(rowHeights));
+  }, [rowHeights, rowHeightsKey]);
 
   const columns: { key: string; label: string; width: number; align?: "right" | "center" | "left" }[] = useMemo(() => {
     const built = BUILTIN_KEYS.map((k) => ({
@@ -117,15 +122,17 @@ export function BoqGrid({
     window.addEventListener("mouseup", up);
   };
 
-  // Row height drag (single global value, drag handle in header)
-  const rowResizingRef = useRef<{ startY: number; startH: number } | null>(null);
-  const onRowResizeStart = (e: React.MouseEvent) => {
+  // Per-row resize handle
+  const rowResizingRef = useRef<{ id: string; startY: number; startH: number } | null>(null);
+  const onRowResizeStart = (id: string, currentH: number) => (e: React.MouseEvent) => {
     e.preventDefault();
-    rowResizingRef.current = { startY: e.clientY, startH: rowHeight };
+    e.stopPropagation();
+    rowResizingRef.current = { id, startY: e.clientY, startH: currentH };
     const move = (ev: MouseEvent) => {
       if (!rowResizingRef.current) return;
       const dy = ev.clientY - rowResizingRef.current.startY;
-      setRowHeight(Math.max(24, Math.min(120, rowResizingRef.current.startH + dy)));
+      const next = Math.max(24, Math.min(400, rowResizingRef.current.startH + dy));
+      setRowHeights((m) => ({ ...m, [rowResizingRef.current!.id]: next }));
     };
     const up = () => {
       rowResizingRef.current = null;
@@ -163,7 +170,7 @@ export function BoqGrid({
                 c.align === "right" && "justify-end",
               )}
             >
-              <span className="truncate">{c.label}</span>
+              <span className="whitespace-normal break-words">{c.label}</span>
               {c.key !== "__actions" && (
                 <span
                   onMouseDown={onResizeStart(String(c.key), c.width)}
@@ -173,12 +180,6 @@ export function BoqGrid({
               )}
             </div>
           ))}
-          {/* Row-height drag in the corner */}
-          <div
-            onMouseDown={onRowResizeStart}
-            className="absolute bottom-0 right-2 h-1.5 w-10 cursor-row-resize rounded-full bg-border hover:bg-primary/40"
-            title="اسحب لتغيير ارتفاع الصفوف"
-          />
         </div>
 
         {/* Body */}
@@ -191,13 +192,14 @@ export function BoqGrid({
           const styles = ((node.cell_styles ?? {}) as CellStyles) || {};
           const isOpen = expanded.has(node.id);
           const raw = (node.raw_row as unknown[] | null) ?? [];
+          const customH = rowHeights[node.id];
 
           return (
             <div
               key={node.id}
-              style={{ minHeight: rowHeight }}
+              style={customH ? { height: customH } : { minHeight: 32 }}
               className={cn(
-                "flex border-b border-border/60 transition-colors",
+                "group relative flex border-b border-border/60 transition-colors",
                 node.is_group
                   ? "bg-secondary/40 font-semibold text-foreground"
                   : "hover:bg-muted/20",
@@ -207,7 +209,7 @@ export function BoqGrid({
                 const colKey = String(c.key);
                 const st = styles[colKey];
                 const baseClass = cn(
-                  "flex items-center gap-1 border-l border-border/40 px-2 py-1.5",
+                  "flex items-center gap-1 whitespace-normal break-words border-l border-border/40 px-2 py-1.5",
                   c.align === "center" && "justify-center",
                   c.align === "left" && "justify-start",
                   c.align === "right" && "justify-end",
@@ -261,7 +263,7 @@ export function BoqGrid({
                           value={node.description_ar}
                           onSave={(v) => updateMut.mutate({ id: node.id, patch: { description_ar: v } })}
                         >
-                          <span className="block w-full truncate">{node.description_ar}</span>
+                          <span className="block w-full whitespace-pre-wrap break-words">{node.description_ar}</span>
                         </EditableCell>
                         <FormatPopover
                           styles={styles}
@@ -347,7 +349,7 @@ export function BoqGrid({
                   const v = raw?.[idx];
                   return (
                     <div key={colKey} className={baseClass} style={styleAttr}>
-                      <span className="block w-full truncate whitespace-pre-wrap text-foreground/80">
+                      <span className="block w-full whitespace-pre-wrap break-words text-foreground/80">
                         {v === null || v === undefined ? "" : String(v)}
                       </span>
                     </div>
@@ -355,6 +357,12 @@ export function BoqGrid({
                 }
                 return <div key={colKey} className={baseClass} style={styleAttr} />;
               })}
+              {/* Per-row height drag handle */}
+              <div
+                onMouseDown={onRowResizeStart(node.id, customH ?? 32)}
+                className="absolute inset-x-0 bottom-0 z-10 h-1 cursor-row-resize opacity-0 hover:bg-primary/50 group-hover:opacity-100"
+                title="اسحب لتغيير ارتفاع الصف"
+              />
             </div>
           );
         })}
