@@ -588,8 +588,8 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
             >
               <div style={cw("level")}      className={cn(CELL, "justify-center")} />
               <div
-                style={{ width: cols[1].w + cols[2].w + cols[3].w + cols[4].w,
-                         minWidth: cols[1].w + cols[2].w + cols[3].w + cols[4].w }}
+                style={{ width: cols[1].w + cols[2].w + cols[3].w + cols[4].w + cols[5].w,
+                         minWidth: cols[1].w + cols[2].w + cols[3].w + cols[4].w + cols[5].w }}
                 className={cn(CELL, "justify-end text-primary")}
               >
                 إجمالي التكلفة المباشرة للوحدة ({boqItem.unit ?? "وحدة"})
