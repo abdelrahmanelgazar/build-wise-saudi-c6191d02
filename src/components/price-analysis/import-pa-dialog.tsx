@@ -48,39 +48,31 @@ const TYPE_MAP: Record<string, ResourceType> = {
   المعدات: "equipment",
   equipment: "equipment",
   "مقاول باطن": "subcontractor",
+  "مقاول الباطن": "subcontractor",
   باطن: "subcontractor",
+  الباطن: "subcontractor",
   subcontractor: "subcontractor",
   sub: "subcontractor",
 };
 
-const HEADER_KEYS: Record<string, keyof ParsedRow | "task" | "markup_indirect" | "markup_overhead" | "markup_risk" | "markup_profit"> = {
-  النوع: "resource_type",
-  نوع: "resource_type",
-  type: "resource_type",
-  task: "task",
-  "task #": "task",
-  code: "task",
-  الكود: "task",
-  الوصف: "description_ar",
-  وصف: "description_ar",
-  description: "description_ar",
-  desc: "description_ar",
-  الوحدة: "unit",
-  وحدة: "unit",
-  unit: "unit",
-  uom: "unit",
-  "u.o.m": "unit",
-  "u.o.m.": "unit",
-  الكمية: "quantity",
-  كمية: "quantity",
-  quantity: "quantity",
-  qty: "quantity",
-  "سعر الوحدة": "unit_price",
-  السعر: "unit_price",
-  rate: "unit_price",
-  price: "unit_price",
-  "unit price": "unit_price",
-};
+type HeaderKey = "resource_type" | "task" | "description_ar" | "unit" | "quantity" | "unit_price";
+
+function norm(v: unknown): string {
+  return String(v ?? "").trim().toLowerCase();
+}
+
+// Substring-based header detection so variants like "وصف البند" / "وحدة القياس" / "الايجالي" all map correctly.
+function headerKeyOf(cell: unknown): HeaderKey | null {
+  const s = norm(cell);
+  if (!s) return null;
+  if (s === "النوع" || s === "نوع" || s === "type") return "resource_type";
+  if (s === "task" || s === "task #" || s === "code" || s === "الكود") return "task";
+  if (s.includes("سعر") || s === "rate" || s === "price" || s === "unit price" || s === "السعر") return "unit_price";
+  if (s.includes("كمية") || s === "quantity" || s === "qty") return "quantity";
+  if (s.includes("وحدة") || s.includes("القياس") || s === "unit" || s === "uom" || s === "u.o.m" || s === "u.o.m.") return "unit";
+  if (s.includes("وصف") || s.includes("description") || s === "desc" || s === "البند") return "description_ar";
+  return null;
+}
 
 const MARKUP_KEYS: Record<string, keyof ParsedMarkup> = {
   "غير مباشرة": "indirect_pct",
@@ -95,12 +87,8 @@ const MARKUP_KEYS: Record<string, keyof ParsedMarkup> = {
   profit: "profit_pct",
 };
 
-function norm(v: unknown): string {
-  return String(v ?? "").trim().toLowerCase();
-}
-
 // Detect a resource type from a Task code (e.g. "CO-A1036-MA-01-15" → material)
-// or from a label cell ("material", "manpower", "Equipment", "subcontractor").
+// or from a label cell ("material", "manpower", "Equipment", "subcontractor", "مواد", "مقاول الباطن").
 function detectType(...cells: unknown[]): ResourceType | null {
   for (const c of cells) {
     const s = norm(c);
@@ -115,12 +103,14 @@ function detectType(...cells: unknown[]): ResourceType | null {
 }
 
 function parseSheet(rows: unknown[][]): { items: ParsedRow[]; markup: ParsedMarkup } {
-  // find header row
+  // find header row (need at least quantity + unit_price + one more)
   let headerIdx = -1;
   for (let i = 0; i < Math.min(rows.length, 30); i++) {
     const r = rows[i] ?? [];
-    const hits = r.filter((c) => HEADER_KEYS[norm(c)]).length;
-    if (hits >= 3) {
+    const keys = r.map((c) => headerKeyOf(c)).filter(Boolean) as HeaderKey[];
+    const hasQty = keys.includes("quantity");
+    const hasPrice = keys.includes("unit_price");
+    if (hasQty && hasPrice && keys.length >= 3) {
       headerIdx = i;
       break;
     }
@@ -128,7 +118,7 @@ function parseSheet(rows: unknown[][]): { items: ParsedRow[]; markup: ParsedMark
   if (headerIdx === -1)
     throw new Error("لم يتم العثور على رأس الجدول (Description / UOM / QTY / Rate أو الوصف / الوحدة / الكمية / سعر الوحدة)");
 
-  const headers = (rows[headerIdx] ?? []).map((h) => HEADER_KEYS[norm(h)] ?? null);
+  const headers = (rows[headerIdx] ?? []).map((h) => headerKeyOf(h));
   const items: ParsedRow[] = [];
   const markup: ParsedMarkup = {};
 
