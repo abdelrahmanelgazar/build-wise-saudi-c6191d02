@@ -122,15 +122,17 @@ export function BoqGrid({
     window.addEventListener("mouseup", up);
   };
 
-  // Row height drag (single global value, drag handle in header)
-  const rowResizingRef = useRef<{ startY: number; startH: number } | null>(null);
-  const onRowResizeStart = (e: React.MouseEvent) => {
+  // Per-row resize handle
+  const rowResizingRef = useRef<{ id: string; startY: number; startH: number } | null>(null);
+  const onRowResizeStart = (id: string, currentH: number) => (e: React.MouseEvent) => {
     e.preventDefault();
-    rowResizingRef.current = { startY: e.clientY, startH: rowHeight };
+    e.stopPropagation();
+    rowResizingRef.current = { id, startY: e.clientY, startH: currentH };
     const move = (ev: MouseEvent) => {
       if (!rowResizingRef.current) return;
       const dy = ev.clientY - rowResizingRef.current.startY;
-      setRowHeight(Math.max(24, Math.min(120, rowResizingRef.current.startH + dy)));
+      const next = Math.max(24, Math.min(400, rowResizingRef.current.startH + dy));
+      setRowHeights((m) => ({ ...m, [rowResizingRef.current!.id]: next }));
     };
     const up = () => {
       rowResizingRef.current = null;
