@@ -217,7 +217,7 @@ function PriceAnalysisDetail({ boqItem }: { boqItem: BoqRow }) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
-        {(["material", "labor", "equipment"] as ResourceType[]).map((t) => (
+        {(["material", "labor", "equipment", "subcontractor"] as ResourceType[]).map((t) => (
           <ResourceSection
             key={t}
             boqItemId={boqItem.id}
