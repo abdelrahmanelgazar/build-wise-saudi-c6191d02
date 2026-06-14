@@ -48,7 +48,7 @@ export const Route = createFileRoute("/_authenticated/boq")({
 
 function buildTree(
   rows: BoqRow[],
-  paUnitRates: Map<string, number>,
+  paSellingRates: Map<string, number>,
 ): TreeNode[] {
   const map = new Map<string, TreeNode>();
   rows.forEach((r) =>
@@ -75,7 +75,7 @@ function buildTree(
     } else {
       // Prefer the unit selling price computed from price analysis when present;
       // otherwise fall back to the per-row cost breakdown columns.
-      const fromPa = paUnitRates.get(n.id);
+      const fromPa = paSellingRates.get(n.id);
       n.unitRate =
         typeof fromPa === "number" && fromPa > 0
           ? fromPa
@@ -167,7 +167,7 @@ function BoqPage() {
     },
   });
 
-  const paUnitRates = useMemo(() => {
+  const paRates = useMemo(() => {
     const direct = new Map<string, number>();
     paItems.forEach((r) => {
       direct.set(
@@ -176,7 +176,7 @@ function BoqPage() {
       );
     });
     const markupBy = new Map(paMarkups.map((m) => [m.boq_item_id, m]));
-    const out = new Map<string, number>();
+    const selling = new Map<string, number>();
     direct.forEach((cost, id) => {
       const m = markupBy.get(id);
       const indirect = Number(m?.indirect_pct ?? 5);
@@ -186,9 +186,9 @@ function BoqPage() {
       const s1 = cost * (1 + indirect / 100);
       const s2 = s1 * (1 + overhead / 100);
       const s3 = s2 * (1 + risk / 100);
-      out.set(id, s3 * (1 + profit / 100));
+      selling.set(id, s3 * (1 + profit / 100));
     });
-    return out;
+    return { direct, selling };
   }, [paItems, paMarkups]);
 
   useMemo(() => {
@@ -198,10 +198,28 @@ function BoqPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows.length]);
 
-  const tree = useMemo(() => buildTree(rows, paUnitRates), [rows, paUnitRates]);
+  const tree = useMemo(() => buildTree(rows, paRates.selling), [rows, paRates.selling]);
   const grandTotal = tree.reduce((s, n) => s + n.rolledTotal, 0);
   const itemsCount = rows.filter((r) => !r.is_group).length;
   const groupsCount = rows.filter((r) => r.is_group).length;
+
+  const totalDirectCost = useMemo(() => {
+    return rows
+      .filter((r) => !r.is_group)
+      .reduce((sum, r) => {
+        const paDirect = paRates.direct.get(r.id);
+        const unitCost =
+          typeof paDirect === "number" && paDirect > 0
+            ? paDirect
+            : Number(r.material_cost ?? 0) +
+              Number(r.labor_cost ?? 0) +
+              Number(r.equipment_cost ?? 0) +
+              Number(r.subcontractor_cost ?? 0);
+        return sum + unitCost * Number(r.quantity ?? 0);
+      }, 0);
+  }, [rows, paRates.direct]);
+
+  const markupMargin = totalDirectCost > 0 ? ((grandTotal - totalDirectCost) / totalDirectCost) * 100 : 0;
 
   const delMut = useMutation({
     mutationFn: async (id: string) => {
@@ -285,13 +303,16 @@ function BoqPage() {
         }
       />
 
-      <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <KpiCard label="إجمالي المجموعات" value={String(groupsCount)} />
-        <KpiCard label="إجمالي البنود" value={String(itemsCount)} />
-        <KpiCard label="إجمالي تكلفة المشروع" value={fmtSAR(grandTotal)} accent />
+      <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-5">
+        <div className="col-span-2 lg:col-span-1 grid grid-cols-2 gap-2">
+          <KpiCard label="المجموعات" value={String(groupsCount)} />
+          <KpiCard label="البنود" value={String(itemsCount)} />
+        </div>
+        <KpiCard label="إجمالي تكلفة المشروع" value={fmtSAR(totalDirectCost)} />
+        <KpiCard label="إجمالي سعر البيع للمشروع" value={fmtSAR(grandTotal)} accent />
         <KpiCard
-          label="متوسط تكلفة البند"
-          value={itemsCount ? fmtSAR(grandTotal / itemsCount) : "—"}
+          label="هامش الزيادة على التكلفة"
+          value={`${markupMargin.toFixed(2)}%`}
         />
       </div>
 
@@ -316,12 +337,13 @@ function BoqPage() {
 }
 
 
-function KpiCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function KpiCard({ label, value, accent, className }: { label: string; value: string; accent?: boolean; className?: string }) {
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card px-4 py-3",
+        "rounded-lg border border-border bg-card px-4 py-3 flex flex-col justify-center",
         accent && "border-primary/30 bg-primary/5",
+        className
       )}
     >
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
