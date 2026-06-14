@@ -326,24 +326,6 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               لا توجد بنود — أضف صفوفاً أو استورد من Excel.
             </div>
           )}
-          {/* Totals footer row (sheet-level) */}
-          {gridRows.length > 0 && (
-            <div
-              style={{ width: totalWidth }}
-              className="sticky bottom-0 z-10 flex border-t-2 border-primary/40 bg-primary/10 text-[12px] font-bold backdrop-blur"
-            >
-              <div className="flex-1 px-3 py-2 text-right text-primary">
-                إجمالي سعر الوحدة للبند ({boqItem.unit ?? "وحدة"})
-              </div>
-              <div
-                style={{ width: columns[5].width, minWidth: columns[5].width }}
-                className="border-r border-border/40 px-2 py-2 text-center text-primary tabular-nums"
-              >
-                {fmtSAR(selling)}
-              </div>
-              <div style={{ width: columns[6].width, minWidth: columns[6].width }} />
-            </div>
-          )}
           {gridRows.map((row, idx) => {
             if (row.kind === "section") {
               return (
