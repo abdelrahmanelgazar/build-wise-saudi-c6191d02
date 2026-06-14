@@ -282,7 +282,7 @@ export function ImportExcelDialog() {
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [activeSheet, setActiveSheet] = useState<string>("");
   const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
-  const [parsed, setParsed] = useState<{ headers: string[]; data: ParsedRow[]; warnings: string[] }>({
+  const [parsed, setParsed] = useState<{ headers: ExcelHeader[]; data: ParsedRow[]; warnings: string[] }>({
     headers: [],
     data: [],
     warnings: [],
