@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 import { useActiveProjectId } from "@/lib/active-project";
+import { ImportExcelDialog } from "@/components/boq/import-excel-dialog";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
