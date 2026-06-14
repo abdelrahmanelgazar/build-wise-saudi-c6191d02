@@ -53,16 +53,24 @@ const TYPE_MAP: Record<string, ResourceType> = {
   sub: "subcontractor",
 };
 
-const HEADER_KEYS: Record<string, keyof ParsedRow | "markup_indirect" | "markup_overhead" | "markup_risk" | "markup_profit"> = {
+const HEADER_KEYS: Record<string, keyof ParsedRow | "task" | "markup_indirect" | "markup_overhead" | "markup_risk" | "markup_profit"> = {
   النوع: "resource_type",
   نوع: "resource_type",
   type: "resource_type",
+  task: "task",
+  "task #": "task",
+  code: "task",
+  الكود: "task",
   الوصف: "description_ar",
   وصف: "description_ar",
   description: "description_ar",
+  desc: "description_ar",
   الوحدة: "unit",
   وحدة: "unit",
   unit: "unit",
+  uom: "unit",
+  "u.o.m": "unit",
+  "u.o.m.": "unit",
   الكمية: "quantity",
   كمية: "quantity",
   quantity: "quantity",
@@ -91,10 +99,25 @@ function norm(v: unknown): string {
   return String(v ?? "").trim().toLowerCase();
 }
 
+// Detect a resource type from a Task code (e.g. "CO-A1036-MA-01-15" → material)
+// or from a label cell ("material", "manpower", "Equipment", "subcontractor").
+function detectType(...cells: unknown[]): ResourceType | null {
+  for (const c of cells) {
+    const s = norm(c);
+    if (!s) continue;
+    if (TYPE_MAP[s]) return TYPE_MAP[s];
+    if (/(^|[-_\s])ma([-_\s]|$)|material/.test(s)) return "material";
+    if (/(^|[-_\s])mp([-_\s]|$)|manpower|labou?r|عمال/.test(s)) return "labor";
+    if (/(^|[-_\s])eq([-_\s]|$)|equipment|معد/.test(s)) return "equipment";
+    if (/(^|[-_\s])sub([-_\s]|$)|subcontract|باطن/.test(s)) return "subcontractor";
+  }
+  return null;
+}
+
 function parseSheet(rows: unknown[][]): { items: ParsedRow[]; markup: ParsedMarkup } {
   // find header row
   let headerIdx = -1;
-  for (let i = 0; i < Math.min(rows.length, 20); i++) {
+  for (let i = 0; i < Math.min(rows.length, 30); i++) {
     const r = rows[i] ?? [];
     const hits = r.filter((c) => HEADER_KEYS[norm(c)]).length;
     if (hits >= 3) {
@@ -102,11 +125,15 @@ function parseSheet(rows: unknown[][]): { items: ParsedRow[]; markup: ParsedMark
       break;
     }
   }
-  if (headerIdx === -1) throw new Error("لم يتم العثور على رأس الجدول (النوع/الوصف/الوحدة/الكمية/سعر الوحدة)");
+  if (headerIdx === -1)
+    throw new Error("لم يتم العثور على رأس الجدول (Description / UOM / QTY / Rate أو الوصف / الوحدة / الكمية / سعر الوحدة)");
 
   const headers = (rows[headerIdx] ?? []).map((h) => HEADER_KEYS[norm(h)] ?? null);
   const items: ParsedRow[] = [];
   const markup: ParsedMarkup = {};
+
+  // Current type, inferred from running through subgroup-header rows.
+  let currentType: ResourceType | null = null;
 
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i] ?? [];
@@ -121,26 +148,36 @@ function parseSheet(rows: unknown[][]): { items: ParsedRow[]; markup: ParsedMark
       continue;
     }
 
-    const row: Partial<ParsedRow> = {};
+    // Pull mapped cells
+    const cellByKey: Record<string, unknown> = {};
     headers.forEach((h, idx) => {
-      if (!h) return;
-      const val = r[idx];
-      if (h === "resource_type") {
-        const t = TYPE_MAP[norm(val)] ?? null;
-        if (t) row.resource_type = t;
-      } else if (h === "quantity" || h === "unit_price") {
-        row[h] = Number(val) || 0;
-      } else if (h === "description_ar" || h === "unit") {
-        row[h] = String(val ?? "").trim();
-      }
+      if (h) cellByKey[h] = r[idx];
     });
-    if (!row.resource_type || !row.description_ar) continue;
+
+    const taskCell = cellByKey["task"];
+    const descCell = cellByKey["description_ar"];
+    const typeFromHeader = cellByKey["resource_type"];
+
+    // Try to update running type from the Task code or the explicit type column or the description label.
+    const detected = detectType(typeFromHeader, taskCell, descCell);
+    if (detected) currentType = detected;
+
+    const qty = Number(cellByKey["quantity"] ?? NaN);
+    const rate = Number(cellByKey["unit_price"] ?? NaN);
+    const desc = String(descCell ?? "").trim();
+
+    // Subgroup header / parent row: skip (no qty AND no rate).
+    if (!desc) continue;
+    if (!Number.isFinite(qty) && !Number.isFinite(rate)) continue;
+    if (qty === 0 && rate === 0) continue;
+    if (!currentType) continue;
+
     items.push({
-      resource_type: row.resource_type,
-      description_ar: row.description_ar,
-      unit: row.unit ?? "",
-      quantity: row.quantity ?? 0,
-      unit_price: row.unit_price ?? 0,
+      resource_type: currentType,
+      description_ar: desc,
+      unit: String(cellByKey["unit"] ?? "").trim() || "وحدة",
+      quantity: Number.isFinite(qty) ? qty : 0,
+      unit_price: Number.isFinite(rate) ? rate : 0,
     });
   }
 
