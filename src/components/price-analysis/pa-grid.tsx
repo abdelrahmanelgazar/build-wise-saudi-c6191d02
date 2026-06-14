@@ -533,7 +533,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                       {/* Amount (computed, read-only) */}
                       <div
                         style={cw("amount")}
-                        className={cn(CELL, "justify-center border-r-0 bg-primary/5 font-semibold text-foreground text-[11px]")}
+                        className={cn(CELL, "justify-center border-r-0 font-semibold text-foreground text-[11px]")}
                       >
                         {fmtNumber(total, 2)}
                       </div>
