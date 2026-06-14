@@ -314,7 +314,7 @@ export function ImportExcelDialog() {
       // the exact columns from the Excel file (in original order).
       await supabase
         .from("projects")
-        .update({ excel_headers: parsed.headers as unknown as Record<string, unknown> })
+        .update({ excel_headers: parsed.headers as unknown as never })
         .eq("id", projectId);
 
       const prepared = linkParents(parsed.data);
