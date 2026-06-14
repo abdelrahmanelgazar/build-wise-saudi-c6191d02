@@ -42,6 +42,7 @@ const TYPE_META: Record<ResourceType, { label: string; icon: typeof Boxes; color
   material: { label: "المواد", icon: Boxes, color: "text-chart-2" },
   labor: { label: "العمالة", icon: Hammer, color: "text-chart-3" },
   equipment: { label: "المعدات", icon: Truck, color: "text-primary" },
+  subcontractor: { label: "مقاول الباطن", icon: Truck, color: "text-chart-4" },
 };
 
 function ResourcesPage() {
