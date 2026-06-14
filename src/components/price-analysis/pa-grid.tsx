@@ -9,16 +9,11 @@ import {
   Trash2,
   Plus,
   Download,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,73 +35,91 @@ type PaItem = Database["public"]["Tables"]["price_analysis_items"]["Row"];
 type Markup = Database["public"]["Tables"]["price_analysis_markup"]["Row"];
 type ResourceType = Database["public"]["Enums"]["resource_type"];
 
+// ─── Labels ──────────────────────────────────────────────────────────────────
 const TYPE_LABEL: Record<ResourceType, string> = {
   material: "مواد",
   labor: "عمالة",
   equipment: "معدات",
   subcontractor: "مقاول باطن",
 };
-const TYPE_COLOR: Record<ResourceType, string> = {
-  material: "bg-chart-2/10 text-chart-2",
-  labor: "bg-chart-3/10 text-chart-3",
-  equipment: "bg-primary/10 text-primary",
-  subcontractor: "bg-chart-4/10 text-chart-4",
+
+// ─── Platform-native colour tokens per section ───────────────────────────────
+// Using the existing design-system tokens from styles.css so we stay on-brand.
+const SECTION_HEADER_CLS: Record<ResourceType, string> = {
+  material:      "bg-chart-2/10 text-chart-2 border-chart-2/20",
+  labor:         "bg-chart-3/10 text-chart-3 border-chart-3/20",
+  equipment:     "bg-primary/10  text-primary  border-primary/20",
+  subcontractor: "bg-chart-4/10 text-chart-4 border-chart-4/20",
+};
+const SECTION_SUBTOTAL_CLS: Record<ResourceType, string> = {
+  material:      "bg-chart-2/5  text-chart-2",
+  labor:         "bg-chart-3/5  text-chart-3",
+  equipment:     "bg-primary/5  text-primary",
+  subcontractor: "bg-chart-4/5  text-chart-4",
 };
 
+// ─── Cell-style type (rich-text per cell) ────────────────────────────────────
 type CellStyles = Record<
   string,
   { bold?: boolean; italic?: boolean; align?: "right" | "center" | "left"; fontSize?: number }
 >;
 
-type Column = {
-  key: string;
-  label: string;
-  width: number;
-  align: "right" | "center" | "left";
+// ─── Type-code abbreviations used in hierarchical task codes ─────────────────
+const TYPE_CODE: Record<ResourceType, string> = {
+  material:      "MA",
+  labor:         "MP",
+  equipment:     "EQ",
+  subcontractor: "SUB",
 };
 
-const DEFAULT_COLS: Column[] = [
-  { key: "type", label: "النوع", width: 110, align: "center" },
-  { key: "description_ar", label: "الوصف", width: 360, align: "right" },
-  { key: "unit", label: "الوحدة", width: 80, align: "center" },
-  { key: "quantity", label: "الكمية", width: 100, align: "center" },
-  { key: "unit_price", label: "سعر الوحدة", width: 120, align: "center" },
-  { key: "total", label: "الإجمالي", width: 130, align: "center" },
-  { key: "__actions", label: "", width: 60, align: "center" },
+// ─── Column definitions ───────────────────────────────────────────────────────
+type Col = { key: string; label: string; defaultW: number; align: "center" | "left" | "right" };
+
+const COLS: Col[] = [
+  { key: "level",       label: "Level",       defaultW: 55,  align: "center" },
+  { key: "task",        label: "Task",         defaultW: 185, align: "left"   },
+  { key: "description", label: "Description",  defaultW: 290, align: "left"   },
+  { key: "uom",         label: "UOM",          defaultW: 72,  align: "center" },
+  { key: "qty",         label: "QTY",          defaultW: 88,  align: "center" },
+  { key: "duration",    label: "Duration",     defaultW: 88,  align: "center" },
+  { key: "rate",        label: "Rate",         defaultW: 108, align: "center" },
+  { key: "amount",      label: "Amount",       defaultW: 128, align: "center" },
+  { key: "__actions",   label: "",             defaultW: 48,  align: "center" },
 ];
 
+// ─── Shared cell base class ───────────────────────────────────────────────────
+const CELL = "flex shrink-0 items-center overflow-hidden border-r border-border/40 px-2 py-[5px] text-[11px] tabular-nums";
+
 export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
-  const qc = useQueryClient();
+  const qc        = useQueryClient();
   const projectId = useActiveProjectId();
-  const widthsKey = `pa-grid-widths:${boqItem.id}`;
-  const heightsKey = `pa-grid-heights:${boqItem.id}`;
+  const storageKey = `pa-grid-v2-widths:${boqItem.id}`;
 
-  const [widths, setWidths] = useState<Record<string, number>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(widthsKey) ?? "{}");
-    } catch {
-      return {};
-    }
-  });
-  const [rowHeights, setRowHeights] = useState<Record<string, number>>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(heightsKey) ?? "{}");
-    } catch {
-      return {};
-    }
+  // ── Column widths (persisted) ──────────────────────────────────────────────
+  const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey) ?? "{}"); }
+    catch { return {}; }
   });
   useEffect(() => {
-    localStorage.setItem(widthsKey, JSON.stringify(widths));
-  }, [widths, widthsKey]);
-  useEffect(() => {
-    localStorage.setItem(heightsKey, JSON.stringify(rowHeights));
-  }, [rowHeights, heightsKey]);
+    localStorage.setItem(storageKey, JSON.stringify(colWidths));
+  }, [colWidths, storageKey]);
 
-  const columns = useMemo(
-    () => DEFAULT_COLS.map((c) => ({ ...c, width: widths[c.key] ?? c.width })),
-    [widths],
+  const cols = useMemo(
+    () => COLS.map((c) => ({ ...c, w: colWidths[c.key] ?? c.defaultW })),
+    [colWidths],
   );
+  const totalW = cols.reduce((s, c) => s + c.w, 0);
 
+  // ── Collapsed sections ─────────────────────────────────────────────────────
+  const [collapsed, setCollapsed] = useState<Set<ResourceType>>(new Set());
+  const toggleCollapse = (t: ResourceType) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.has(t) ? next.delete(t) : next.add(t);
+      return next;
+    });
+
+  // ── Queries ────────────────────────────────────────────────────────────────
   const { data: items = [] } = useQuery({
     queryKey: ["pa_items", boqItem.id],
     queryFn: async () => {
@@ -134,78 +147,49 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     },
   });
 
-  // Group rows by type, with section headers + subtotals
-  type GridRow =
-    | { kind: "section"; type: ResourceType; subtotal: number; count: number }
-    | { kind: "item"; item: PaItem }
-    | { kind: "subtotal"; type: ResourceType; subtotal: number };
+  // ── Markup calc ────────────────────────────────────────────────────────────
+  const directCost  = items.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0);
+  const indirect    = Number(markup?.indirect_pct ?? 5);
+  const overhead    = Number(markup?.overhead_pct ?? 8);
+  const risk        = Number(markup?.risk_pct     ?? 3);
+  const profit      = Number(markup?.profit_pct   ?? 10);
+  const indirectVal = (directCost * indirect) / 100;
+  const s1          = directCost + indirectVal;
+  const overheadVal = (s1 * overhead) / 100;
+  const s2          = s1 + overheadVal;
+  const riskVal     = (s2 * risk) / 100;
+  const s3          = s2 + riskVal;
+  const profitVal   = (s3 * profit) / 100;
+  const selling     = s3 + profitVal;
 
-  const directCost = items.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0);
-
-  const gridRows: GridRow[] = useMemo(() => {
-    const out: GridRow[] = [];
-    (["material", "labor", "equipment", "subcontractor"] as ResourceType[]).forEach((t) => {
-      const sub = items.filter((i) => i.resource_type === t);
-      const subtotal = sub.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0);
-      out.push({ kind: "section", type: t, subtotal, count: sub.length });
-      sub.forEach((it) => out.push({ kind: "item", item: it }));
-      if (sub.length > 0) out.push({ kind: "subtotal", type: t, subtotal });
-    });
-    return out;
-  }, [items]);
-
-  // Column resize
-  const resizingRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
-  const onResizeStart = (key: string, startW: number) => (e: React.MouseEvent) => {
+  // ── Column resize ──────────────────────────────────────────────────────────
+  const resizeRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
+  const onColResizeStart = (key: string, startW: number) => (e: React.MouseEvent) => {
     e.preventDefault();
-    resizingRef.current = { key, startX: e.clientX, startW };
-    const move = (ev: MouseEvent) => {
-      if (!resizingRef.current) return;
-      const dx = resizingRef.current.startX - ev.clientX;
-      const next = Math.max(50, resizingRef.current.startW + dx);
-      setWidths((w) => ({ ...w, [resizingRef.current!.key]: next }));
+    resizeRef.current = { key, startX: e.clientX, startW };
+    const onMove = (ev: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const next = Math.max(40, resizeRef.current.startW + (ev.clientX - resizeRef.current.startX));
+      setColWidths((w) => ({ ...w, [resizeRef.current!.key]: next }));
     };
-    const up = () => {
-      resizingRef.current = null;
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
+    const onUp = () => {
+      resizeRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup",   onUp);
     };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup",   onUp);
   };
 
-  // Row resize
-  const rowResizingRef = useRef<{ id: string; startY: number; startH: number } | null>(null);
-  const onRowResizeStart = (id: string, currentH: number) => (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    rowResizingRef.current = { id, startY: e.clientY, startH: currentH };
-    const move = (ev: MouseEvent) => {
-      if (!rowResizingRef.current) return;
-      const dy = ev.clientY - rowResizingRef.current.startY;
-      const next = Math.max(24, Math.min(400, rowResizingRef.current.startH + dy));
-      setRowHeights((m) => ({ ...m, [rowResizingRef.current!.id]: next }));
-    };
-    const up = () => {
-      rowResizingRef.current = null;
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-    };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-  };
-
-  // Mutations
+  // ── Mutations ──────────────────────────────────────────────────────────────
   const updateMut = useMutation({
     mutationFn: async (vars: { id: string; patch: Partial<PaItem> }) => {
       const { error } = await supabase
-        .from("price_analysis_items")
-        .update(vars.patch)
-        .eq("id", vars.id);
+        .from("price_analysis_items").update(vars.patch).eq("id", vars.id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] }),
-    onError: (e: Error) => toast.error(e.message),
+    onError:   (e: Error) => toast.error(e.message),
   });
 
   const deleteMut = useMutation({
@@ -223,47 +207,47 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
       if (!userId) throw new Error("غير مسجل دخول");
       const maxSort = items.reduce((m, i) => Math.max(m, i.sort_order ?? 0), 0);
       const { error } = await supabase.from("price_analysis_items").insert({
-        boq_item_id: boqItem.id,
-        user_id: userId,
-        project_id: projectId,
+        boq_item_id:   boqItem.id,
+        user_id:       userId,
+        project_id:    projectId,
         resource_type: type,
         description_ar: "بند جديد",
-        unit: "وحدة",
-        quantity: 1,
-        unit_price: 0,
-        sort_order: maxSort + 1,
+        unit:          "وحدة",
+        quantity:      1,
+        unit_price:    0,
+        sort_order:    maxSort + 1,
       });
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] }),
-    onError: (e: Error) => toast.error(e.message),
+    onError:   (e: Error) => toast.error(e.message),
   });
 
-  // Markup calc
-  const indirect = Number(markup?.indirect_pct ?? 5);
-  const overhead = Number(markup?.overhead_pct ?? 8);
-  const risk = Number(markup?.risk_pct ?? 3);
-  const profit = Number(markup?.profit_pct ?? 10);
-  const indirectVal = (directCost * indirect) / 100;
-  const s1 = directCost + indirectVal;
-  const overheadVal = (s1 * overhead) / 100;
-  const s2 = s1 + overheadVal;
-  const riskVal = (s2 * risk) / 100;
-  const s3 = s2 + riskVal;
-  const profitVal = (s3 * profit) / 100;
-  const selling = s3 + profitVal;
+  // ── Helper: col width object ───────────────────────────────────────────────
+  const cw = (key: string) => {
+    const c = cols.find((x) => x.key === key)!;
+    return { width: c.w, minWidth: c.w };
+  };
 
-  const totalWidth = columns.reduce((s, c) => s + c.width, 0);
+  const TYPES: ResourceType[] = ["material", "labor", "equipment", "subcontractor"];
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      {/* Toolbar */}
+
+      {/* ══ Toolbar ══════════════════════════════════════════════════════════ */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/20 px-4 py-2">
-        <div className="text-xs text-muted-foreground">
-          <span className="font-mono">{boqItem.item_no}</span> · {boqItem.description_ar} ·
-          الكمية: {fmtNumber(boqItem.quantity, 2)} {boqItem.unit} · سعر البيع:{" "}
-          <span className="font-semibold text-primary">{fmtSAR(selling)}</span>
+        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+          <span className="rounded bg-primary/10 px-2 py-0.5 font-mono font-semibold text-primary">
+            {boqItem.item_no}
+          </span>
+          <span className="truncate max-w-xs">{boqItem.description_ar}</span>
+          <span className="text-border">·</span>
+          <span>الكمية: <strong className="text-foreground">{fmtNumber(boqItem.quantity, 2)}</strong> {boqItem.unit}</span>
+          <span className="text-border">·</span>
+          <span>سعر البيع: <strong className="text-primary">{fmtSAR(selling)}</strong></span>
         </div>
+
         <div className="flex items-center gap-1.5">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -273,14 +257,22 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {(["material", "labor", "equipment", "subcontractor"] as ResourceType[]).map((t) => (
+              {TYPES.map((t) => (
                 <DropdownMenuItem key={t} onClick={() => addMut.mutate(t)}>
+                  <span className={cn("mr-2 h-2 w-2 rounded-full", {
+                    "bg-chart-2":  t === "material",
+                    "bg-chart-3":  t === "labor",
+                    "bg-primary":  t === "equipment",
+                    "bg-chart-4":  t === "subcontractor",
+                  })} />
                   {TYPE_LABEL[t]}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
+
           <ImportPaDialog boqItemId={boqItem.id} />
+
           <Button
             size="sm"
             variant="outline"
@@ -293,108 +285,262 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
         </div>
       </div>
 
-      {/* Sheet */}
+      {/* ══ Sheet ════════════════════════════════════════════════════════════ */}
       <div className="flex-1 overflow-auto">
-        <div style={{ minWidth: totalWidth }} className="text-xs tabular-nums select-text">
-          {/* Header */}
-          <div className="sticky top-0 z-10 flex border-b border-border bg-muted/50 backdrop-blur">
-            {columns.map((c) => (
+        <div style={{ minWidth: totalW }} className="select-text">
+
+          {/* ── Column header row ── */}
+          <div
+            className="sticky top-0 z-20 flex border-b border-border bg-muted/70 backdrop-blur"
+            style={{ minWidth: totalW }}
+          >
+            {cols.map((c) => (
               <div
                 key={c.key}
-                style={{ width: c.width, minWidth: c.width }}
+                style={{ width: c.w, minWidth: c.w, position: "relative" }}
                 className={cn(
-                  "relative flex items-center border-l border-border/40 px-2 py-2 text-[11px] font-semibold text-muted-foreground",
+                  CELL,
+                  "py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground",
                   c.align === "center" && "justify-center text-center",
-                  c.align === "right" && "justify-end text-right",
-                  c.align === "left" && "justify-start text-left",
+                  c.align === "right"  && "justify-end    text-right",
+                  c.align === "left"   && "justify-start  text-left",
                 )}
               >
-                <span className="whitespace-normal break-words leading-tight">{c.label}</span>
+                {c.label}
                 {c.key !== "__actions" && (
                   <span
-                    onMouseDown={onResizeStart(c.key, c.width)}
-                    className="absolute inset-y-0 left-0 w-1.5 cursor-col-resize hover:bg-primary/40"
+                    onMouseDown={onColResizeStart(c.key, c.w)}
+                    className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize hover:bg-primary/30"
                   />
                 )}
               </div>
             ))}
           </div>
 
-          {/* Body */}
-          {gridRows.length === 0 && (
-            <div className="px-4 py-12 text-center text-muted-foreground">
-              لا توجد بنود — أضف صفوفاً أو استورد من Excel.
+          {/* ── Main BOQ item header row ── */}
+          <div
+            className="flex border-b border-primary/30 bg-primary/10"
+            style={{ minWidth: totalW }}
+          >
+            {/* Level */}
+            <div style={cw("level")}
+              className={cn(CELL, "justify-center font-mono text-[10px] text-muted-foreground")}>
+              —
+            </div>
+            {/* Task */}
+            <div style={cw("task")}
+              className={cn(CELL, "font-mono text-[10px] font-bold text-primary")}>
+              {boqItem.item_no ?? "—"}
+            </div>
+            {/* Description */}
+            <div style={cw("description")}
+              className={cn(CELL, "font-semibold text-primary")}>
+              {boqItem.description_ar}
+            </div>
+            {/* UOM */}
+            <div style={cw("uom")}
+              className={cn(CELL, "justify-center text-primary")}>
+              {boqItem.unit ?? "—"}
+            </div>
+            {/* QTY */}
+            <div style={cw("qty")}
+              className={cn(CELL, "justify-center font-semibold text-primary")}>
+              {fmtNumber(boqItem.quantity, 2)}
+            </div>
+            {/* Duration */}
+            <div style={cw("duration")}
+              className={cn(CELL, "justify-center text-muted-foreground")}>
+              —
+            </div>
+            {/* Rate */}
+            <div style={cw("rate")}
+              className={cn(CELL, "justify-center font-semibold text-primary")}>
+              {fmtNumber(selling, 2)}
+            </div>
+            {/* Amount */}
+            <div style={cw("amount")}
+              className={cn(CELL, "justify-center border-r-0 font-bold text-primary")}>
+              {fmtNumber(selling * Number(boqItem.quantity ?? 0), 2)}
+            </div>
+            {/* Actions placeholder */}
+            <div style={cw("__actions")} className={cn(CELL, "border-r-0")} />
+          </div>
+
+          {/* ── Empty state ── */}
+          {items.length === 0 && (
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-muted-foreground">
+              <div className="text-5xl opacity-20">📋</div>
+              <p className="text-sm">لا توجد بنود — أضف صفوفاً أو استورد من Excel.</p>
             </div>
           )}
-          {gridRows.map((row, idx) => {
-            if (row.kind === "section") {
-              return (
-                <div
-                  key={`sec-${row.type}`}
-                  style={{ width: totalWidth }}
-                  className={cn(
-                    "sticky-section flex items-center gap-2 border-b border-border px-3 py-1.5 text-[11px] font-bold",
-                    TYPE_COLOR[row.type],
-                  )}
-                >
-                  <span>{TYPE_LABEL[row.type]}</span>
-                  <span className="text-[10px] opacity-70">({row.count})</span>
-                </div>
-              );
-            }
-            if (row.kind === "subtotal") {
-              return (
-                <div
-                  key={`sub-${row.type}`}
-                  style={{ width: totalWidth }}
-                  className="flex border-b border-border bg-muted/30 text-[11px] font-semibold"
-                >
-                  <div className="flex-1 px-3 py-1.5 text-left text-muted-foreground">
-                    مجموع {TYPE_LABEL[row.type]}
-                  </div>
-                  <div
-                    style={{ width: columns[5].width, minWidth: columns[5].width }}
-                    className="border-r border-border/40 px-2 py-1.5 text-center text-foreground"
-                  >
-                    {fmtNumber(row.subtotal, 2)}
-                  </div>
-                  <div
-                    style={{ width: columns[6].width, minWidth: columns[6].width }}
-                  />
-                </div>
-              );
-            }
-            const it = row.item;
-            const styles = ((it.cell_styles ?? {}) as CellStyles) || {};
-            const customH = rowHeights[it.id];
-            const total = Number(it.quantity) * Number(it.unit_price);
+
+          {/* ── Sections ── */}
+          {TYPES.map((type) => {
+            const sectionItems = items.filter((i) => i.resource_type === type);
+            const subtotal     = sectionItems.reduce(
+              (s, i) => s + Number(i.quantity) * Number(i.unit_price), 0,
+            );
+            const isCollapsed  = collapsed.has(type);
 
             return (
-              <div
-                key={it.id}
-                style={customH ? { height: customH } : { minHeight: 30 }}
-                className="group relative flex border-b border-border/60 hover:bg-muted/10"
-              >
-                {columns.map((c) => {
-                  const st = styles[c.key];
-                  const baseClass = cn(
-                    "flex items-start gap-1 overflow-hidden whitespace-normal break-words border-l border-border/40 px-2 py-1.5",
-                    c.align === "center" && "justify-center text-center",
-                    c.align === "right" && "justify-end text-right",
-                    c.align === "left" && "justify-start text-left",
-                    st?.bold && "font-bold",
-                    st?.italic && "italic",
-                  );
-                  const styleAttr: React.CSSProperties = {
-                    width: c.width,
-                    minWidth: c.width,
-                    fontSize: st?.fontSize ? `${st.fontSize}px` : undefined,
-                    textAlign: st?.align ?? c.align,
-                  };
+              <div key={type}>
 
-                  if (c.key === "__actions") {
-                    return (
-                      <div key={c.key} className={baseClass} style={styleAttr}>
+                {/* Section header */}
+                <div
+                  onClick={() => toggleCollapse(type)}
+                  className={cn(
+                    "flex cursor-pointer select-none border-b font-bold transition-colors",
+                    SECTION_HEADER_CLS[type],
+                  )}
+                  style={{ minWidth: totalW }}
+                >
+                  {/* Level */}
+                  <div style={cw("level")}
+                    className={cn(CELL, "justify-center text-[10px] opacity-60")}>
+                    —
+                  </div>
+                  {/* Task (with collapse icon) */}
+                  <div style={cw("task")}
+                    className={cn(CELL, "gap-1 font-mono text-[10px] font-bold")}>
+                    {isCollapsed
+                      ? <ChevronRight className="h-3 w-3 shrink-0" />
+                      : <ChevronDown  className="h-3 w-3 shrink-0" />}
+                    {`${boqItem.item_no ?? "CO"}-${TYPE_CODE[type]}`}
+                  </div>
+                  {/* Description */}
+                  <div style={cw("description")}
+                    className={cn(CELL, "gap-1.5 text-[11px]")}>
+                    {TYPE_LABEL[type]}
+                    <span className="text-[10px] opacity-60">({sectionItems.length})</span>
+                  </div>
+                  {/* UOM */}
+                  <div style={cw("uom")}   className={cn(CELL, "justify-center")} />
+                  {/* QTY */}
+                  <div style={cw("qty")}   className={cn(CELL, "justify-center")} />
+                  {/* Duration */}
+                  <div style={cw("duration")} className={cn(CELL, "justify-center")} />
+                  {/* Rate */}
+                  <div style={cw("rate")}  className={cn(CELL, "justify-center")} />
+                  {/* Amount (section subtotal preview) */}
+                  <div style={cw("amount")}
+                    className={cn(CELL, "justify-center border-r-0 font-bold")}>
+                    {subtotal > 0 ? fmtNumber(subtotal, 2) : ""}
+                  </div>
+                  {/* Actions */}
+                  <div style={cw("__actions")} className={cn(CELL, "border-r-0")} />
+                </div>
+
+                {/* Item rows */}
+                {!isCollapsed && sectionItems.map((it, idx) => {
+                  const cellStyles = ((it.cell_styles ?? {}) as CellStyles);
+                  const total      = Number(it.quantity) * Number(it.unit_price);
+                  const taskCode   = `${boqItem.item_no ?? "CO"}-${TYPE_CODE[type]}-${String(idx + 1).padStart(2, "0")}`;
+
+                  return (
+                    <div
+                      key={it.id}
+                      className="group flex border-b border-border/40 hover:bg-muted/10"
+                      style={{ minWidth: totalW, minHeight: 30 }}
+                    >
+                      {/* Level */}
+                      <div style={cw("level")}
+                        className={cn(CELL, "justify-center text-[10px] text-muted-foreground/60 select-none")}>
+                        {idx + 1}
+                      </div>
+
+                      {/* Task code */}
+                      <div style={cw("task")}
+                        className={cn(CELL, "font-mono text-[10px] text-muted-foreground")}>
+                        {taskCode}
+                      </div>
+
+                      {/* Description (editable) */}
+                      <div style={cw("description")}
+                        className={cn(CELL, "gap-1", {
+                          "font-bold": cellStyles["description"]?.bold,
+                          "italic":    cellStyles["description"]?.italic,
+                        })}
+                        style={{
+                          fontSize:  cellStyles["description"]?.fontSize
+                            ? `${cellStyles["description"].fontSize}px` : undefined,
+                          textAlign: cellStyles["description"]?.align ?? "left",
+                        }}
+                      >
+                        <EditableCell
+                          value={it.description_ar}
+                          onSave={(v) =>
+                            updateMut.mutate({ id: it.id, patch: { description_ar: v || "—" } })
+                          }
+                          className="flex-1"
+                        >
+                          <span className="block w-full whitespace-pre-wrap break-words text-[11px]">
+                            {it.description_ar}
+                          </span>
+                        </EditableCell>
+                        <FormatPopover
+                          styles={cellStyles}
+                          colKey="description"
+                          onChange={(next) =>
+                            updateMut.mutate({ id: it.id, patch: { cell_styles: next as unknown as never } })
+                          }
+                        />
+                      </div>
+
+                      {/* UOM (editable) */}
+                      <EditableCell
+                        value={it.unit}
+                        onSave={(v) =>
+                          updateMut.mutate({ id: it.id, patch: { unit: v || "وحدة" } })
+                        }
+                        className={cn(CELL, "justify-center text-muted-foreground")}
+                        style={cw("uom")}
+                      >
+                        <span className="text-[11px]">{it.unit}</span>
+                      </EditableCell>
+
+                      {/* QTY (editable) */}
+                      <EditableCell
+                        value={String(it.quantity)}
+                        onSave={(v) =>
+                          updateMut.mutate({ id: it.id, patch: { quantity: Number(v) || 0 } })
+                        }
+                        className={cn(CELL, "justify-center")}
+                        style={cw("qty")}
+                      >
+                        <span className="text-[11px]">{fmtNumber(it.quantity, 3)}</span>
+                      </EditableCell>
+
+                      {/* Duration — static placeholder */}
+                      <div style={cw("duration")}
+                        className={cn(CELL, "justify-center text-muted-foreground/40 text-[11px]")}>
+                        —
+                      </div>
+
+                      {/* Rate (editable) */}
+                      <EditableCell
+                        value={String(it.unit_price)}
+                        onSave={(v) =>
+                          updateMut.mutate({ id: it.id, patch: { unit_price: Number(v) || 0 } })
+                        }
+                        className={cn(CELL, "justify-center")}
+                        style={cw("rate")}
+                      >
+                        <span className="text-[11px]">{fmtNumber(it.unit_price, 2)}</span>
+                      </EditableCell>
+
+                      {/* Amount (computed, read-only) */}
+                      <div
+                        style={cw("amount")}
+                        className={cn(CELL, "justify-center border-r-0 bg-primary/5 font-semibold text-foreground text-[11px]")}
+                      >
+                        {fmtNumber(total, 2)}
+                      </div>
+
+                      {/* Actions */}
+                      <div
+                        style={cw("__actions")}
+                        className={cn(CELL, "justify-center border-r-0 opacity-0 transition-opacity group-hover:opacity-100")}
+                      >
                         <Button
                           size="icon"
                           variant="ghost"
@@ -404,186 +550,79 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
-                    );
-                  }
-                  if (c.key === "type") {
-                    return (
-                      <div key={c.key} className={baseClass} style={styleAttr}>
-                        <Select
-                          value={it.resource_type}
-                          onValueChange={(v) =>
-                            updateMut.mutate({ id: it.id, patch: { resource_type: v as ResourceType } })
-                          }
-                        >
-                          <SelectTrigger className="h-6 w-full border-none bg-transparent px-1 text-[11px] shadow-none">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent dir="rtl">
-                            {(["material", "labor", "equipment", "subcontractor"] as ResourceType[]).map((t) => (
-                              <SelectItem key={t} value={t}>
-                                {TYPE_LABEL[t]}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    );
-                  }
-                  if (c.key === "description_ar") {
-                    return (
-                      <div key={c.key} className={baseClass} style={styleAttr}>
-                        <EditableCell
-                          value={it.description_ar}
-                          onSave={(v) =>
-                            updateMut.mutate({ id: it.id, patch: { description_ar: v || "—" } })
-                          }
-                        >
-                          <span className="block w-full whitespace-pre-wrap break-words">
-                            {it.description_ar}
-                          </span>
-                        </EditableCell>
-                        <FormatPopover
-                          styles={styles}
-                          colKey={c.key}
-                          onChange={(next) =>
-                            updateMut.mutate({ id: it.id, patch: { cell_styles: next as unknown as never } })
-                          }
-                        />
-                      </div>
-                    );
-                  }
-                  if (c.key === "unit") {
-                    return (
-                      <EditableCell
-                        key={c.key}
-                        className={baseClass}
-                        style={styleAttr}
-                        value={it.unit}
-                        onSave={(v) => updateMut.mutate({ id: it.id, patch: { unit: v || "وحدة" } })}
-                      >
-                        <span className="text-muted-foreground">{it.unit}</span>
-                      </EditableCell>
-                    );
-                  }
-                  if (c.key === "quantity") {
-                    return (
-                      <EditableCell
-                        key={c.key}
-                        className={baseClass}
-                        style={styleAttr}
-                        value={String(it.quantity)}
-                        onSave={(v) =>
-                          updateMut.mutate({ id: it.id, patch: { quantity: Number(v) || 0 } })
-                        }
-                      >
-                        <span>{fmtNumber(it.quantity, 3)}</span>
-                      </EditableCell>
-                    );
-                  }
-                  if (c.key === "unit_price") {
-                    return (
-                      <EditableCell
-                        key={c.key}
-                        className={baseClass}
-                        style={styleAttr}
-                        value={String(it.unit_price)}
-                        onSave={(v) =>
-                          updateMut.mutate({ id: it.id, patch: { unit_price: Number(v) || 0 } })
-                        }
-                      >
-                        <span>{fmtNumber(it.unit_price, 2)}</span>
-                      </EditableCell>
-                    );
-                  }
-                  if (c.key === "total") {
-                    return (
-                      <div
-                        key={c.key}
-                        className={cn(baseClass, "bg-primary/5 font-semibold text-foreground")}
-                        style={styleAttr}
-                      >
-                        {fmtNumber(total, 2)}
-                      </div>
-                    );
-                  }
-                  return null;
+                    </div>
+                  );
                 })}
-                <div
-                  onMouseDown={onRowResizeStart(it.id, customH ?? 30)}
-                  className="absolute inset-x-0 bottom-0 z-10 h-1 cursor-row-resize opacity-0 hover:bg-primary/50 group-hover:opacity-100"
-                />
+
+                {/* Subtotal row */}
+                {!isCollapsed && sectionItems.length > 0 && (
+                  <div
+                    className={cn("flex border-b text-[11px] font-semibold", SECTION_SUBTOTAL_CLS[type])}
+                    style={{ minWidth: totalW }}
+                  >
+                    <div style={cw("level")}      className={cn(CELL, "justify-center")} />
+                    <div style={cw("task")}        className={cn(CELL, "font-mono text-[10px] opacity-60")}>
+                      مجموع
+                    </div>
+                    <div style={cw("description")} className={cn(CELL)}>
+                      {TYPE_LABEL[type]}
+                    </div>
+                    <div style={cw("uom")}         className={cn(CELL, "justify-center")} />
+                    <div style={cw("qty")}         className={cn(CELL, "justify-center")} />
+                    <div style={cw("duration")}    className={cn(CELL, "justify-center")} />
+                    <div style={cw("rate")}        className={cn(CELL, "justify-center")} />
+                    <div style={cw("amount")}
+                      className={cn(CELL, "justify-center border-r-0 font-bold")}>
+                      {fmtNumber(subtotal, 2)}
+                    </div>
+                    <div style={cw("__actions")} className={cn(CELL, "border-r-0")} />
+                  </div>
+                )}
               </div>
             );
           })}
-          {/* Sheet-level total unit price */}
-          {gridRows.length > 0 && (
+
+          {/* ── Grand total (sticky bottom) ── */}
+          {items.length > 0 && (
             <div
-              style={{ width: totalWidth }}
               className="sticky bottom-0 z-10 flex border-t-2 border-primary/40 bg-primary/10 text-[12px] font-bold backdrop-blur"
+              style={{ minWidth: totalW }}
             >
-              <div className="flex-1 px-3 py-2 text-right text-primary">
-                إجمالي سعر الوحدة للبند ({boqItem.unit ?? "وحدة"})
+              <div style={cw("level")}      className={cn(CELL, "justify-center")} />
+              <div style={cw("task")}        className={cn(CELL, "font-mono text-[10px] text-primary opacity-70")}>
+                Grand Total
               </div>
               <div
-                style={{ width: columns[5].width, minWidth: columns[5].width }}
-                className="border-r border-border/40 px-2 py-2 text-center text-primary tabular-nums"
+                style={{ width: cols[2].w + cols[3].w + cols[4].w + cols[5].w + cols[6].w,
+                         minWidth: cols[2].w + cols[3].w + cols[4].w + cols[5].w + cols[6].w }}
+                className={cn(CELL, "justify-end text-primary")}
               >
+                إجمالي سعر الوحدة ({boqItem.unit ?? "وحدة"})
+              </div>
+              <div style={cw("amount")}
+                className={cn(CELL, "justify-center border-r-0 text-primary")}>
                 {fmtSAR(selling)}
               </div>
-              <div style={{ width: columns[6].width, minWidth: columns[6].width }} />
+              <div style={cw("__actions")} className={cn(CELL, "border-r-0")} />
             </div>
           )}
         </div>
       </div>
 
-      {/* Markup footer (Excel-like total bar) */}
+      {/* ══ Markup footer ════════════════════════════════════════════════════ */}
       <div className="border-t border-border bg-secondary/30 px-4 py-3">
         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs tabular-nums md:grid-cols-3">
           <SumLine label="التكلفة المباشرة" value={fmtSAR(directCost)} />
-          <MarkupLine
-            label="غير مباشرة"
-            pct={indirect}
-            value={indirectVal}
-            field="indirect_pct"
-            boqItemId={boqItem.id}
-            markup={markup}
-            projectId={projectId}
-          />
-          <MarkupLine
-            label="مصاريف عامة"
-            pct={overhead}
-            value={overheadVal}
-            field="overhead_pct"
-            boqItemId={boqItem.id}
-            markup={markup}
-            projectId={projectId}
-          />
-          <MarkupLine
-            label="المخاطر"
-            pct={risk}
-            value={riskVal}
-            field="risk_pct"
-            boqItemId={boqItem.id}
-            markup={markup}
-            projectId={projectId}
-          />
-          <MarkupLine
-            label="الربح"
-            pct={profit}
-            value={profitVal}
-            field="profit_pct"
-            boqItemId={boqItem.id}
-            markup={markup}
-            projectId={projectId}
-          />
+          <MarkupLine label="غير مباشرة"  pct={indirect} value={indirectVal} field="indirect_pct" boqItemId={boqItem.id} markup={markup} projectId={projectId} />
+          <MarkupLine label="مصاريف عامة" pct={overhead}  value={overheadVal} field="overhead_pct"  boqItemId={boqItem.id} markup={markup} projectId={projectId} />
+          <MarkupLine label="المخاطر"     pct={risk}      value={riskVal}     field="risk_pct"      boqItemId={boqItem.id} markup={markup} projectId={projectId} />
+          <MarkupLine label="الربح"       pct={profit}    value={profitVal}   field="profit_pct"    boqItemId={boqItem.id} markup={markup} projectId={projectId} />
           <div className="col-span-2 md:col-span-3 mt-1 flex items-center justify-between rounded-md bg-primary/10 px-3 py-2 ring-1 ring-primary/30">
             <span className="text-sm font-bold text-primary">سعر البيع لكل {boqItem.unit}</span>
             <span className="text-lg font-bold tabular-nums text-primary">{fmtSAR(selling)}</span>
           </div>
           <div className="col-span-2 flex items-center justify-between text-muted-foreground md:col-span-3">
-            <span>
-              الإجمالي للكمية ({fmtNumber(boqItem.quantity, 2)} {boqItem.unit})
-            </span>
+            <span>الإجمالي للكمية ({fmtNumber(boqItem.quantity, 2)} {boqItem.unit})</span>
             <span className="font-semibold text-foreground">
               {fmtSAR(selling * Number(boqItem.quantity ?? 0))}
             </span>
@@ -594,6 +633,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   );
 }
 
+// ─── SumLine ─────────────────────────────────────────────────────────────────
 function SumLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
@@ -603,14 +643,9 @@ function SumLine({ label, value }: { label: string; value: string }) {
   );
 }
 
+// ─── MarkupLine ───────────────────────────────────────────────────────────────
 function MarkupLine({
-  label,
-  pct,
-  value,
-  field,
-  boqItemId,
-  markup,
-  projectId,
+  label, pct, value, field, boqItemId, markup, projectId,
 }: {
   label: string;
   pct: number;
@@ -620,34 +655,33 @@ function MarkupLine({
   markup: Markup | null | undefined;
   projectId: string | null;
 }) {
-  const qc = useQueryClient();
+  const qc  = useQueryClient();
   const mut = useMutation({
     mutationFn: async (newPct: number) => {
       const { data: u } = await supabase.auth.getUser();
       const userId = u.user?.id;
       if (!userId) throw new Error("غير مسجل دخول");
       if (markup) {
-        const patch: Partial<Markup> = { [field]: newPct };
         const { error } = await supabase
           .from("price_analysis_markup")
-          .update(patch)
+          .update({ [field]: newPct } as Partial<Markup>)
           .eq("boq_item_id", boqItemId);
         if (error) throw error;
       } else {
         const { error } = await supabase.from("price_analysis_markup").insert({
           boq_item_id: boqItemId,
-          user_id: userId,
-          project_id: projectId,
+          user_id:     userId,
+          project_id:  projectId,
           indirect_pct: field === "indirect_pct" ? newPct : 5,
           overhead_pct: field === "overhead_pct" ? newPct : 8,
-          risk_pct: field === "risk_pct" ? newPct : 3,
-          profit_pct: field === "profit_pct" ? newPct : 10,
+          risk_pct:     field === "risk_pct"     ? newPct : 3,
+          profit_pct:   field === "profit_pct"   ? newPct : 10,
         });
         if (error) throw error;
       }
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pa_markup", boqItemId] }),
-    onError: (e: Error) => toast.error(e.message),
+    onError:   (e: Error) => toast.error(e.message),
   });
 
   return (
@@ -658,10 +692,7 @@ function MarkupLine({
           type="number"
           step="0.5"
           defaultValue={pct}
-          onBlur={(e) => {
-            const v = Number(e.target.value);
-            if (v !== pct) mut.mutate(v);
-          }}
+          onBlur={(e) => { const v = Number(e.target.value); if (v !== pct) mut.mutate(v); }}
           className="h-6 w-14 px-1.5 text-center text-xs"
         />
         <span className="text-[10px] text-muted-foreground">%</span>
@@ -671,6 +702,7 @@ function MarkupLine({
   );
 }
 
+// ─── EditableCell ─────────────────────────────────────────────────────────────
 function EditableCell({
   value,
   onSave,
@@ -685,7 +717,7 @@ function EditableCell({
   style?: React.CSSProperties;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(value);
+  const [draft,   setDraft]   = useState(value);
   useEffect(() => setDraft(value), [value]);
 
   if (editing) {
@@ -695,26 +727,18 @@ function EditableCell({
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => {
-            setEditing(false);
-            if (draft !== value) onSave(draft);
-          }}
+          onBlur={() => { setEditing(false); if (draft !== value) onSave(draft); }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              (e.target as HTMLTextAreaElement).blur();
-            }
-            if (e.key === "Escape") {
-              setDraft(value);
-              setEditing(false);
-            }
+            if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); }
+            if (e.key === "Escape")               { setDraft(value); setEditing(false); }
           }}
-          className="h-full w-full resize-none bg-background px-1 text-xs outline-none ring-1 ring-primary"
+          className="h-full w-full resize-none bg-background px-1 text-[11px] outline-none ring-1 ring-primary"
           style={{ direction: "inherit", textAlign: "inherit" }}
         />
       </div>
     );
   }
+
   return (
     <div
       className={cn(className, "cursor-text")}
@@ -727,6 +751,7 @@ function EditableCell({
   );
 }
 
+// ─── FormatPopover ────────────────────────────────────────────────────────────
 function FormatPopover({
   styles,
   colKey,
@@ -737,9 +762,9 @@ function FormatPopover({
   onChange: (next: CellStyles) => void;
 }) {
   const cur = styles[colKey] ?? {};
-  const set = (patch: Partial<CellStyles[string]>) => {
+  const set = (patch: Partial<CellStyles[string]>) =>
     onChange({ ...styles, [colKey]: { ...cur, ...patch } });
-  };
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -753,37 +778,12 @@ function FormatPopover({
       </PopoverTrigger>
       <PopoverContent className="w-auto p-1.5" align="end" dir="rtl">
         <div className="flex items-center gap-0.5">
-          <button
-            className={cn("rounded p-1 hover:bg-muted", cur.bold && "bg-muted")}
-            onClick={() => set({ bold: !cur.bold })}
-          >
-            <Bold className="h-3.5 w-3.5" />
-          </button>
-          <button
-            className={cn("rounded p-1 hover:bg-muted", cur.italic && "bg-muted")}
-            onClick={() => set({ italic: !cur.italic })}
-          >
-            <Italic className="h-3.5 w-3.5" />
-          </button>
+          <button className={cn("rounded p-1 hover:bg-muted", cur.bold   && "bg-muted")} onClick={() => set({ bold:   !cur.bold   })}><Bold   className="h-3.5 w-3.5" /></button>
+          <button className={cn("rounded p-1 hover:bg-muted", cur.italic && "bg-muted")} onClick={() => set({ italic: !cur.italic })}><Italic className="h-3.5 w-3.5" /></button>
           <div className="mx-1 h-4 w-px bg-border" />
-          <button
-            className={cn("rounded p-1 hover:bg-muted", cur.align === "right" && "bg-muted")}
-            onClick={() => set({ align: "right" })}
-          >
-            <AlignRight className="h-3.5 w-3.5" />
-          </button>
-          <button
-            className={cn("rounded p-1 hover:bg-muted", cur.align === "center" && "bg-muted")}
-            onClick={() => set({ align: "center" })}
-          >
-            <AlignCenter className="h-3.5 w-3.5" />
-          </button>
-          <button
-            className={cn("rounded p-1 hover:bg-muted", cur.align === "left" && "bg-muted")}
-            onClick={() => set({ align: "left" })}
-          >
-            <AlignLeft className="h-3.5 w-3.5" />
-          </button>
+          <button className={cn("rounded p-1 hover:bg-muted", cur.align === "right"  && "bg-muted")} onClick={() => set({ align: "right"  })}><AlignRight  className="h-3.5 w-3.5" /></button>
+          <button className={cn("rounded p-1 hover:bg-muted", cur.align === "center" && "bg-muted")} onClick={() => set({ align: "center" })}><AlignCenter className="h-3.5 w-3.5" /></button>
+          <button className={cn("rounded p-1 hover:bg-muted", cur.align === "left"   && "bg-muted")} onClick={() => set({ align: "left"   })}><AlignLeft   className="h-3.5 w-3.5" /></button>
           <div className="mx-1 h-4 w-px bg-border" />
           <select
             value={cur.fontSize ?? 12}
@@ -791,9 +791,7 @@ function FormatPopover({
             className="rounded border border-border bg-background px-1 py-0.5 text-xs"
           >
             {[10, 11, 12, 13, 14, 16, 18, 20].map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
+              <option key={s} value={s}>{s}</option>
             ))}
           </select>
         </div>
