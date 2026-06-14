@@ -180,12 +180,6 @@ export function BoqGrid({
               )}
             </div>
           ))}
-          {/* Row-height drag in the corner */}
-          <div
-            onMouseDown={onRowResizeStart}
-            className="absolute bottom-0 right-2 h-1.5 w-10 cursor-row-resize rounded-full bg-border hover:bg-primary/40"
-            title="اسحب لتغيير ارتفاع الصفوف"
-          />
         </div>
 
         {/* Body */}
