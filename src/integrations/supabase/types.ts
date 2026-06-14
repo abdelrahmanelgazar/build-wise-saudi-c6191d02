@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       boq_items: {
         Row: {
+          cell_styles: Json | null
           created_at: string
           description_ar: string
           equipment_cost: number | null
@@ -28,6 +29,7 @@ export type Database = {
           parent_id: string | null
           project_id: string | null
           quantity: number | null
+          raw_row: Json | null
           sort_order: number
           subcontractor_cost: number | null
           unit: string | null
@@ -35,6 +37,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          cell_styles?: Json | null
           created_at?: string
           description_ar: string
           equipment_cost?: number | null
@@ -47,6 +50,7 @@ export type Database = {
           parent_id?: string | null
           project_id?: string | null
           quantity?: number | null
+          raw_row?: Json | null
           sort_order?: number
           subcontractor_cost?: number | null
           unit?: string | null
@@ -54,6 +58,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          cell_styles?: Json | null
           created_at?: string
           description_ar?: string
           equipment_cost?: number | null
@@ -66,6 +71,7 @@ export type Database = {
           parent_id?: string | null
           project_id?: string | null
           quantity?: number | null
+          raw_row?: Json | null
           sort_order?: number
           subcontractor_cost?: number | null
           unit?: string | null
@@ -256,6 +262,7 @@ export type Database = {
           duration: string | null
           end_date: string | null
           estimated_value: number | null
+          excel_headers: Json | null
           financial_requirements: string | null
           id: string
           last_rfi_date: string | null
@@ -284,6 +291,7 @@ export type Database = {
           duration?: string | null
           end_date?: string | null
           estimated_value?: number | null
+          excel_headers?: Json | null
           financial_requirements?: string | null
           id?: string
           last_rfi_date?: string | null
@@ -312,6 +320,7 @@ export type Database = {
           duration?: string | null
           end_date?: string | null
           estimated_value?: number | null
+          excel_headers?: Json | null
           financial_requirements?: string | null
           id?: string
           last_rfi_date?: string | null
@@ -432,7 +441,7 @@ export type Database = {
         | "construction_complete"
         | "finished"
         | "closed"
-      resource_type: "material" | "labor" | "equipment"
+      resource_type: "material" | "labor" | "equipment" | "subcontractor"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -575,7 +584,7 @@ export const Constants = {
         "finished",
         "closed",
       ],
-      resource_type: ["material", "labor", "equipment"],
+      resource_type: ["material", "labor", "equipment", "subcontractor"],
     },
   },
 } as const
