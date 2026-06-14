@@ -170,7 +170,7 @@ export function BoqGrid({
                 c.align === "right" && "justify-end",
               )}
             >
-              <span className="truncate">{c.label}</span>
+              <span className="whitespace-normal break-words">{c.label}</span>
               {c.key !== "__actions" && (
                 <span
                   onMouseDown={onResizeStart(String(c.key), c.width)}
