@@ -357,6 +357,12 @@ export function BoqGrid({
                 }
                 return <div key={colKey} className={baseClass} style={styleAttr} />;
               })}
+              {/* Per-row height drag handle */}
+              <div
+                onMouseDown={onRowResizeStart(node.id, customH ?? 32)}
+                className="absolute inset-x-0 bottom-0 z-10 h-1 cursor-row-resize opacity-0 hover:bg-primary/50 group-hover:opacity-100"
+                title="اسحب لتغيير ارتفاع الصف"
+              />
             </div>
           );
         })}
