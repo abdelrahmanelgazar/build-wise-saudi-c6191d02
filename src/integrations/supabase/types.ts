@@ -19,6 +19,7 @@ export type Database = {
           cell_styles: Json | null
           created_at: string
           description_ar: string
+          description_en: string | null
           equipment_cost: number | null
           id: string
           is_group: boolean
@@ -40,6 +41,7 @@ export type Database = {
           cell_styles?: Json | null
           created_at?: string
           description_ar: string
+          description_en?: string | null
           equipment_cost?: number | null
           id?: string
           is_group?: boolean
@@ -61,6 +63,7 @@ export type Database = {
           cell_styles?: Json | null
           created_at?: string
           description_ar?: string
+          description_en?: string | null
           equipment_cost?: number | null
           id?: string
           is_group?: boolean
@@ -101,6 +104,7 @@ export type Database = {
           cell_styles: Json | null
           created_at: string
           description_ar: string
+          description_en: string | null
           id: string
           project_id: string | null
           quantity: number
@@ -116,6 +120,7 @@ export type Database = {
           cell_styles?: Json | null
           created_at?: string
           description_ar: string
+          description_en?: string | null
           id?: string
           project_id?: string | null
           quantity?: number
@@ -131,6 +136,7 @@ export type Database = {
           cell_styles?: Json | null
           created_at?: string
           description_ar?: string
+          description_en?: string | null
           id?: string
           project_id?: string | null
           quantity?: number
