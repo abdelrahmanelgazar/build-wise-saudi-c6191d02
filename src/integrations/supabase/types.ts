@@ -98,6 +98,7 @@ export type Database = {
       price_analysis_items: {
         Row: {
           boq_item_id: string
+          cell_styles: Json | null
           created_at: string
           description_ar: string
           id: string
@@ -105,12 +106,14 @@ export type Database = {
           quantity: number
           resource_id: string | null
           resource_type: Database["public"]["Enums"]["resource_type"]
+          sort_order: number
           unit: string
           unit_price: number
           user_id: string
         }
         Insert: {
           boq_item_id: string
+          cell_styles?: Json | null
           created_at?: string
           description_ar: string
           id?: string
@@ -118,12 +121,14 @@ export type Database = {
           quantity?: number
           resource_id?: string | null
           resource_type: Database["public"]["Enums"]["resource_type"]
+          sort_order?: number
           unit: string
           unit_price?: number
           user_id: string
         }
         Update: {
           boq_item_id?: string
+          cell_styles?: Json | null
           created_at?: string
           description_ar?: string
           id?: string
@@ -131,6 +136,7 @@ export type Database = {
           quantity?: number
           resource_id?: string | null
           resource_type?: Database["public"]["Enums"]["resource_type"]
+          sort_order?: number
           unit?: string
           unit_price?: number
           user_id?: string
