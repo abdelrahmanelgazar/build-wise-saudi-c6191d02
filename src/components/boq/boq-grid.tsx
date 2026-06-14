@@ -81,7 +81,7 @@ export function BoqGrid({
 
   const columns: { key: string; label: string; width: number; align?: "right" | "center" | "left" }[] = useMemo(() => {
     const built = BUILTIN_KEYS.map((k) => ({
-      key: k as ColKey,
+      key: k as string,
       label: BUILTIN_LABELS[k],
       width: widths[k] ?? BUILTIN_DEFAULT_WIDTH[k],
       align:
@@ -92,10 +92,10 @@ export function BoqGrid({
             : ("left" as const),
     }));
     const extras = extraHeaders.map((h, i) => {
-      const key = `extra_${i}` as ColKey;
+      const key = `extra_${i}`;
       return { key, label: h || `عمود ${i + 1}`, width: widths[key] ?? 130, align: "right" as const };
     });
-    return [...built, ...extras, { key: "__actions" as ColKey, label: "إجراءات", width: widths["__actions"] ?? 80, align: "center" as const }];
+    return [...built, ...extras, { key: "__actions", label: "إجراءات", width: widths["__actions"] ?? 80, align: "center" as const }];
   }, [widths, extraHeaders]);
 
   // Column resize handlers
