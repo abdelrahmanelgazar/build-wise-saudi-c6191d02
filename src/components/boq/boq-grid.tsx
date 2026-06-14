@@ -192,13 +192,14 @@ export function BoqGrid({
           const styles = ((node.cell_styles ?? {}) as CellStyles) || {};
           const isOpen = expanded.has(node.id);
           const raw = (node.raw_row as unknown[] | null) ?? [];
+          const customH = rowHeights[node.id];
 
           return (
             <div
               key={node.id}
-              style={{ minHeight: rowHeight }}
+              style={customH ? { height: customH } : { minHeight: 32 }}
               className={cn(
-                "flex border-b border-border/60 transition-colors",
+                "group relative flex border-b border-border/60 transition-colors",
                 node.is_group
                   ? "bg-secondary/40 font-semibold text-foreground"
                   : "hover:bg-muted/20",
