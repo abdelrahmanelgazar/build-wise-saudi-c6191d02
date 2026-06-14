@@ -456,12 +456,13 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                       </div>
 
                       {/* Description (editable) */}
-                      <div style={cw("description")}
+                      <div
                         className={cn(CELL, "gap-1", {
                           "font-bold": cellStyles["description"]?.bold,
                           "italic":    cellStyles["description"]?.italic,
                         })}
                         style={{
+                          ...cw("description"),
                           fontSize:  cellStyles["description"]?.fontSize
                             ? `${cellStyles["description"].fontSize}px` : undefined,
                           textAlign: cellStyles["description"]?.align ?? "left",
