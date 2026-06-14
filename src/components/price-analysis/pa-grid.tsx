@@ -386,33 +386,33 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
             return (
               <div key={type}>
 
-                {/* Section header */}
+                {/* Section header — Excel-style bold (size 14) without colour band */}
                 <div
                   onClick={() => toggleCollapse(type)}
                   className={cn(
-                    "flex cursor-pointer select-none border-b font-bold transition-colors",
+                    "flex cursor-pointer select-none border-b border-border transition-colors",
                     SECTION_HEADER_CLS[type],
                   )}
                   style={{ minWidth: totalW }}
                 >
                   {/* Level */}
                   <div style={cw("level")}
-                    className={cn(CELL, "justify-center text-[10px] opacity-60")}>
+                    className={cn(CELL, "justify-center text-[11px] text-muted-foreground")}>
                     —
                   </div>
                   {/* Task (with collapse icon) */}
                   <div style={cw("task")}
-                    className={cn(CELL, "gap-1 font-mono text-[10px] font-bold")}>
+                    className={cn(CELL, "gap-1 font-mono text-[11px] font-bold")}>
                     {isCollapsed
-                      ? <ChevronRight className="h-3 w-3 shrink-0" />
-                      : <ChevronDown  className="h-3 w-3 shrink-0" />}
+                      ? <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                      : <ChevronDown  className="h-3.5 w-3.5 shrink-0" />}
                     {`${boqItem.item_no ?? "CO"}-${TYPE_CODE[type]}`}
                   </div>
-                  {/* Description */}
+                  {/* Description — bold, larger (echoes Excel size-14 subgroup rows) */}
                   <div style={cw("description")}
-                    className={cn(CELL, "gap-1.5 text-[11px]")}>
+                    className={cn(CELL, "gap-1.5 text-[13px] font-bold")}>
                     {TYPE_LABEL[type]}
-                    <span className="text-[10px] opacity-60">({sectionItems.length})</span>
+                    <span className="text-[10px] font-normal text-muted-foreground">({sectionItems.length})</span>
                   </div>
                   {/* UOM */}
                   <div style={cw("uom")}   className={cn(CELL, "justify-center")} />
@@ -424,7 +424,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                   <div style={cw("rate")}  className={cn(CELL, "justify-center")} />
                   {/* Amount (section subtotal preview) */}
                   <div style={cw("amount")}
-                    className={cn(CELL, "justify-center border-r-0 font-bold")}>
+                    className={cn(CELL, "justify-center border-r-0 text-[12px] font-bold")}>
                     {subtotal > 0 ? fmtNumber(subtotal, 2) : ""}
                   </div>
                   {/* Actions */}
