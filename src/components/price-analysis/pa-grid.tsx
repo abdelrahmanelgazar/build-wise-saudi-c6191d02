@@ -609,9 +609,10 @@ function MarkupLine({
       const userId = u.user?.id;
       if (!userId) throw new Error("غير مسجل دخول");
       if (markup) {
+        const patch: Partial<Markup> = { [field]: newPct };
         const { error } = await supabase
           .from("price_analysis_markup")
-          .update({ [field]: newPct })
+          .update(patch)
           .eq("boq_item_id", boqItemId);
         if (error) throw error;
       } else {
