@@ -506,7 +506,7 @@ export function ImportExcelDialog() {
                       <tr className="border-b border-border">
                         {parsed.headers.map((h, i) => (
                           <th key={i} className="px-2 py-2 text-right font-medium whitespace-nowrap">
-                            {h || `عمود ${i + 1}`}
+                            {h.label || `عمود ${i + 1}`}
                           </th>
                         ))}
                       </tr>
