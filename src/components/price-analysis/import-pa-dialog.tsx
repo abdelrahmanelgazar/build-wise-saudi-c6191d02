@@ -244,10 +244,10 @@ export function ImportPaDialog({ boqItemId }: { boqItemId: string }) {
             boq_item_id: boqItemId,
             user_id: userId,
             project_id: projectId,
-            indirect_pct: parsed.markup.indirect_pct ?? 5,
-            overhead_pct: parsed.markup.overhead_pct ?? 8,
-            risk_pct: parsed.markup.risk_pct ?? 3,
-            profit_pct: parsed.markup.profit_pct ?? 10,
+            indirect_pct: parsed.markup.indirect_pct ?? 0,
+            overhead_pct: parsed.markup.overhead_pct ?? 0,
+            risk_pct: parsed.markup.risk_pct ?? 0,
+            profit_pct: parsed.markup.profit_pct ?? 0,
           });
         }
       }

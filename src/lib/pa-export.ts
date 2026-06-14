@@ -51,10 +51,10 @@ export function exportPriceAnalysis(
   });
 
   aoa.push([]);
-  const indirect = Number(markup?.indirect_pct ?? 5);
-  const overhead = Number(markup?.overhead_pct ?? 8);
-  const risk = Number(markup?.risk_pct ?? 3);
-  const profit = Number(markup?.profit_pct ?? 10);
+  const indirect = Number(markup?.indirect_pct ?? 0);
+  const overhead = Number(markup?.overhead_pct ?? 0);
+  const risk     = Number(markup?.risk_pct     ?? 0);
+  const profit   = Number(markup?.profit_pct   ?? 0);
   const indirectVal = (direct * indirect) / 100;
   const s1 = direct + indirectVal;
   const overheadVal = (s1 * overhead) / 100;

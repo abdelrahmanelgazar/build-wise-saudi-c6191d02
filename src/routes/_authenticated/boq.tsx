@@ -179,10 +179,10 @@ function BoqPage() {
     const selling = new Map<string, number>();
     direct.forEach((cost, id) => {
       const m = markupBy.get(id);
-      const indirect = Number(m?.indirect_pct ?? 5);
-      const overhead = Number(m?.overhead_pct ?? 8);
-      const risk = Number(m?.risk_pct ?? 3);
-      const profit = Number(m?.profit_pct ?? 10);
+      const indirect = Number(m?.indirect_pct ?? 0);
+      const overhead = Number(m?.overhead_pct ?? 0);
+      const risk = Number(m?.risk_pct ?? 0);
+      const profit = Number(m?.profit_pct ?? 0);
       const s1 = cost * (1 + indirect / 100);
       const s2 = s1 * (1 + overhead / 100);
       const s3 = s2 * (1 + risk / 100);

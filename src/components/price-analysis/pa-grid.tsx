@@ -77,13 +77,13 @@ const TYPE_CODE: Record<ResourceType, string> = {
 type Col = { key: string; label: string; defaultW: number; align: "center" | "left" | "right" };
 
 const COLS: Col[] = [
-  { key: "level",          label: "Item",           defaultW: 70,  align: "center" },
+  { key: "level",          label: "رقم البند",           defaultW: 70,  align: "center" },
   { key: "description_en", label: "Description",    defaultW: 320, align: "left"   },
   { key: "description",    label: "التوصيف",        defaultW: 320, align: "right"  },
-  { key: "qty",            label: "Qty",            defaultW: 70,  align: "center" },
-  { key: "uom",            label: "Unit",           defaultW: 70,  align: "center" },
-  { key: "rate",           label: "Rate\nSAR",      defaultW: 110, align: "center" },
-  { key: "amount",         label: "Amount\nSAR",    defaultW: 140, align: "center" },
+  { key: "qty",            label: "الكمية",            defaultW: 70,  align: "center" },
+  { key: "uom",            label: "وحدة القياس",           defaultW: 70,  align: "center" },
+  { key: "rate",           label: "التكلفة المباشرة",      defaultW: 110, align: "center" },
+  { key: "amount",         label: "اجمالي تكلفة البند",    defaultW: 140, align: "center" },
   { key: "__actions",      label: "",               defaultW: 48,  align: "center" },
 ];
 
@@ -149,10 +149,10 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
 
   // ── Markup calc ────────────────────────────────────────────────────────────
   const directCost  = items.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0);
-  const indirect    = Number(markup?.indirect_pct ?? 5);
-  const overhead    = Number(markup?.overhead_pct ?? 8);
-  const risk        = Number(markup?.risk_pct     ?? 3);
-  const profit      = Number(markup?.profit_pct   ?? 10);
+  const indirect    = Number(markup?.indirect_pct ?? 0);
+  const overhead    = Number(markup?.overhead_pct ?? 0);
+  const risk        = Number(markup?.risk_pct ?? 0);
+  const profit      = Number(markup?.profit_pct ?? 0);
   const indirectVal = (directCost * indirect) / 100;
   const s1          = directCost + indirectVal;
   const overheadVal = (s1 * overhead) / 100;
@@ -667,10 +667,10 @@ function MarkupLine({
           boq_item_id: boqItemId,
           user_id:     userId,
           project_id:  projectId,
-          indirect_pct: field === "indirect_pct" ? newPct : 5,
-          overhead_pct: field === "overhead_pct" ? newPct : 8,
-          risk_pct:     field === "risk_pct"     ? newPct : 3,
-          profit_pct:   field === "profit_pct"   ? newPct : 10,
+          indirect_pct: field === "indirect_pct" ? newPct : 0,
+          overhead_pct: field === "overhead_pct" ? newPct : 0,
+          risk_pct:     field === "risk_pct"     ? newPct : 0,
+          profit_pct:   field === "profit_pct"   ? newPct : 0,
         });
         if (error) throw error;
       }
