@@ -20,7 +20,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FolderPlus, Plus } from "lucide-react";
+import { FolderPlus, Plus, Download } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { exportBoq } from "@/lib/boq-export";
 import { PageHeader } from "./resources";
 import { fmtSAR } from "@/lib/format";
 import { Link } from "@tanstack/react-router";
@@ -108,7 +115,7 @@ function BoqPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("projects")
-        .select("id, excel_headers")
+        .select("id, name, excel_headers, excel_pre_headers")
         .eq("id", projectId!)
         .maybeSingle();
       if (error) throw error;
@@ -118,6 +125,11 @@ function BoqPage() {
 
   const extraHeaders = useMemo(() => {
     const h = (project?.excel_headers as unknown) ?? [];
+    return Array.isArray(h) ? h : [];
+  }, [project]);
+
+  const extraPreHeaders = useMemo(() => {
+    const h = (project?.excel_pre_headers as unknown) ?? [];
     return Array.isArray(h) ? h : [];
   }, [project]);
 
@@ -249,6 +261,23 @@ function BoqPage() {
         subtitle="جدول تفاعلي مشابه لإكسل — أعمدة قابلة للتغيير، خلايا قابلة للتحرير، وسعر الوحدة يفتح تحليل الأسعار."
         action={
           <div className="flex flex-wrap gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5" disabled={flatRows.length === 0}>
+                  <Download className="h-4 w-4" />
+                  تصدير
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" dir="rtl">
+                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", flatRows, extraHeaders as any, extraPreHeaders, "xlsx")}>
+                  إلى إكسل (.xlsx)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", flatRows, extraHeaders as any, extraPreHeaders, "csv")}>
+                  إلى (.csv)
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <ImportExcelDialog />
             <NewBoqDialog isGroup parentOptions={tree} />
             <NewBoqDialog parentOptions={tree} />

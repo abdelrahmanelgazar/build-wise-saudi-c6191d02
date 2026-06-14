@@ -139,9 +139,9 @@ function detectGroup(itemNo: string, qty: number, unit: string, costs: number[])
   return false;
 }
 
-function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; data: ParsedRow[]; warnings: string[] } {
+function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; preHeaders: unknown[][]; data: ParsedRow[]; warnings: string[] } {
   const warnings: string[] = [];
-  if (!rows.length) return { headers: [], data: [], warnings: ["الملف فارغ"] };
+  if (!rows.length) return { headers: [], preHeaders: [], data: [], warnings: ["الملف فارغ"] };
 
   // find header row: first row with >=2 known headers
   let headerIdx = -1;
@@ -169,6 +169,7 @@ function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; data: ParsedRo
   if (headerIdx < 0) {
     return {
       headers: [],
+      preHeaders: [],
       data: [],
       warnings: ["لم يتم التعرف على رؤوس الأعمدة. تأكد من وجود أعمدة: رقم البند، الوصف، الوحدة، الكمية…"],
     };
@@ -179,6 +180,7 @@ function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; data: ParsedRo
     label,
     field: colMap[idx] ?? null,
   }));
+  const preHeaders = rows.slice(0, headerIdx);
   const data: ParsedRow[] = [];
 
 
@@ -223,7 +225,7 @@ function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; data: ParsedRo
   }
 
   if (!data.length) warnings.push("لم يتم العثور على بنود بعد رؤوس الأعمدة.");
-  return { headers, data, warnings };
+  return { headers, preHeaders, data, warnings };
 }
 
 // Build parent linkage from item_no hierarchy (e.g. 01 → 01.01 → 01.01.01)
@@ -282,8 +284,9 @@ export function ImportExcelDialog() {
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [activeSheet, setActiveSheet] = useState<string>("");
   const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
-  const [parsed, setParsed] = useState<{ headers: ExcelHeader[]; data: ParsedRow[]; warnings: string[] }>({
+  const [parsed, setParsed] = useState<{ headers: ExcelHeader[]; preHeaders: unknown[][]; data: ParsedRow[]; warnings: string[] }>({
     headers: [],
+    preHeaders: [],
     data: [],
     warnings: [],
   });
@@ -296,7 +299,7 @@ export function ImportExcelDialog() {
     setSheetNames([]);
     setActiveSheet("");
     setWorkbook(null);
-    setParsed({ headers: [], data: [], warnings: [] });
+    setParsed({ headers: [], preHeaders: [], data: [], warnings: [] });
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -351,7 +354,10 @@ export function ImportExcelDialog() {
       // the exact columns from the Excel file (in original order).
       await supabase
         .from("projects")
-        .update({ excel_headers: parsed.headers as unknown as never })
+        .update({ 
+          excel_headers: parsed.headers as unknown as never,
+          excel_pre_headers: parsed.preHeaders as unknown as never
+        })
         .eq("id", projectId);
 
       const prepared = linkParents(parsed.data);
