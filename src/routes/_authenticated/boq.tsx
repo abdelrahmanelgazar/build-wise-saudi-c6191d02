@@ -121,6 +121,64 @@ function BoqPage() {
     return Array.isArray(h) ? h : [];
   }, [project]);
 
+  // Pull all price-analysis rows + markup for this project to compute the
+  // per-item unit selling price displayed in the BOQ "rate" column.
+  const { data: paItems = [] } = useQuery({
+    queryKey: ["pa_items_project", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("price_analysis_items")
+        .select("boq_item_id, quantity, unit_price")
+        .eq("project_id", projectId!);
+      if (error) throw error;
+      return data as { boq_item_id: string; quantity: number; unit_price: number }[];
+    },
+  });
+
+  const { data: paMarkups = [] } = useQuery({
+    queryKey: ["pa_markup_project", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("price_analysis_markup")
+        .select("boq_item_id, indirect_pct, overhead_pct, risk_pct, profit_pct")
+        .eq("project_id", projectId!);
+      if (error) throw error;
+      return data as {
+        boq_item_id: string;
+        indirect_pct: number;
+        overhead_pct: number;
+        risk_pct: number;
+        profit_pct: number;
+      }[];
+    },
+  });
+
+  const paUnitRates = useMemo(() => {
+    const direct = new Map<string, number>();
+    paItems.forEach((r) => {
+      direct.set(
+        r.boq_item_id,
+        (direct.get(r.boq_item_id) ?? 0) + Number(r.quantity) * Number(r.unit_price),
+      );
+    });
+    const markupBy = new Map(paMarkups.map((m) => [m.boq_item_id, m]));
+    const out = new Map<string, number>();
+    direct.forEach((cost, id) => {
+      const m = markupBy.get(id);
+      const indirect = Number(m?.indirect_pct ?? 5);
+      const overhead = Number(m?.overhead_pct ?? 8);
+      const risk = Number(m?.risk_pct ?? 3);
+      const profit = Number(m?.profit_pct ?? 10);
+      const s1 = cost * (1 + indirect / 100);
+      const s2 = s1 * (1 + overhead / 100);
+      const s3 = s2 * (1 + risk / 100);
+      out.set(id, s3 * (1 + profit / 100));
+    });
+    return out;
+  }, [paItems, paMarkups]);
+
   useMemo(() => {
     if (rows.length && expanded.size === 0) {
       setExpanded(new Set(rows.filter((r) => r.is_group).map((r) => r.id)));
@@ -128,7 +186,7 @@ function BoqPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows.length]);
 
-  const tree = useMemo(() => buildTree(rows), [rows]);
+  const tree = useMemo(() => buildTree(rows, paUnitRates), [rows, paUnitRates]);
   const grandTotal = tree.reduce((s, n) => s + n.rolledTotal, 0);
   const itemsCount = rows.filter((r) => !r.is_group).length;
   const groupsCount = rows.filter((r) => r.is_group).length;
