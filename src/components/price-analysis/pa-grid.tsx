@@ -77,13 +77,14 @@ const TYPE_CODE: Record<ResourceType, string> = {
 type Col = { key: string; label: string; defaultW: number; align: "center" | "left" | "right" };
 
 const COLS: Col[] = [
-  { key: "level",       label: "رقم البند",    defaultW: 80,  align: "center" },
-  { key: "description", label: "البيان",       defaultW: 440, align: "right"  },
-  { key: "uom",         label: "الوحدة",      defaultW: 80,  align: "center" },
-  { key: "qty",         label: "الكمية",       defaultW: 90,  align: "center" },
-  { key: "rate",        label: "التكلفة المباشرة للوحدة",   defaultW: 140, align: "center" },
-  { key: "amount",      label: "الإجمالي",     defaultW: 184, align: "center" },
-  { key: "__actions",   label: "",             defaultW: 48,  align: "center" },
+  { key: "level",          label: "Item",           defaultW: 70,  align: "center" },
+  { key: "description_en", label: "Description",    defaultW: 320, align: "left"   },
+  { key: "description",    label: "التوصيف",        defaultW: 320, align: "right"  },
+  { key: "qty",            label: "Qty",            defaultW: 70,  align: "center" },
+  { key: "uom",            label: "Unit",           defaultW: 70,  align: "center" },
+  { key: "rate",           label: "Rate\nSAR",      defaultW: 110, align: "center" },
+  { key: "amount",         label: "Amount\nSAR",    defaultW: 140, align: "center" },
+  { key: "__actions",      label: "",               defaultW: 48,  align: "center" },
 ];
 
 // ─── Shared cell base class ───────────────────────────────────────────────────
