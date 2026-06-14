@@ -39,7 +39,10 @@ export const Route = createFileRoute("/_authenticated/boq")({
 });
 
 
-function buildTree(rows: BoqRow[]): TreeNode[] {
+function buildTree(
+  rows: BoqRow[],
+  paUnitRates: Map<string, number>,
+): TreeNode[] {
   const map = new Map<string, TreeNode>();
   rows.forEach((r) =>
     map.set(r.id, { ...r, children: [], rolledTotal: 0, unitRate: 0 }),
@@ -63,11 +66,16 @@ function buildTree(rows: BoqRow[]): TreeNode[] {
       n.unitRate = 0;
       n.rolledTotal = n.children.reduce((s, c) => s + computeTotal(c), 0);
     } else {
+      // Prefer the unit selling price computed from price analysis when present;
+      // otherwise fall back to the per-row cost breakdown columns.
+      const fromPa = paUnitRates.get(n.id);
       n.unitRate =
-        Number(n.material_cost ?? 0) +
-        Number(n.labor_cost ?? 0) +
-        Number(n.equipment_cost ?? 0) +
-        Number(n.subcontractor_cost ?? 0);
+        typeof fromPa === "number" && fromPa > 0
+          ? fromPa
+          : Number(n.material_cost ?? 0) +
+            Number(n.labor_cost ?? 0) +
+            Number(n.equipment_cost ?? 0) +
+            Number(n.subcontractor_cost ?? 0);
       n.rolledTotal = n.unitRate * Number(n.quantity ?? 0);
     }
     return n.rolledTotal;
