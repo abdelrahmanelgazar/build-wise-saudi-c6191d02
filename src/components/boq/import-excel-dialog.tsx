@@ -420,8 +420,10 @@ export function ImportExcelDialog() {
           excel_pre_headers: allPreHeaders as unknown as never
         })
         .eq("id", projectId);
+
+      return totalImported;
     },
-    onSuccess: () => {
+    onSuccess: (totalImported) => {
       toast.success(`تم استيراد ${totalImported} بنداً بنجاح من جميع الصفحات`);
       qc.invalidateQueries({ queryKey: ["boq_items"] });
       qc.invalidateQueries({ queryKey: ["project", projectId] });

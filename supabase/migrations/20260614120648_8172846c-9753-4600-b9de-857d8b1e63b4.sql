@@ -1,0 +1,3 @@
+CREATE POLICY "Deny client inserts to user_roles" ON public.user_roles AS RESTRICTIVE FOR INSERT TO anon, authenticated WITH CHECK (false);
+CREATE POLICY "Deny client updates to user_roles" ON public.user_roles AS RESTRICTIVE FOR UPDATE TO anon, authenticated USING (false) WITH CHECK (false);
+CREATE POLICY "Deny client deletes from user_roles" ON public.user_roles AS RESTRICTIVE FOR DELETE TO anon, authenticated USING (false);
