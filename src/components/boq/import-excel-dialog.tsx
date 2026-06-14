@@ -310,10 +310,20 @@ export function ImportExcelDialog() {
       if (!user_id) throw new Error("غير مسجل دخول");
       if (!parsed.data.length) throw new Error("لا توجد بنود للاستيراد");
 
+      // Persist original headers on the project so the BOQ grid can render
+      // the exact columns from the Excel file (in original order).
+      await supabase
+        .from("projects")
+        .update({ excel_headers: parsed.headers as unknown as never })
+        .eq("id", projectId);
+
       const prepared = linkParents(parsed.data);
 
-      // Insert groups level-by-level so parent_id is resolvable
+      // Insert level-by-level so parent_id is resolvable, but PRESERVE the
+      // original Excel row order via sort_order = row index.
       const tmpToDbId = new Map<string, string>();
+      const indexOf = new Map<string, number>();
+      prepared.forEach((r, i) => indexOf.set(r._tmpId, i));
       const byLevel = new Map<number, typeof prepared>();
       prepared.forEach((r) => {
         const arr = byLevel.get(r._level) ?? [];
@@ -322,7 +332,6 @@ export function ImportExcelDialog() {
       });
       const levels = Array.from(byLevel.keys()).sort((a, b) => a - b);
 
-      let sortCounter = 10;
       for (const lvl of levels) {
         const batch = byLevel.get(lvl)!;
         const payload = batch.map((r) => ({
@@ -339,7 +348,8 @@ export function ImportExcelDialog() {
           subcontractor_cost: r.subcontractor_cost,
           is_group: r.is_group,
           level: r._level,
-          sort_order: (sortCounter += 10),
+          sort_order: (indexOf.get(r._tmpId) ?? 0) + 1,
+          raw_row: r._raw as unknown as never,
         }));
         const { data, error } = await supabase.from("boq_items").insert(payload).select("id");
         if (error) throw error;
@@ -349,6 +359,7 @@ export function ImportExcelDialog() {
     onSuccess: () => {
       toast.success(`تم استيراد ${parsed.data.length} بنداً بنجاح`);
       qc.invalidateQueries({ queryKey: ["boq_items"] });
+      qc.invalidateQueries({ queryKey: ["project", projectId] });
       reset();
       setOpen(false);
     },

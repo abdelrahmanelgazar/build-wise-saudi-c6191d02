@@ -46,6 +46,7 @@ const TYPE_META: Record<
   material: { label: "المواد", icon: Boxes, color: "text-chart-2" },
   labor: { label: "العمالة", icon: Hammer, color: "text-chart-3" },
   equipment: { label: "المعدات", icon: Truck, color: "text-primary" },
+  subcontractor: { label: "مقاول الباطن", icon: Truck, color: "text-chart-4" },
 };
 
 function PriceAnalysisPage() {
@@ -216,7 +217,7 @@ function PriceAnalysisDetail({ boqItem }: { boqItem: BoqRow }) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5">
-        {(["material", "labor", "equipment"] as ResourceType[]).map((t) => (
+        {(["material", "labor", "equipment", "subcontractor"] as ResourceType[]).map((t) => (
           <ResourceSection
             key={t}
             boqItemId={boqItem.id}

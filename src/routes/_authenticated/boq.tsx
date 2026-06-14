@@ -3,12 +3,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -22,23 +20,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  ChevronDown,
-  ChevronLeft,
-  FileSpreadsheet,
-  FolderPlus,
-  Plus,
-  Trash2,
-  TrendingUp,
-} from "lucide-react";
+import { FolderPlus, Plus } from "lucide-react";
 import { PageHeader } from "./resources";
-import { fmtNumber, fmtSAR } from "@/lib/format";
+import { fmtSAR } from "@/lib/format";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 import { useActiveProjectId } from "@/lib/active-project";
 import { ImportExcelDialog } from "@/components/boq/import-excel-dialog";
+import { BoqGrid, type TreeNode } from "@/components/boq/boq-grid";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
@@ -47,11 +38,12 @@ export const Route = createFileRoute("/_authenticated/boq")({
   component: BoqPage,
 });
 
-type TreeNode = BoqRow & { children: TreeNode[]; rolledTotal: number };
 
 function buildTree(rows: BoqRow[]): TreeNode[] {
   const map = new Map<string, TreeNode>();
-  rows.forEach((r) => map.set(r.id, { ...r, children: [], rolledTotal: 0 }));
+  rows.forEach((r) =>
+    map.set(r.id, { ...r, children: [], rolledTotal: 0, unitRate: 0 }),
+  );
   const roots: TreeNode[] = [];
   rows.forEach((r) => {
     const node = map.get(r.id)!;
@@ -61,23 +53,22 @@ function buildTree(rows: BoqRow[]): TreeNode[] {
       roots.push(node);
     }
   });
-  // sort by sort_order
   const sortRec = (arr: TreeNode[]) => {
     arr.sort((a, b) => a.sort_order - b.sort_order);
     arr.forEach((n) => sortRec(n.children));
   };
   sortRec(roots);
-  // compute rolled totals
   const computeTotal = (n: TreeNode): number => {
     if (n.is_group) {
+      n.unitRate = 0;
       n.rolledTotal = n.children.reduce((s, c) => s + computeTotal(c), 0);
     } else {
-      const unitRate =
+      n.unitRate =
         Number(n.material_cost ?? 0) +
         Number(n.labor_cost ?? 0) +
         Number(n.equipment_cost ?? 0) +
         Number(n.subcontractor_cost ?? 0);
-      n.rolledTotal = unitRate * Number(n.quantity ?? 0);
+      n.rolledTotal = n.unitRate * Number(n.quantity ?? 0);
     }
     return n.rolledTotal;
   };
@@ -90,7 +81,7 @@ function BoqPage() {
   const projectId = useActiveProjectId();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [] } = useQuery({
     queryKey: ["boq_items", projectId],
     enabled: !!projectId,
     queryFn: async () => {
@@ -103,7 +94,25 @@ function BoqPage() {
     },
   });
 
-  // expand all by default when data loads
+  const { data: project } = useQuery({
+    queryKey: ["project", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("id, excel_headers")
+        .eq("id", projectId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const extraHeaders = useMemo(() => {
+    const h = (project?.excel_headers as unknown as string[] | null) ?? [];
+    return Array.isArray(h) ? h.map((x) => String(x ?? "")) : [];
+  }, [project]);
+
   useMemo(() => {
     if (rows.length && expanded.size === 0) {
       setExpanded(new Set(rows.filter((r) => r.is_group).map((r) => r.id)));
@@ -147,7 +156,7 @@ function BoqPage() {
       });
     };
     walk(tree, 0, true);
-    return out.filter((r) => r.visible);
+    return out.filter((r) => r.visible).map(({ node, depth }) => ({ node, depth }));
   }, [tree, expanded]);
 
   if (!projectId) {
@@ -171,7 +180,7 @@ function BoqPage() {
     <div className="flex h-[calc(100vh-3.5rem)] flex-col p-6">
       <PageHeader
         title="جدول الكميات (BOQ)"
-        subtitle="هيكل تجميعي هرمي لبنود المشروع — حساب تكلفة الوحدة والإجمالي تلقائياً."
+        subtitle="جدول تفاعلي مشابه لإكسل — أعمدة قابلة للتغيير، خلايا قابلة للتحرير، وسعر الوحدة يفتح تحليل الأسعار."
         action={
           <div className="flex flex-wrap gap-2">
             <ImportExcelDialog />
@@ -181,7 +190,6 @@ function BoqPage() {
         }
       />
 
-      {/* KPI strip */}
       <div className="mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiCard label="إجمالي المجموعات" value={String(groupsCount)} />
         <KpiCard label="إجمالي البنود" value={String(itemsCount)} />
@@ -192,154 +200,26 @@ function BoqPage() {
         />
       </div>
 
-      {/* Table */}
-      <div className="mt-5 flex-1 overflow-auto rounded-lg border border-border bg-card">
-        <table className="w-full min-w-[1100px] text-xs tabular-nums">
-          <thead className="sticky top-0 z-10 bg-muted/40 text-[11px] uppercase text-muted-foreground backdrop-blur">
-            <tr className="border-b border-border">
-              <th className="w-[90px] px-3 py-2.5 text-right font-medium">رقم البند</th>
-              <th className="px-3 py-2.5 text-right font-medium">الوصف</th>
-              <th className="w-[60px] px-2 py-2.5 text-center font-medium">الوحدة</th>
-              <th className="w-[80px] px-2 py-2.5 text-left font-medium">الكمية</th>
-              <th className="w-[110px] px-2 py-2.5 text-left font-medium">مواد</th>
-              <th className="w-[110px] px-2 py-2.5 text-left font-medium">عمالة</th>
-              <th className="w-[110px] px-2 py-2.5 text-left font-medium">معدات</th>
-              <th className="w-[110px] px-2 py-2.5 text-left font-medium">مقاول باطن</th>
-              <th className="w-[120px] bg-primary/5 px-2 py-2.5 text-left font-medium text-primary">
-                سعر الوحدة
-              </th>
-              <th className="w-[140px] bg-primary/10 px-2 py-2.5 text-left font-medium text-primary">
-                الإجمالي
-              </th>
-              <th className="w-[80px] px-2 py-2.5 text-center font-medium">إجراءات</th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading && (
-              <tr>
-                <td colSpan={11} className="px-4 py-12 text-center text-muted-foreground">
-                  جاري تحميل بنود المشروع…
-                </td>
-              </tr>
-            )}
-            {!isLoading && flatRows.length === 0 && (
-              <tr>
-                <td colSpan={11} className="px-4 py-16 text-center text-muted-foreground">
-                  لا توجد بنود بعد. ابدأ بإضافة مجموعة (مثل «الأعمال الترابية») ثم بنود تحتها.
-                </td>
-              </tr>
-            )}
-            {flatRows.map(({ node, depth }) => {
-              const unitRate =
-                Number(node.material_cost ?? 0) +
-                Number(node.labor_cost ?? 0) +
-                Number(node.equipment_cost ?? 0) +
-                Number(node.subcontractor_cost ?? 0);
-              const isOpen = expanded.has(node.id);
-              return (
-                <tr
-                  key={node.id}
-                  className={cn(
-                    "border-b border-border/60 transition-colors",
-                    node.is_group
-                      ? "bg-secondary/40 font-semibold text-foreground"
-                      : "hover:bg-muted/20",
-                  )}
-                >
-                  <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
-                    {node.item_no}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div
-                      className="flex items-center gap-1.5"
-                      style={{ paddingInlineStart: `${depth * 18}px` }}
-                    >
-                      {node.is_group ? (
-                        <button
-                          onClick={() => toggle(node.id)}
-                          className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                        >
-                          {isOpen ? (
-                            <ChevronDown className="h-3.5 w-3.5" />
-                          ) : (
-                            <ChevronLeft className="h-3.5 w-3.5" />
-                          )}
-                        </button>
-                      ) : (
-                        <span className="inline-block w-5" />
-                      )}
-                      <span
-                        className={cn(
-                          "truncate",
-                          node.is_group ? "text-foreground" : "text-foreground/90",
-                        )}
-                      >
-                        {node.description_ar}
-                      </span>
-                    </div>
-                  </td>
-                  <td className="px-2 py-2 text-center text-muted-foreground">
-                    {node.unit ?? "—"}
-                  </td>
-                  <td className="px-2 py-2 text-left">
-                    {node.is_group ? "—" : fmtNumber(node.quantity, 2)}
-                  </td>
-                  <td className="px-2 py-2 text-left text-muted-foreground">
-                    {node.is_group ? "" : fmtNumber(node.material_cost, 2)}
-                  </td>
-                  <td className="px-2 py-2 text-left text-muted-foreground">
-                    {node.is_group ? "" : fmtNumber(node.labor_cost, 2)}
-                  </td>
-                  <td className="px-2 py-2 text-left text-muted-foreground">
-                    {node.is_group ? "" : fmtNumber(node.equipment_cost, 2)}
-                  </td>
-                  <td className="px-2 py-2 text-left text-muted-foreground">
-                    {node.is_group ? "" : fmtNumber(node.subcontractor_cost, 2)}
-                  </td>
-                  <td className="bg-primary/5 px-2 py-2 text-left font-semibold text-primary">
-                    {node.is_group ? "" : fmtNumber(unitRate, 2)}
-                  </td>
-                  <td className="bg-primary/10 px-2 py-2 text-left font-bold text-primary">
-                    {fmtNumber(node.rolledTotal, 2)}
-                  </td>
-                  <td className="px-2 py-2">
-                    <div className="flex items-center justify-center gap-0.5">
-                      {!node.is_group && (
-                        <Link
-                          to="/price-analysis"
-                          search={{ item: node.id }}
-                          className="inline-flex h-6 items-center justify-center rounded px-1.5 text-muted-foreground hover:bg-muted hover:text-primary"
-                          title="تحليل الأسعار"
-                        >
-                          <TrendingUp className="h-3.5 w-3.5" />
-                        </Link>
-                      )}
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                        onClick={() => {
-                          if (
-                            confirm(
-                              `حذف ${node.is_group ? "المجموعة" : "البند"} «${node.description_ar}»؟`,
-                            )
-                          )
-                            delMut.mutate(node.id);
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="mt-5 flex flex-1 flex-col overflow-hidden">
+        <BoqGrid
+          flatRows={flatRows}
+          expanded={expanded}
+          onToggle={toggle}
+          onDelete={(n) => {
+            if (
+              confirm(`حذف ${n.is_group ? "المجموعة" : "البند"} «${n.description_ar}»؟`)
+            ) {
+              delMut.mutate(n.id);
+            }
+          }}
+          extraHeaders={extraHeaders}
+          projectId={projectId}
+        />
       </div>
     </div>
   );
 }
+
 
 function KpiCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
