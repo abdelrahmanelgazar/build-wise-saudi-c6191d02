@@ -109,8 +109,8 @@ function BoqPage() {
   });
 
   const extraHeaders = useMemo(() => {
-    const h = (project?.excel_headers as unknown as string[] | null) ?? [];
-    return Array.isArray(h) ? h.map((x) => String(x ?? "")) : [];
+    const h = (project?.excel_headers as unknown) ?? [];
+    return Array.isArray(h) ? h : [];
   }, [project]);
 
   useMemo(() => {
