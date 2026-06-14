@@ -125,30 +125,6 @@ function normHeader(s: unknown): string {
     .trim();
 }
 
-
-
-type ParsedRow = {
-  item_no: string;
-  description_ar: string;
-  unit: string;
-  quantity: number;
-  material_cost: number;
-  labor_cost: number;
-  equipment_cost: number;
-  subcontractor_cost: number;
-  is_group: boolean;
-  _raw: (string | number | null)[];
-};
-
-function normHeader(s: unknown): string {
-  return String(s ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[:：()_\-/.]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function toNum(v: unknown): number {
   if (v === null || v === undefined || v === "") return 0;
   const n = Number(String(v).replace(/[, ]/g, ""));
@@ -156,30 +132,31 @@ function toNum(v: unknown): number {
 }
 
 // Detect group rows: itemNo like "01", "1", "A" (no dots) AND no quantity/unit → group.
-// Or description filled but every numeric column empty.
 function detectGroup(itemNo: string, qty: number, unit: string, costs: number[]): boolean {
   const totalCost = costs.reduce((s, c) => s + c, 0);
   if (qty === 0 && totalCost === 0 && !unit) return true;
-  // dot-depth heuristic: "01" → group, "01.01" → item
   if (itemNo && !itemNo.includes(".") && qty === 0 && totalCost === 0) return true;
   return false;
 }
 
-function parseSheet(rows: unknown[][]): { headers: string[]; data: ParsedRow[]; warnings: string[] } {
+function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; data: ParsedRow[]; warnings: string[] } {
   const warnings: string[] = [];
   if (!rows.length) return { headers: [], data: [], warnings: ["الملف فارغ"] };
 
   // find header row: first row with >=2 known headers
   let headerIdx = -1;
-  let colMap: Record<number, keyof ParsedRow> = {};
+  let colMap: Record<number, FieldKey> = {};
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
     const r = rows[i] || [];
-    const map: Record<number, keyof ParsedRow> = {};
+    const map: Record<number, FieldKey> = {};
+    const usedFields = new Set<FieldKey>();
     let hits = 0;
     r.forEach((cell, idx) => {
       const key = HEADER_MAP[normHeader(cell)];
-      if (key) {
+      // first matching column for a field wins; later same-meaning columns stay raw
+      if (key && !usedFields.has(key)) {
         map[idx] = key;
+        usedFields.add(key);
         hits++;
       }
     });
@@ -197,8 +174,13 @@ function parseSheet(rows: unknown[][]): { headers: string[]; data: ParsedRow[]; 
     };
   }
 
-  const headers = (rows[headerIdx] as unknown[]).map((c) => String(c ?? ""));
+  const rawHeaders = (rows[headerIdx] as unknown[]).map((c) => String(c ?? ""));
+  const headers: ExcelHeader[] = rawHeaders.map((label, idx) => ({
+    label,
+    field: colMap[idx] ?? null,
+  }));
   const data: ParsedRow[] = [];
+
 
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i] || [];
