@@ -44,18 +44,19 @@ const TYPE_LABEL: Record<ResourceType, string> = {
 };
 
 // ─── Platform-native colour tokens per section ───────────────────────────────
-// Using the existing design-system tokens from styles.css so we stay on-brand.
+// Excel-like layout: bold section headers without coloured bands; a thin left
+// bar keeps the type accent on-brand, and subtotals use a neutral muted tint.
 const SECTION_HEADER_CLS: Record<ResourceType, string> = {
-  material:      "bg-chart-2/10 text-chart-2 border-chart-2/20",
-  labor:         "bg-chart-3/10 text-chart-3 border-chart-3/20",
-  equipment:     "bg-primary/10  text-primary  border-primary/20",
-  subcontractor: "bg-chart-4/10 text-chart-4 border-chart-4/20",
+  material:      "bg-muted/40 text-foreground border-l-[3px] border-l-chart-2",
+  labor:         "bg-muted/40 text-foreground border-l-[3px] border-l-chart-3",
+  equipment:     "bg-muted/40 text-foreground border-l-[3px] border-l-primary",
+  subcontractor: "bg-muted/40 text-foreground border-l-[3px] border-l-chart-4",
 };
 const SECTION_SUBTOTAL_CLS: Record<ResourceType, string> = {
-  material:      "bg-chart-2/5  text-chart-2",
-  labor:         "bg-chart-3/5  text-chart-3",
-  equipment:     "bg-primary/5  text-primary",
-  subcontractor: "bg-chart-4/5  text-chart-4",
+  material:      "bg-muted/25 text-foreground",
+  labor:         "bg-muted/25 text-foreground",
+  equipment:     "bg-muted/25 text-foreground",
+  subcontractor: "bg-muted/25 text-foreground",
 };
 
 // ─── Cell-style type (rich-text per cell) ────────────────────────────────────
