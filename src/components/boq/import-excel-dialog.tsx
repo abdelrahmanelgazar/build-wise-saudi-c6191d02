@@ -18,8 +18,20 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useActiveProjectId } from "@/lib/active-project";
 
-// ----- Header mapping (Arabic + English variants) -----
-const HEADER_MAP: Record<string, keyof ParsedRow> = {
+// Field keys (broader than ParsedRow — includes computed columns)
+type FieldKey =
+  | "item_no"
+  | "description_ar"
+  | "unit"
+  | "quantity"
+  | "material_cost"
+  | "labor_cost"
+  | "equipment_cost"
+  | "subcontractor_cost"
+  | "unit_rate"
+  | "total";
+
+const HEADER_MAP: Record<string, FieldKey> = {
   "رقم البند": "item_no",
   "رقم": "item_no",
   "البند": "item_no",
@@ -83,13 +95,36 @@ const HEADER_MAP: Record<string, keyof ParsedRow> = {
   "إجمالي": "total",
   "اجمالي": "total",
   "المبلغ": "total",
-  "amount": "amount" as never,
-  "amount sar": "amount" as never,
-  "total": "total" as never,
+  "amount": "total",
+  "amount sar": "total",
+  "total": "total",
 };
 
-// Note: 'unit_rate' and 'total' are not stored on ParsedRow but are recognized
-// so they become field-mapped columns in the grid (linkable / computed).
+type ParsedRow = {
+  item_no: string;
+  description_ar: string;
+  unit: string;
+  quantity: number;
+  material_cost: number;
+  labor_cost: number;
+  equipment_cost: number;
+  subcontractor_cost: number;
+  is_group: boolean;
+  _raw: (string | number | null)[];
+};
+
+// Persisted on projects.excel_headers: original label + (optional) field mapping
+export type ExcelHeader = { label: string; field: FieldKey | null };
+
+function normHeader(s: unknown): string {
+  return String(s ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[:：()_\-/.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 
 
 type ParsedRow = {
