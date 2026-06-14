@@ -300,10 +300,10 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                 style={{ width: c.w, minWidth: c.w, position: "relative" }}
                 className={cn(
                   CELL,
-                  "py-2 text-[11px] font-bold text-primary border-l border-primary/30",
+                  "py-2 text-[11px] font-bold text-primary border-l border-primary/30 whitespace-pre-line leading-tight",
                   c.align === "center" && "justify-center text-center",
                   c.align === "right"  && "justify-start  text-right",
-                  c.align === "left"   && "justify-end    text-left",
+                  c.align === "left"   && "justify-start  text-left",
                 )}
               >
                 {c.label}
@@ -327,27 +327,32 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               className={cn(CELL, "justify-center font-mono text-[11px] font-bold border-l-primary-foreground/20")}>
               {boqItem.item_no ?? "—"}
             </div>
-            {/* Description */}
+            {/* Description EN */}
+            <div style={cw("description_en")}
+              className={cn(CELL, "font-bold text-[12px] border-l-primary-foreground/20 justify-start text-left")} dir="ltr">
+              {(boqItem as BoqRow & { description_en?: string | null }).description_en ?? ""}
+            </div>
+            {/* Description AR */}
             <div style={cw("description")}
               className={cn(CELL, "font-bold text-[12px] border-l-primary-foreground/20 justify-start text-right")}>
               {boqItem.description_ar}
-            </div>
-            {/* UOM */}
-            <div style={cw("uom")}
-              className={cn(CELL, "justify-center font-bold border-l-primary-foreground/20")}>
-              {boqItem.unit ?? "—"}
             </div>
             {/* QTY */}
             <div style={cw("qty")}
               className={cn(CELL, "justify-center font-bold border-l-primary-foreground/20")}>
               {fmtNumber(boqItem.quantity, 2)}
             </div>
-            {/* Rate (= Amount/Qty, like Excel H6=I6/F6) */}
+            {/* UOM */}
+            <div style={cw("uom")}
+              className={cn(CELL, "justify-center font-bold border-l-primary-foreground/20")}>
+              {boqItem.unit ?? "—"}
+            </div>
+            {/* Rate */}
             <div style={cw("rate")}
               className={cn(CELL, "justify-center font-bold border-l-primary-foreground/20")}>
               {fmtNumber(directCost, 2)}
             </div>
-            {/* Amount (= subtotal of children + markup) */}
+            {/* Amount */}
             <div style={cw("amount")}
               className={cn(CELL, "justify-center border-l-0 font-bold text-[12px]")}>
               {fmtNumber(directCost * Number(boqItem.quantity ?? 0), 2)}
