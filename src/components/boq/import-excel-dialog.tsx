@@ -18,8 +18,20 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useActiveProjectId } from "@/lib/active-project";
 
-// ----- Header mapping (Arabic + English variants) -----
-const HEADER_MAP: Record<string, keyof ParsedRow> = {
+// Field keys (broader than ParsedRow — includes computed columns)
+type FieldKey =
+  | "item_no"
+  | "description_ar"
+  | "unit"
+  | "quantity"
+  | "material_cost"
+  | "labor_cost"
+  | "equipment_cost"
+  | "subcontractor_cost"
+  | "unit_rate"
+  | "total";
+
+const HEADER_MAP: Record<string, FieldKey> = {
   "رقم البند": "item_no",
   "رقم": "item_no",
   "البند": "item_no",
@@ -70,6 +82,22 @@ const HEADER_MAP: Record<string, keyof ParsedRow> = {
   "باطن": "subcontractor_cost",
   "subcontractor": "subcontractor_cost",
   "sub": "subcontractor_cost",
+
+  "سعر الوحدة": "unit_rate",
+  "سعر": "unit_rate",
+  "rate": "unit_rate",
+  "rate sar": "unit_rate",
+  "unit rate": "unit_rate",
+  "unit price": "unit_rate",
+  "price": "unit_rate",
+
+  "الإجمالي": "total",
+  "إجمالي": "total",
+  "اجمالي": "total",
+  "المبلغ": "total",
+  "amount": "total",
+  "amount sar": "total",
+  "total": "total",
 };
 
 type ParsedRow = {
@@ -84,6 +112,9 @@ type ParsedRow = {
   is_group: boolean;
   _raw: (string | number | null)[];
 };
+
+// Persisted on projects.excel_headers: original label + (optional) field mapping
+export type ExcelHeader = { label: string; field: FieldKey | null };
 
 function normHeader(s: unknown): string {
   return String(s ?? "")
@@ -101,30 +132,31 @@ function toNum(v: unknown): number {
 }
 
 // Detect group rows: itemNo like "01", "1", "A" (no dots) AND no quantity/unit → group.
-// Or description filled but every numeric column empty.
 function detectGroup(itemNo: string, qty: number, unit: string, costs: number[]): boolean {
   const totalCost = costs.reduce((s, c) => s + c, 0);
   if (qty === 0 && totalCost === 0 && !unit) return true;
-  // dot-depth heuristic: "01" → group, "01.01" → item
   if (itemNo && !itemNo.includes(".") && qty === 0 && totalCost === 0) return true;
   return false;
 }
 
-function parseSheet(rows: unknown[][]): { headers: string[]; data: ParsedRow[]; warnings: string[] } {
+function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; data: ParsedRow[]; warnings: string[] } {
   const warnings: string[] = [];
   if (!rows.length) return { headers: [], data: [], warnings: ["الملف فارغ"] };
 
   // find header row: first row with >=2 known headers
   let headerIdx = -1;
-  let colMap: Record<number, keyof ParsedRow> = {};
+  let colMap: Record<number, FieldKey> = {};
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
     const r = rows[i] || [];
-    const map: Record<number, keyof ParsedRow> = {};
+    const map: Record<number, FieldKey> = {};
+    const usedFields = new Set<FieldKey>();
     let hits = 0;
     r.forEach((cell, idx) => {
       const key = HEADER_MAP[normHeader(cell)];
-      if (key) {
+      // first matching column for a field wins; later same-meaning columns stay raw
+      if (key && !usedFields.has(key)) {
         map[idx] = key;
+        usedFields.add(key);
         hits++;
       }
     });
@@ -142,14 +174,19 @@ function parseSheet(rows: unknown[][]): { headers: string[]; data: ParsedRow[]; 
     };
   }
 
-  const headers = (rows[headerIdx] as unknown[]).map((c) => String(c ?? ""));
+  const rawHeaders = (rows[headerIdx] as unknown[]).map((c) => String(c ?? ""));
+  const headers: ExcelHeader[] = rawHeaders.map((label, idx) => ({
+    label,
+    field: colMap[idx] ?? null,
+  }));
   const data: ParsedRow[] = [];
+
 
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i] || [];
     if (!r.length || r.every((c) => c === null || c === undefined || String(c).trim() === "")) continue;
 
-    const get = (k: keyof ParsedRow): unknown => {
+    const get = (k: FieldKey): unknown => {
       const idx = Object.entries(colMap).find(([, v]) => v === k)?.[0];
       return idx !== undefined ? r[Number(idx)] : "";
     };
@@ -245,7 +282,7 @@ export function ImportExcelDialog() {
   const [sheetNames, setSheetNames] = useState<string[]>([]);
   const [activeSheet, setActiveSheet] = useState<string>("");
   const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
-  const [parsed, setParsed] = useState<{ headers: string[]; data: ParsedRow[]; warnings: string[] }>({
+  const [parsed, setParsed] = useState<{ headers: ExcelHeader[]; data: ParsedRow[]; warnings: string[] }>({
     headers: [],
     data: [],
     warnings: [],
@@ -469,7 +506,7 @@ export function ImportExcelDialog() {
                       <tr className="border-b border-border">
                         {parsed.headers.map((h, i) => (
                           <th key={i} className="px-2 py-2 text-right font-medium whitespace-nowrap">
-                            {h || `عمود ${i + 1}`}
+                            {h.label || `عمود ${i + 1}`}
                           </th>
                         ))}
                       </tr>

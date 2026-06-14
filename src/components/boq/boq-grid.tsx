@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { ChevronDown, ChevronLeft, TrendingUp, Trash2, Bold, Italic, AlignLeft, AlignCenter, AlignRight } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { fmtNumber } from "@/lib/format";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Database } from "@/integrations/supabase/types";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
@@ -18,24 +18,51 @@ type CellStyles = Record<
   { bold?: boolean; italic?: boolean; align?: "right" | "center" | "left"; fontSize?: number }
 >;
 
-const BUILTIN_KEYS = ["item_no", "description_ar", "unit", "quantity", "unit_rate", "total"] as const;
+type FieldKey =
+  | "item_no"
+  | "description_ar"
+  | "unit"
+  | "quantity"
+  | "material_cost"
+  | "labor_cost"
+  | "equipment_cost"
+  | "subcontractor_cost"
+  | "unit_rate"
+  | "total";
 
-const BUILTIN_LABELS: Record<(typeof BUILTIN_KEYS)[number], string> = {
-  item_no: "رقم البند",
-  description_ar: "الوصف",
-  unit: "الوحدة",
-  quantity: "الكمية",
-  unit_rate: "سعر الوحدة",
-  total: "الإجمالي",
+// `extraHeaders` is the persisted excel_headers value — either the legacy
+// string[] shape or the new {label, field} shape.
+type RawHeader = string | { label: string; field: FieldKey | null };
+
+type Column = {
+  key: string;
+  label: string;
+  width: number;
+  align: "right" | "center" | "left";
+  field: FieldKey | null;
+  rawIdx: number | null; // index into raw_row for unmapped/extra columns
 };
 
-const BUILTIN_DEFAULT_WIDTH: Record<(typeof BUILTIN_KEYS)[number], number> = {
-  item_no: 100,
-  description_ar: 360,
+const DEFAULT_BUILTIN: Column[] = [
+  { key: "item_no", label: "رقم البند", width: 100, align: "right", field: "item_no", rawIdx: null },
+  { key: "description_ar", label: "الوصف", width: 360, align: "right", field: "description_ar", rawIdx: null },
+  { key: "unit", label: "الوحدة", width: 70, align: "center", field: "unit", rawIdx: null },
+  { key: "quantity", label: "الكمية", width: 90, align: "center", field: "quantity", rawIdx: null },
+  { key: "unit_rate", label: "سعر الوحدة", width: 130, align: "center", field: "unit_rate", rawIdx: null },
+  { key: "total", label: "الإجمالي", width: 150, align: "center", field: "total", rawIdx: null },
+];
+
+const DEFAULT_FIELD_WIDTHS: Record<FieldKey, number> = {
+  item_no: 80,
+  description_ar: 340,
   unit: 70,
-  quantity: 90,
-  unit_rate: 130,
-  total: 150,
+  quantity: 80,
+  unit_rate: 110,
+  total: 130,
+  material_cost: 110,
+  labor_cost: 110,
+  equipment_cost: 110,
+  subcontractor_cost: 110,
 };
 
 export function BoqGrid({
@@ -50,14 +77,13 @@ export function BoqGrid({
   expanded: Set<string>;
   onToggle: (id: string) => void;
   onDelete: (n: TreeNode) => void;
-  extraHeaders: string[];
+  extraHeaders: RawHeader[];
   projectId: string;
 }) {
   const qc = useQueryClient();
   const storageKey = `boq-grid:${projectId}`;
   const rowHeightsKey = `boq-row-heights:${projectId}`;
 
-  // Column widths persisted to localStorage
   const [widths, setWidths] = useState<Record<string, number>>(() => {
     try {
       const raw = localStorage.getItem(storageKey);
@@ -66,7 +92,6 @@ export function BoqGrid({
       return {};
     }
   });
-  // Per-row heights persisted to localStorage. 0/undefined => auto (wrap)
   const [rowHeights, setRowHeights] = useState<Record<string, number>>(() => {
     try {
       const raw = localStorage.getItem(rowHeightsKey);
@@ -83,33 +108,51 @@ export function BoqGrid({
     localStorage.setItem(rowHeightsKey, JSON.stringify(rowHeights));
   }, [rowHeights, rowHeightsKey]);
 
-  const columns: { key: string; label: string; width: number; align?: "right" | "center" | "left" }[] = useMemo(() => {
-    const built = BUILTIN_KEYS.map((k) => ({
-      key: k as string,
-      label: BUILTIN_LABELS[k],
-      width: widths[k] ?? BUILTIN_DEFAULT_WIDTH[k],
-      align:
-        k === "description_ar" || k === "item_no"
-          ? ("right" as const)
-          : k === "unit"
-            ? ("center" as const)
-            : ("left" as const),
-    }));
-    const extras = extraHeaders.map((h, i) => {
-      const key = `extra_${i}`;
-      return { key, label: h || `عمود ${i + 1}`, width: widths[key] ?? 130, align: "right" as const };
-    });
-    return [...built, ...extras, { key: "__actions", label: "إجراءات", width: widths["__actions"] ?? 80, align: "center" as const }];
+  // Build columns: from Excel headers when present, otherwise defaults.
+  const columns: Column[] = useMemo(() => {
+    let base: Column[];
+    if (extraHeaders.length === 0) {
+      base = DEFAULT_BUILTIN.map((c) => ({ ...c, width: widths[c.key] ?? c.width }));
+    } else {
+      base = extraHeaders.map((h, idx): Column => {
+        const isObj = typeof h === "object" && h !== null;
+        const label = isObj ? h.label : String(h ?? "");
+        const field: FieldKey | null = isObj ? h.field : null;
+        const key = field ? field : `extra_${idx}`;
+        const defW = field ? DEFAULT_FIELD_WIDTHS[field] : 130;
+        const align: Column["align"] =
+          field === "description_ar"
+            ? "right"
+            : field === "item_no"
+              ? "right"
+              : field === "unit"
+                ? "center"
+                : field
+                  ? "center"
+                  : "right";
+        return {
+          key,
+          label: label || `عمود ${idx + 1}`,
+          width: widths[key] ?? defW,
+          align,
+          field,
+          rawIdx: field ? null : idx,
+        };
+      });
+    }
+    return [
+      ...base,
+      { key: "__actions", label: "إجراءات", width: widths["__actions"] ?? 70, align: "center", field: null, rawIdx: null },
+    ];
   }, [widths, extraHeaders]);
 
-  // Column resize handlers
   const resizingRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
   const onResizeStart = (key: string, startW: number) => (e: React.MouseEvent) => {
     e.preventDefault();
     resizingRef.current = { key, startX: e.clientX, startW };
     const move = (ev: MouseEvent) => {
       if (!resizingRef.current) return;
-      const dx = resizingRef.current.startX - ev.clientX; // RTL: dragging left grows width
+      const dx = resizingRef.current.startX - ev.clientX;
       const next = Math.max(40, resizingRef.current.startW + dx);
       setWidths((w) => ({ ...w, [resizingRef.current!.key]: next }));
     };
@@ -122,7 +165,6 @@ export function BoqGrid({
     window.addEventListener("mouseup", up);
   };
 
-  // Per-row resize handle
   const rowResizingRef = useRef<{ id: string; startY: number; startH: number } | null>(null);
   const onRowResizeStart = (id: string, currentH: number) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -131,7 +173,7 @@ export function BoqGrid({
     const move = (ev: MouseEvent) => {
       if (!rowResizingRef.current) return;
       const dy = ev.clientY - rowResizingRef.current.startY;
-      const next = Math.max(24, Math.min(400, rowResizingRef.current.startH + dy));
+      const next = Math.max(24, Math.min(600, rowResizingRef.current.startH + dy));
       setRowHeights((m) => ({ ...m, [rowResizingRef.current!.id]: next }));
     };
     const up = () => {
@@ -161,19 +203,19 @@ export function BoqGrid({
         <div className="sticky top-0 z-10 flex border-b border-border bg-muted/50 backdrop-blur">
           {columns.map((c) => (
             <div
-              key={String(c.key)}
+              key={c.key}
               style={{ width: c.width, minWidth: c.width }}
               className={cn(
-                "relative flex items-center px-2 py-2 text-[11px] font-semibold uppercase text-muted-foreground",
-                c.align === "center" && "justify-center",
-                c.align === "left" && "justify-start",
-                c.align === "right" && "justify-end",
+                "relative flex items-center border-l border-border/40 px-2 py-2 text-[11px] font-semibold text-muted-foreground",
+                c.align === "center" && "justify-center text-center",
+                c.align === "left" && "justify-start text-left",
+                c.align === "right" && "justify-end text-right",
               )}
             >
-              <span className="whitespace-normal break-words">{c.label}</span>
+              <span className="whitespace-normal break-words leading-tight">{c.label}</span>
               {c.key !== "__actions" && (
                 <span
-                  onMouseDown={onResizeStart(String(c.key), c.width)}
+                  onMouseDown={onResizeStart(c.key, c.width)}
                   className="absolute inset-y-0 left-0 w-1.5 cursor-col-resize hover:bg-primary/40"
                   title="اسحب لتغيير عرض العمود"
                 />
@@ -206,13 +248,12 @@ export function BoqGrid({
               )}
             >
               {columns.map((c) => {
-                const colKey = String(c.key);
-                const st = styles[colKey];
+                const st = styles[c.key];
                 const baseClass = cn(
-                  "flex items-center gap-1 whitespace-normal break-words border-l border-border/40 px-2 py-1.5",
-                  c.align === "center" && "justify-center",
-                  c.align === "left" && "justify-start",
-                  c.align === "right" && "justify-end",
+                  "flex items-start gap-1 whitespace-normal break-words border-l border-border/40 px-2 py-1.5 overflow-hidden",
+                  c.align === "center" && "justify-center text-center",
+                  c.align === "left" && "justify-start text-left",
+                  c.align === "right" && "justify-end text-right",
                   st?.bold && "font-bold",
                   st?.italic && "italic",
                 );
@@ -220,144 +261,26 @@ export function BoqGrid({
                   width: c.width,
                   minWidth: c.width,
                   fontSize: st?.fontSize ? `${st.fontSize}px` : undefined,
-                  textAlign: st?.align ?? (c.align as "right" | "center" | "left"),
+                  textAlign: st?.align ?? c.align,
                 };
 
-                if (c.key === "item_no") {
-                  return (
-                    <EditableCell
-                      key={colKey}
-                      className={baseClass}
-                      style={styleAttr}
-                      value={node.item_no}
-                      onSave={(v) => updateMut.mutate({ id: node.id, patch: { item_no: v } })}
-                    >
-                      <span className="font-mono text-[11px] text-muted-foreground">{node.item_no}</span>
-                    </EditableCell>
-                  );
-                }
-                if (c.key === "description_ar") {
-                  return (
-                    <div key={colKey} className={baseClass} style={styleAttr}>
-                      <div
-                        className="flex w-full items-center gap-1.5"
-                        style={{ paddingInlineStart: `${depth * 16}px` }}
-                      >
-                        {node.is_group ? (
-                          <button
-                            onClick={() => onToggle(node.id)}
-                            className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                          >
-                            {isOpen ? (
-                              <ChevronDown className="h-3.5 w-3.5" />
-                            ) : (
-                              <ChevronLeft className="h-3.5 w-3.5" />
-                            )}
-                          </button>
-                        ) : (
-                          <span className="inline-block w-5" />
-                        )}
-                        <EditableCell
-                          className="flex-1"
-                          style={{}}
-                          value={node.description_ar}
-                          onSave={(v) => updateMut.mutate({ id: node.id, patch: { description_ar: v } })}
-                        >
-                          <span className="block w-full whitespace-pre-wrap break-words">{node.description_ar}</span>
-                        </EditableCell>
-                        <FormatPopover
-                          styles={styles}
-                          colKey={colKey}
-                          onChange={(next) =>
-                            updateMut.mutate({ id: node.id, patch: { cell_styles: next as unknown as never } })
-                          }
-                        />
-                      </div>
-                    </div>
-                  );
-                }
-                if (c.key === "unit") {
-                  return (
-                    <EditableCell
-                      key={colKey}
-                      className={baseClass}
-                      style={styleAttr}
-                      value={node.unit ?? ""}
-                      onSave={(v) => updateMut.mutate({ id: node.id, patch: { unit: v || null } })}
-                    >
-                      <span className="text-muted-foreground">{node.unit ?? "—"}</span>
-                    </EditableCell>
-                  );
-                }
-                if (c.key === "quantity") {
-                  return (
-                    <EditableCell
-                      key={colKey}
-                      className={baseClass}
-                      style={styleAttr}
-                      value={String(node.quantity ?? "")}
-                      onSave={(v) => updateMut.mutate({ id: node.id, patch: { quantity: Number(v) || 0 } })}
-                    >
-                      <span>{node.is_group ? "—" : fmtNumber(node.quantity, 2)}</span>
-                    </EditableCell>
-                  );
-                }
-                if (c.key === "unit_rate") {
-                  // Click → navigate to price analysis for this item
-                  return (
-                    <div key={colKey} className={cn(baseClass, "bg-primary/5")} style={styleAttr}>
-                      {node.is_group ? (
-                        <span />
-                      ) : (
-                        <Link
-                          to="/price-analysis"
-                          search={{ item: node.id }}
-                          className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
-                          title="افتح تحليل الأسعار لهذا البند"
-                        >
-                          {fmtNumber(node.unitRate, 2)}
-                          <TrendingUp className="h-3 w-3 opacity-60" />
-                        </Link>
-                      )}
-                    </div>
-                  );
-                }
-                if (c.key === "total") {
-                  return (
-                    <div key={colKey} className={cn(baseClass, "bg-primary/10 font-bold text-primary")} style={styleAttr}>
-                      {fmtNumber(node.rolledTotal, 2)}
-                    </div>
-                  );
-                }
-                if (c.key === "__actions") {
-                  return (
-                    <div key={colKey} className={baseClass} style={styleAttr}>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                        onClick={() => onDelete(node)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  );
-                }
-                // extra_* columns: render raw Excel cell value, read-only
-                if (colKey.startsWith("extra_")) {
-                  const idx = Number(colKey.slice(6));
-                  const v = raw?.[idx];
-                  return (
-                    <div key={colKey} className={baseClass} style={styleAttr}>
-                      <span className="block w-full whitespace-pre-wrap break-words text-foreground/80">
-                        {v === null || v === undefined ? "" : String(v)}
-                      </span>
-                    </div>
-                  );
-                }
-                return <div key={colKey} className={baseClass} style={styleAttr} />;
+                return (
+                  <CellRenderer
+                    key={c.key}
+                    col={c}
+                    node={node}
+                    depth={depth}
+                    raw={raw}
+                    styles={styles}
+                    baseClass={baseClass}
+                    styleAttr={styleAttr}
+                    isOpen={isOpen}
+                    onToggle={onToggle}
+                    onDelete={onDelete}
+                    onPatch={(patch) => updateMut.mutate({ id: node.id, patch })}
+                  />
+                );
               })}
-              {/* Per-row height drag handle */}
               <div
                 onMouseDown={onRowResizeStart(node.id, customH ?? 32)}
                 className="absolute inset-x-0 bottom-0 z-10 h-1 cursor-row-resize opacity-0 hover:bg-primary/50 group-hover:opacity-100"
@@ -369,6 +292,163 @@ export function BoqGrid({
       </div>
     </div>
   );
+}
+
+function CellRenderer({
+  col,
+  node,
+  depth,
+  raw,
+  styles,
+  baseClass,
+  styleAttr,
+  isOpen,
+  onToggle,
+  onDelete,
+  onPatch,
+}: {
+  col: Column;
+  node: TreeNode;
+  depth: number;
+  raw: unknown[];
+  styles: CellStyles;
+  baseClass: string;
+  styleAttr: React.CSSProperties;
+  isOpen: boolean;
+  onToggle: (id: string) => void;
+  onDelete: (n: TreeNode) => void;
+  onPatch: (patch: Partial<BoqRow>) => void;
+}) {
+  if (col.key === "__actions") {
+    return (
+      <div className={baseClass} style={styleAttr}>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6 text-muted-foreground hover:text-destructive"
+          onClick={() => onDelete(node)}
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      </div>
+    );
+  }
+
+  switch (col.field) {
+    case "item_no":
+      return (
+        <EditableCell
+          className={baseClass}
+          style={styleAttr}
+          value={node.item_no}
+          onSave={(v) => onPatch({ item_no: v })}
+        >
+          <span className="font-mono text-[11px] text-muted-foreground">{node.item_no}</span>
+        </EditableCell>
+      );
+    case "description_ar":
+      return (
+        <div className={baseClass} style={styleAttr}>
+          <div
+            className="flex w-full items-start gap-1.5"
+            style={{ paddingInlineStart: `${depth * 16}px` }}
+          >
+            {node.is_group ? (
+              <button
+                onClick={() => onToggle(node.id)}
+                className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+              </button>
+            ) : (
+              <span className="inline-block w-5 shrink-0" />
+            )}
+            <EditableCell
+              className="flex-1 min-w-0"
+              style={{}}
+              value={node.description_ar}
+              onSave={(v) => onPatch({ description_ar: v })}
+            >
+              <span className="block w-full whitespace-pre-wrap break-words">{node.description_ar}</span>
+            </EditableCell>
+            <FormatPopover
+              styles={styles}
+              colKey={col.key}
+              onChange={(next) => onPatch({ cell_styles: next as unknown as never })}
+            />
+          </div>
+        </div>
+      );
+    case "unit":
+      return (
+        <EditableCell
+          className={baseClass}
+          style={styleAttr}
+          value={node.unit ?? ""}
+          onSave={(v) => onPatch({ unit: v || null })}
+        >
+          <span className="text-muted-foreground">{node.unit ?? "—"}</span>
+        </EditableCell>
+      );
+    case "quantity":
+      return (
+        <EditableCell
+          className={baseClass}
+          style={styleAttr}
+          value={String(node.quantity ?? "")}
+          onSave={(v) => onPatch({ quantity: Number(v) || 0 })}
+        >
+          <span>{node.is_group ? "—" : fmtNumber(node.quantity, 2)}</span>
+        </EditableCell>
+      );
+    case "unit_rate":
+      return (
+        <div className={cn(baseClass, "bg-primary/5")} style={styleAttr}>
+          {node.is_group ? (
+            <span>—</span>
+          ) : (
+            <Link
+              to="/price-analysis"
+              search={{ item: node.id }}
+              className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+              title="افتح تحليل الأسعار لهذا البند"
+            >
+              {fmtNumber(node.unitRate, 2)}
+              <TrendingUp className="h-3 w-3 opacity-60" />
+            </Link>
+          )}
+        </div>
+      );
+    case "total":
+      return (
+        <div className={cn(baseClass, "bg-primary/10 font-bold text-primary")} style={styleAttr}>
+          {fmtNumber(node.rolledTotal, 2)}
+        </div>
+      );
+    case "material_cost":
+    case "labor_cost":
+    case "equipment_cost":
+    case "subcontractor_cost": {
+      // Cost columns from Excel: display read-only; real edits happen in price analysis
+      const v = Number((node[col.field] as number | null) ?? 0);
+      return (
+        <div className={baseClass} style={styleAttr}>
+          <span className="text-foreground/80">{fmtNumber(v, 2)}</span>
+        </div>
+      );
+    }
+    default: {
+      // Unmapped Excel column → render raw value exactly as in the file
+      const v = col.rawIdx !== null ? raw?.[col.rawIdx] : "";
+      return (
+        <div className={baseClass} style={styleAttr}>
+          <span className="block w-full whitespace-pre-wrap break-words text-foreground/80">
+            {v === null || v === undefined ? "" : String(v)}
+          </span>
+        </div>
+      );
+    }
+  }
 }
 
 function EditableCell({
@@ -391,7 +471,7 @@ function EditableCell({
   if (editing) {
     return (
       <div className={className} style={style}>
-        <input
+        <textarea
           autoFocus
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -400,13 +480,16 @@ function EditableCell({
             if (draft !== value) onSave(draft);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              (e.target as HTMLTextAreaElement).blur();
+            }
             if (e.key === "Escape") {
               setDraft(value);
               setEditing(false);
             }
           }}
-          className="h-full w-full bg-background px-1 text-xs outline-none ring-1 ring-primary"
+          className="h-full w-full resize-none bg-background px-1 text-xs outline-none ring-1 ring-primary"
           style={{ direction: "inherit", textAlign: "inherit" }}
         />
       </div>
@@ -451,27 +534,47 @@ function FormatPopover({
       </PopoverTrigger>
       <PopoverContent className="w-auto p-1.5" align="end" dir="rtl">
         <div className="flex items-center gap-0.5">
-          <FmtBtn active={cur.bold} onClick={() => set({ bold: !cur.bold })} title="عريض">
+          <button
+            className={cn("rounded p-1 hover:bg-muted", cur.bold && "bg-muted")}
+            onClick={() => set({ bold: !cur.bold })}
+            title="عريض"
+          >
             <Bold className="h-3.5 w-3.5" />
-          </FmtBtn>
-          <FmtBtn active={cur.italic} onClick={() => set({ italic: !cur.italic })} title="مائل">
+          </button>
+          <button
+            className={cn("rounded p-1 hover:bg-muted", cur.italic && "bg-muted")}
+            onClick={() => set({ italic: !cur.italic })}
+            title="مائل"
+          >
             <Italic className="h-3.5 w-3.5" />
-          </FmtBtn>
-          <span className="mx-1 h-4 w-px bg-border" />
-          <FmtBtn active={cur.align === "right"} onClick={() => set({ align: "right" })} title="يمين">
+          </button>
+          <div className="mx-1 h-4 w-px bg-border" />
+          <button
+            className={cn("rounded p-1 hover:bg-muted", cur.align === "right" && "bg-muted")}
+            onClick={() => set({ align: "right" })}
+            title="يمين"
+          >
             <AlignRight className="h-3.5 w-3.5" />
-          </FmtBtn>
-          <FmtBtn active={cur.align === "center"} onClick={() => set({ align: "center" })} title="وسط">
+          </button>
+          <button
+            className={cn("rounded p-1 hover:bg-muted", cur.align === "center" && "bg-muted")}
+            onClick={() => set({ align: "center" })}
+            title="وسط"
+          >
             <AlignCenter className="h-3.5 w-3.5" />
-          </FmtBtn>
-          <FmtBtn active={cur.align === "left"} onClick={() => set({ align: "left" })} title="يسار">
+          </button>
+          <button
+            className={cn("rounded p-1 hover:bg-muted", cur.align === "left" && "bg-muted")}
+            onClick={() => set({ align: "left" })}
+            title="يسار"
+          >
             <AlignLeft className="h-3.5 w-3.5" />
-          </FmtBtn>
-          <span className="mx-1 h-4 w-px bg-border" />
+          </button>
+          <div className="mx-1 h-4 w-px bg-border" />
           <select
             value={cur.fontSize ?? 12}
             onChange={(e) => set({ fontSize: Number(e.target.value) })}
-            className="h-7 rounded border border-border bg-background px-1 text-xs"
+            className="rounded border border-border bg-background px-1 py-0.5 text-xs"
             title="حجم الخط"
           >
             {[10, 11, 12, 13, 14, 16, 18, 20].map((s) => (
@@ -483,30 +586,5 @@ function FormatPopover({
         </div>
       </PopoverContent>
     </Popover>
-  );
-}
-
-function FmtBtn({
-  active,
-  onClick,
-  children,
-  title,
-}: {
-  active?: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  title: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      className={cn(
-        "flex h-7 w-7 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground",
-        active && "bg-primary/15 text-primary",
-      )}
-    >
-      {children}
-    </button>
   );
 }
