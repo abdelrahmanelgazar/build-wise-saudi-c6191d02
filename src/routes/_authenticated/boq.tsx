@@ -38,6 +38,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 import { useActiveProjectId } from "@/lib/active-project";
+import { ImportExcelDialog } from "@/components/boq/import-excel-dialog";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
@@ -361,34 +362,6 @@ function KpiCard({ label, value, accent }: { label: string; value: string; accen
   );
 }
 
-function ImportExcelDialog() {
-  const [open, setOpen] = useState(false);
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-1.5">
-          <FileSpreadsheet className="h-4 w-4" />
-          استيراد من Excel
-        </Button>
-      </DialogTrigger>
-      <DialogContent dir="rtl">
-        <DialogHeader>
-          <DialogTitle>استيراد جدول كميات من Excel</DialogTitle>
-          <DialogDescription className="leading-relaxed">
-            ميزة الاستيراد من ملفات Excel/XLSX قيد التطوير وستكون متاحة في المرحلة القادمة. سيتم
-            دعم القوالب التالية: قالب وزارة الإسكان، قالب الهيئة العامة، وقالب مخصّص.
-          </DialogDescription>
-        </DialogHeader>
-        <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
-          متاح في المرحلة التالية
-        </Badge>
-        <DialogFooter>
-          <Button onClick={() => setOpen(false)}>حسناً</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 function NewBoqDialog({
   isGroup = false,
