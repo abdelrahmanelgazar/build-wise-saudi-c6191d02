@@ -44,18 +44,19 @@ const TYPE_LABEL: Record<ResourceType, string> = {
 };
 
 // ─── Platform-native colour tokens per section ───────────────────────────────
-// Using the existing design-system tokens from styles.css so we stay on-brand.
+// Excel-like layout: bold section headers without coloured bands; a thin left
+// bar keeps the type accent on-brand, and subtotals use a neutral muted tint.
 const SECTION_HEADER_CLS: Record<ResourceType, string> = {
-  material:      "bg-chart-2/10 text-chart-2 border-chart-2/20",
-  labor:         "bg-chart-3/10 text-chart-3 border-chart-3/20",
-  equipment:     "bg-primary/10  text-primary  border-primary/20",
-  subcontractor: "bg-chart-4/10 text-chart-4 border-chart-4/20",
+  material:      "bg-muted/40 text-foreground border-l-[3px] border-l-chart-2",
+  labor:         "bg-muted/40 text-foreground border-l-[3px] border-l-chart-3",
+  equipment:     "bg-muted/40 text-foreground border-l-[3px] border-l-primary",
+  subcontractor: "bg-muted/40 text-foreground border-l-[3px] border-l-chart-4",
 };
 const SECTION_SUBTOTAL_CLS: Record<ResourceType, string> = {
-  material:      "bg-chart-2/5  text-chart-2",
-  labor:         "bg-chart-3/5  text-chart-3",
-  equipment:     "bg-primary/5  text-primary",
-  subcontractor: "bg-chart-4/5  text-chart-4",
+  material:      "bg-muted/25 text-foreground",
+  labor:         "bg-muted/25 text-foreground",
+  equipment:     "bg-muted/25 text-foreground",
+  subcontractor: "bg-muted/25 text-foreground",
 };
 
 // ─── Cell-style type (rich-text per cell) ────────────────────────────────────
@@ -289,9 +290,9 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
       <div className="flex-1 overflow-auto">
         <div style={{ minWidth: totalW }} className="select-text">
 
-          {/* ── Column header row ── */}
+          {/* ── Column header row (Excel-style bold header) ── */}
           <div
-            className="sticky top-0 z-20 flex border-b border-border bg-muted/70 backdrop-blur"
+            className="sticky top-0 z-20 flex border-b-2 border-primary/40 bg-primary/15 backdrop-blur"
             style={{ minWidth: totalW }}
           >
             {cols.map((c) => (
@@ -300,7 +301,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                 style={{ width: c.w, minWidth: c.w, position: "relative" }}
                 className={cn(
                   CELL,
-                  "py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground",
+                  "py-2 text-[11px] font-bold text-primary border-r border-primary/30",
                   c.align === "center" && "justify-center text-center",
                   c.align === "right"  && "justify-end    text-right",
                   c.align === "left"   && "justify-start  text-left",
@@ -310,56 +311,56 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                 {c.key !== "__actions" && (
                   <span
                     onMouseDown={onColResizeStart(c.key, c.w)}
-                    className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize hover:bg-primary/30"
+                    className="absolute inset-y-0 right-0 z-10 w-1.5 cursor-col-resize hover:bg-primary/50"
                   />
                 )}
               </div>
             ))}
           </div>
 
-          {/* ── Main BOQ item header row ── */}
+          {/* ── Main BOQ item header row (solid bold band, Excel navy equivalent) ── */}
           <div
-            className="flex border-b border-primary/30 bg-primary/10"
+            className="flex border-b-2 border-primary/50 bg-primary text-primary-foreground"
             style={{ minWidth: totalW }}
           >
             {/* Level */}
             <div style={cw("level")}
-              className={cn(CELL, "justify-center font-mono text-[10px] text-muted-foreground")}>
-              —
+              className={cn(CELL, "justify-center font-mono text-[11px] font-bold border-r-primary-foreground/20")}>
+              {boqItem.sort_order ?? "—"}
             </div>
             {/* Task */}
             <div style={cw("task")}
-              className={cn(CELL, "font-mono text-[10px] font-bold text-primary")}>
+              className={cn(CELL, "font-mono text-[11px] font-bold border-r-primary-foreground/20")}>
               {boqItem.item_no ?? "—"}
             </div>
             {/* Description */}
             <div style={cw("description")}
-              className={cn(CELL, "font-semibold text-primary")}>
+              className={cn(CELL, "font-bold text-[12px] border-r-primary-foreground/20")}>
               {boqItem.description_ar}
             </div>
             {/* UOM */}
             <div style={cw("uom")}
-              className={cn(CELL, "justify-center text-primary")}>
+              className={cn(CELL, "justify-center font-bold border-r-primary-foreground/20")}>
               {boqItem.unit ?? "—"}
             </div>
             {/* QTY */}
             <div style={cw("qty")}
-              className={cn(CELL, "justify-center font-semibold text-primary")}>
+              className={cn(CELL, "justify-center font-bold border-r-primary-foreground/20")}>
               {fmtNumber(boqItem.quantity, 2)}
             </div>
             {/* Duration */}
             <div style={cw("duration")}
-              className={cn(CELL, "justify-center text-muted-foreground")}>
+              className={cn(CELL, "justify-center opacity-70 border-r-primary-foreground/20")}>
               —
             </div>
-            {/* Rate */}
+            {/* Rate (= Amount/Qty, like Excel H6=I6/F6) */}
             <div style={cw("rate")}
-              className={cn(CELL, "justify-center font-semibold text-primary")}>
+              className={cn(CELL, "justify-center font-bold border-r-primary-foreground/20")}>
               {fmtNumber(selling, 2)}
             </div>
-            {/* Amount */}
+            {/* Amount (= subtotal of children + markup) */}
             <div style={cw("amount")}
-              className={cn(CELL, "justify-center border-r-0 font-bold text-primary")}>
+              className={cn(CELL, "justify-center border-r-0 font-bold text-[12px]")}>
               {fmtNumber(selling * Number(boqItem.quantity ?? 0), 2)}
             </div>
             {/* Actions placeholder */}
@@ -385,33 +386,33 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
             return (
               <div key={type}>
 
-                {/* Section header */}
+                {/* Section header — Excel-style bold (size 14) without colour band */}
                 <div
                   onClick={() => toggleCollapse(type)}
                   className={cn(
-                    "flex cursor-pointer select-none border-b font-bold transition-colors",
+                    "flex cursor-pointer select-none border-b border-border transition-colors",
                     SECTION_HEADER_CLS[type],
                   )}
                   style={{ minWidth: totalW }}
                 >
                   {/* Level */}
                   <div style={cw("level")}
-                    className={cn(CELL, "justify-center text-[10px] opacity-60")}>
+                    className={cn(CELL, "justify-center text-[11px] text-muted-foreground")}>
                     —
                   </div>
                   {/* Task (with collapse icon) */}
                   <div style={cw("task")}
-                    className={cn(CELL, "gap-1 font-mono text-[10px] font-bold")}>
+                    className={cn(CELL, "gap-1 font-mono text-[11px] font-bold")}>
                     {isCollapsed
-                      ? <ChevronRight className="h-3 w-3 shrink-0" />
-                      : <ChevronDown  className="h-3 w-3 shrink-0" />}
+                      ? <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                      : <ChevronDown  className="h-3.5 w-3.5 shrink-0" />}
                     {`${boqItem.item_no ?? "CO"}-${TYPE_CODE[type]}`}
                   </div>
-                  {/* Description */}
+                  {/* Description — bold, larger (echoes Excel size-14 subgroup rows) */}
                   <div style={cw("description")}
-                    className={cn(CELL, "gap-1.5 text-[11px]")}>
+                    className={cn(CELL, "gap-1.5 text-[13px] font-bold")}>
                     {TYPE_LABEL[type]}
-                    <span className="text-[10px] opacity-60">({sectionItems.length})</span>
+                    <span className="text-[10px] font-normal text-muted-foreground">({sectionItems.length})</span>
                   </div>
                   {/* UOM */}
                   <div style={cw("uom")}   className={cn(CELL, "justify-center")} />
@@ -423,7 +424,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                   <div style={cw("rate")}  className={cn(CELL, "justify-center")} />
                   {/* Amount (section subtotal preview) */}
                   <div style={cw("amount")}
-                    className={cn(CELL, "justify-center border-r-0 font-bold")}>
+                    className={cn(CELL, "justify-center border-r-0 text-[12px] font-bold")}>
                     {subtotal > 0 ? fmtNumber(subtotal, 2) : ""}
                   </div>
                   {/* Actions */}
@@ -455,12 +456,13 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                       </div>
 
                       {/* Description (editable) */}
-                      <div style={cw("description")}
+                      <div
                         className={cn(CELL, "gap-1", {
                           "font-bold": cellStyles["description"]?.bold,
                           "italic":    cellStyles["description"]?.italic,
                         })}
                         style={{
+                          ...cw("description"),
                           fontSize:  cellStyles["description"]?.fontSize
                             ? `${cellStyles["description"].fontSize}px` : undefined,
                           textAlign: cellStyles["description"]?.align ?? "left",
@@ -531,7 +533,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                       {/* Amount (computed, read-only) */}
                       <div
                         style={cw("amount")}
-                        className={cn(CELL, "justify-center border-r-0 bg-primary/5 font-semibold text-foreground text-[11px]")}
+                        className={cn(CELL, "justify-center border-r-0 font-semibold text-foreground text-[11px]")}
                       >
                         {fmtNumber(total, 2)}
                       </div>
