@@ -81,8 +81,8 @@ const COLS: Col[] = [
   { key: "description", label: "البيان",       defaultW: 440, align: "right"  },
   { key: "uom",         label: "الوحدة",      defaultW: 80,  align: "center" },
   { key: "qty",         label: "الكمية",       defaultW: 90,  align: "center" },
-  { key: "rate",        label: "سعر الوحدة",   defaultW: 120, align: "center" },
-  { key: "amount",      label: "الإجمالي",     defaultW: 204, align: "center" },
+  { key: "rate",        label: "التكلفة المباشرة للوحدة",   defaultW: 140, align: "center" },
+  { key: "amount",      label: "الإجمالي",     defaultW: 184, align: "center" },
   { key: "__actions",   label: "",             defaultW: 48,  align: "center" },
 ];
 
@@ -344,12 +344,12 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
             {/* Rate (= Amount/Qty, like Excel H6=I6/F6) */}
             <div style={cw("rate")}
               className={cn(CELL, "justify-center font-bold border-l-primary-foreground/20")}>
-              {fmtNumber(selling, 2)}
+              {fmtNumber(directCost, 2)}
             </div>
             {/* Amount (= subtotal of children + markup) */}
             <div style={cw("amount")}
               className={cn(CELL, "justify-center border-l-0 font-bold text-[12px]")}>
-              {fmtNumber(selling * Number(boqItem.quantity ?? 0), 2)}
+              {fmtNumber(directCost * Number(boqItem.quantity ?? 0), 2)}
             </div>
             {/* Actions placeholder */}
             <div style={cw("__actions")} className={cn(CELL, "border-l-0")} />
@@ -559,11 +559,11 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                          minWidth: cols[1].w + cols[2].w + cols[3].w + cols[4].w }}
                 className={cn(CELL, "justify-end text-primary")}
               >
-                إجمالي سعر الوحدة ({boqItem.unit ?? "وحدة"})
+                إجمالي التكلفة المباشرة للوحدة ({boqItem.unit ?? "وحدة"})
               </div>
               <div style={cw("amount")}
                 className={cn(CELL, "justify-center border-l-0 text-primary")}>
-                {fmtSAR(selling)}
+                {fmtSAR(directCost)}
               </div>
               <div style={cw("__actions")} className={cn(CELL, "border-l-0")} />
             </div>
