@@ -79,7 +79,7 @@ export function BoqGrid({
     localStorage.setItem(rowHeightKey, String(rowHeight));
   }, [rowHeight, rowHeightKey]);
 
-  const columns: { key: ColKey; label: string; width: number; align?: "right" | "center" | "left" }[] = useMemo(() => {
+  const columns: { key: string; label: string; width: number; align?: "right" | "center" | "left" }[] = useMemo(() => {
     const built = BUILTIN_KEYS.map((k) => ({
       key: k as ColKey,
       label: BUILTIN_LABELS[k],
