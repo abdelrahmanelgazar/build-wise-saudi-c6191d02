@@ -116,43 +116,6 @@ function BoqPage() {
     },
   });
 
-  const addColumnMut = useMutation({
-    mutationFn: async (colName: string) => {
-      const currentHeaders = (project?.excel_headers as any) || {};
-      const sheetH = Array.isArray(currentHeaders) ? currentHeaders : (currentHeaders[activeSheet] || []);
-      
-      const newField = `custom_${Date.now()}`;
-      let newHeaders;
-      if (Array.isArray(currentHeaders)) {
-         newHeaders = { [activeSheet]: [...currentHeaders, { label: colName, field: newField }] };
-      } else {
-         newHeaders = { ...currentHeaders, [activeSheet]: [...sheetH, { label: colName, field: newField }] };
-      }
-      
-      const { error } = await supabase.from("projects").update({ excel_headers: newHeaders as any }).eq("id", projectId!);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["project", projectId] })
-  });
-
-  const deleteColumnMut = useMutation({
-    mutationFn: async (fieldToRemove: string) => {
-      const currentHeaders = (project?.excel_headers as any) || {};
-      const sheetH = Array.isArray(currentHeaders) ? currentHeaders : (currentHeaders[activeSheet] || []);
-      
-      let newHeaders;
-      if (Array.isArray(currentHeaders)) {
-         newHeaders = { [activeSheet]: currentHeaders.filter((h: any) => h.field !== fieldToRemove) };
-      } else {
-         newHeaders = { ...currentHeaders, [activeSheet]: sheetH.filter((h: any) => h.field !== fieldToRemove) };
-      }
-      
-      const { error } = await supabase.from("projects").update({ excel_headers: newHeaders as any }).eq("id", projectId!);
-      if (error) throw error;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["project", projectId] })
-  });
-
   const { isLoading: isProjLoading, data: project } = useQuery({
     queryKey: ["project", projectId],
     enabled: !!projectId,
@@ -367,13 +330,6 @@ function BoqPage() {
         subtitle="جدول تفاعلي مشابه لإكسل — أعمدة قابلة للتغيير، خلايا قابلة للتحرير، وسعر الوحدة يفتح تحليل الأسعار."
         action={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => {
-              const name = prompt("أدخل اسم العمود الجديد:");
-              if (name) addColumnMut.mutate(name);
-            }}>
-              <Plus className="h-4 w-4 mr-1" />
-              إضافة عمود
-            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5" disabled={flatRows.length === 0}>
@@ -400,21 +356,19 @@ function BoqPage() {
 
       <div className="mt-2 flex flex-col gap-3">
         {sheetNames.length > 1 && (
-          <div className="flex flex-wrap gap-1 overflow-x-auto border-b border-border">
-            {sheetNames.map((name) => (
-              <button
-                key={name}
-                onClick={() => setActiveSheet(name)}
-                className={cn(
-                  "px-4 py-2 text-sm font-semibold transition-all border-b-2 whitespace-nowrap",
-                  activeSheet === name
-                    ? "border-primary text-primary bg-primary/10"
-                    : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                )}
-              >
-                {name}
-              </button>
-            ))}
+          <div className="flex w-full md:w-80">
+            <Select value={activeSheet || ""} onValueChange={(v) => setActiveSheet(v)}>
+              <SelectTrigger className="w-full font-bold bg-card border-border/50">
+                <SelectValue placeholder="اختر الصفحة (Sheet)" />
+              </SelectTrigger>
+              <SelectContent>
+                {sheetNames.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         )}
 
@@ -458,7 +412,6 @@ function BoqPage() {
           extraHeaders={extraHeaders as any}
           projectId={projectId!}
           grandTotal={grandTotal}
-          onDeleteColumn={(field) => deleteColumnMut.mutate(field)}
         />
       </div>
     </div>

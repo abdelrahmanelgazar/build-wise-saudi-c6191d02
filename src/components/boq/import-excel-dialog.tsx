@@ -143,6 +143,19 @@ function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; preHeaders: un
   const warnings: string[] = [];
   if (!rows.length) return { headers: [], preHeaders: [], data: [], warnings: ["الملف فارغ"] };
 
+  // Trim empty columns from the right
+  let maxCol = -1;
+  rows.forEach(r => {
+    r.forEach((cell, idx) => {
+      if (cell !== null && cell !== undefined && String(cell).trim() !== "") {
+        if (idx > maxCol) maxCol = idx;
+      }
+    });
+  });
+  if (maxCol >= 0) {
+    rows = rows.map(r => r.slice(0, maxCol + 1));
+  }
+
   // find header row: first row with >=2 known headers
   let headerIdx = -1;
   let colMap: Record<number, FieldKey> = {};
