@@ -396,16 +396,21 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                       ? <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                       : <ChevronDown  className="h-3.5 w-3.5 shrink-0" />}
                   </div>
-                  {/* Description — bold, larger (echoes Excel size-14 subgroup rows) */}
+                  {/* Description EN (section label, left-aligned) */}
+                  <div style={cw("description_en")}
+                    className={cn(CELL, "gap-1.5 text-[13px] font-bold justify-start text-left")} dir="ltr">
+                    {type === "material" ? "Materials" : type === "labor" ? "Labour" : type === "equipment" ? "Equipment" : "Subcontractor"}
+                    <span className="text-[10px] font-normal text-muted-foreground">({sectionItems.length})</span>
+                  </div>
+                  {/* Description AR */}
                   <div style={cw("description")}
                     className={cn(CELL, "gap-1.5 text-[13px] font-bold justify-start text-right")}>
                     {TYPE_LABEL[type]}
-                    <span className="text-[10px] font-normal text-muted-foreground">({sectionItems.length})</span>
                   </div>
-                  {/* UOM */}
-                  <div style={cw("uom")}   className={cn(CELL, "justify-center")} />
                   {/* QTY */}
                   <div style={cw("qty")}   className={cn(CELL, "justify-center")} />
+                  {/* UOM */}
+                  <div style={cw("uom")}   className={cn(CELL, "justify-center")} />
                   {/* Rate */}
                   <div style={cw("rate")}  className={cn(CELL, "justify-center")} />
                   {/* Amount (section subtotal preview) */}
