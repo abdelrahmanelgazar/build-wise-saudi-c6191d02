@@ -352,7 +352,6 @@ export function ImportExcelDialog() {
 
   const importMut = useMutation({
     mutationFn: async () => {
-      let totalImported = 0;
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
       const { data: userData } = await supabase.auth.getUser();
       const user_id = userData.user?.id;
