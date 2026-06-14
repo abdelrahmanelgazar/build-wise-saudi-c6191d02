@@ -269,7 +269,6 @@ export type Database = {
           end_date: string | null
           estimated_value: number | null
           excel_headers: Json | null
-          excel_pre_headers: Json | null
           financial_requirements: string | null
           id: string
           last_rfi_date: string | null
@@ -299,7 +298,6 @@ export type Database = {
           end_date?: string | null
           estimated_value?: number | null
           excel_headers?: Json | null
-          excel_pre_headers?: Json | null
           financial_requirements?: string | null
           id?: string
           last_rfi_date?: string | null
@@ -329,7 +327,6 @@ export type Database = {
           end_date?: string | null
           estimated_value?: number | null
           excel_headers?: Json | null
-          excel_pre_headers?: Json | null
           financial_requirements?: string | null
           id?: string
           last_rfi_date?: string | null
