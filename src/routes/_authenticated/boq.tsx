@@ -3,12 +3,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -22,23 +20,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  ChevronDown,
-  ChevronLeft,
-  FileSpreadsheet,
-  FolderPlus,
-  Plus,
-  Trash2,
-  TrendingUp,
-} from "lucide-react";
+import { FolderPlus, Plus } from "lucide-react";
 import { PageHeader } from "./resources";
-import { fmtNumber, fmtSAR } from "@/lib/format";
+import { fmtSAR } from "@/lib/format";
 import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
 import { useActiveProjectId } from "@/lib/active-project";
 import { ImportExcelDialog } from "@/components/boq/import-excel-dialog";
+import { BoqGrid, type TreeNode } from "@/components/boq/boq-grid";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
@@ -46,6 +37,7 @@ export const Route = createFileRoute("/_authenticated/boq")({
   head: () => ({ meta: [{ title: "جدول الكميات — تقديري" }] }),
   component: BoqPage,
 });
+
 
 type TreeNode = BoqRow & { children: TreeNode[]; rolledTotal: number };
 
