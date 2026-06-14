@@ -263,7 +263,7 @@ export function BoqGrid({
                           value={node.description_ar}
                           onSave={(v) => updateMut.mutate({ id: node.id, patch: { description_ar: v } })}
                         >
-                          <span className="block w-full truncate">{node.description_ar}</span>
+                          <span className="block w-full whitespace-pre-wrap break-words">{node.description_ar}</span>
                         </EditableCell>
                         <FormatPopover
                           styles={styles}
