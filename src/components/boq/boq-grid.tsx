@@ -216,10 +216,10 @@ export function BoqGrid({
               )}
             >
               <span className="whitespace-normal break-words leading-tight">{c.label}</span>
-              {c.key !== "__actions" && !["item_no", "description_ar", "unit", "quantity", "unitRate", "total"].includes(c.key) && props.onDeleteColumn && (
+              {c.key !== "__actions" && !["item_no", "description_ar", "unit", "quantity", "unitRate", "total"].includes(c.key) && onDeleteColumn && (
                 <button
                   onClick={() => {
-                    if (confirm("هل أنت متأكد من حذف هذا العمود؟")) props.onDeleteColumn!(c.key);
+                    if (confirm("هل أنت متأكد من حذف هذا العمود؟")) onDeleteColumn(c.key);
                   }}
                   className="mr-1 text-destructive hover:text-destructive/80 opacity-0 group-hover/col:opacity-100 transition-opacity"
                   title="حذف العمود"
