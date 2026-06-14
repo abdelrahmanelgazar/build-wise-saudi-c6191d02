@@ -77,13 +77,14 @@ const TYPE_CODE: Record<ResourceType, string> = {
 type Col = { key: string; label: string; defaultW: number; align: "center" | "left" | "right" };
 
 const COLS: Col[] = [
-  { key: "level",       label: "رقم البند",    defaultW: 80,  align: "center" },
-  { key: "description", label: "البيان",       defaultW: 440, align: "right"  },
-  { key: "uom",         label: "الوحدة",      defaultW: 80,  align: "center" },
-  { key: "qty",         label: "الكمية",       defaultW: 90,  align: "center" },
-  { key: "rate",        label: "التكلفة المباشرة للوحدة",   defaultW: 140, align: "center" },
-  { key: "amount",      label: "الإجمالي",     defaultW: 184, align: "center" },
-  { key: "__actions",   label: "",             defaultW: 48,  align: "center" },
+  { key: "level",          label: "Item",           defaultW: 70,  align: "center" },
+  { key: "description_en", label: "Description",    defaultW: 320, align: "left"   },
+  { key: "description",    label: "التوصيف",        defaultW: 320, align: "right"  },
+  { key: "qty",            label: "Qty",            defaultW: 70,  align: "center" },
+  { key: "uom",            label: "Unit",           defaultW: 70,  align: "center" },
+  { key: "rate",           label: "Rate\nSAR",      defaultW: 110, align: "center" },
+  { key: "amount",         label: "Amount\nSAR",    defaultW: 140, align: "center" },
+  { key: "__actions",      label: "",               defaultW: 48,  align: "center" },
 ];
 
 // ─── Shared cell base class ───────────────────────────────────────────────────
@@ -299,10 +300,10 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                 style={{ width: c.w, minWidth: c.w, position: "relative" }}
                 className={cn(
                   CELL,
-                  "py-2 text-[11px] font-bold text-primary border-l border-primary/30",
+                  "py-2 text-[11px] font-bold text-primary border-l border-primary/30 whitespace-pre-line leading-tight",
                   c.align === "center" && "justify-center text-center",
                   c.align === "right"  && "justify-start  text-right",
-                  c.align === "left"   && "justify-end    text-left",
+                  c.align === "left"   && "justify-start  text-left",
                 )}
               >
                 {c.label}
@@ -326,27 +327,32 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               className={cn(CELL, "justify-center font-mono text-[11px] font-bold border-l-primary-foreground/20")}>
               {boqItem.item_no ?? "—"}
             </div>
-            {/* Description */}
+            {/* Description EN */}
+            <div style={cw("description_en")}
+              className={cn(CELL, "font-bold text-[12px] border-l-primary-foreground/20 justify-start text-left")} dir="ltr">
+              {(boqItem as BoqRow & { description_en?: string | null }).description_en ?? ""}
+            </div>
+            {/* Description AR */}
             <div style={cw("description")}
               className={cn(CELL, "font-bold text-[12px] border-l-primary-foreground/20 justify-start text-right")}>
               {boqItem.description_ar}
-            </div>
-            {/* UOM */}
-            <div style={cw("uom")}
-              className={cn(CELL, "justify-center font-bold border-l-primary-foreground/20")}>
-              {boqItem.unit ?? "—"}
             </div>
             {/* QTY */}
             <div style={cw("qty")}
               className={cn(CELL, "justify-center font-bold border-l-primary-foreground/20")}>
               {fmtNumber(boqItem.quantity, 2)}
             </div>
-            {/* Rate (= Amount/Qty, like Excel H6=I6/F6) */}
+            {/* UOM */}
+            <div style={cw("uom")}
+              className={cn(CELL, "justify-center font-bold border-l-primary-foreground/20")}>
+              {boqItem.unit ?? "—"}
+            </div>
+            {/* Rate */}
             <div style={cw("rate")}
               className={cn(CELL, "justify-center font-bold border-l-primary-foreground/20")}>
               {fmtNumber(directCost, 2)}
             </div>
-            {/* Amount (= subtotal of children + markup) */}
+            {/* Amount */}
             <div style={cw("amount")}
               className={cn(CELL, "justify-center border-l-0 font-bold text-[12px]")}>
               {fmtNumber(directCost * Number(boqItem.quantity ?? 0), 2)}
@@ -390,16 +396,21 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                       ? <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                       : <ChevronDown  className="h-3.5 w-3.5 shrink-0" />}
                   </div>
-                  {/* Description — bold, larger (echoes Excel size-14 subgroup rows) */}
+                  {/* Description EN (section label, left-aligned) */}
+                  <div style={cw("description_en")}
+                    className={cn(CELL, "gap-1.5 text-[13px] font-bold justify-start text-left")} dir="ltr">
+                    {type === "material" ? "Materials" : type === "labor" ? "Labour" : type === "equipment" ? "Equipment" : "Subcontractor"}
+                    <span className="text-[10px] font-normal text-muted-foreground">({sectionItems.length})</span>
+                  </div>
+                  {/* Description AR */}
                   <div style={cw("description")}
                     className={cn(CELL, "gap-1.5 text-[13px] font-bold justify-start text-right")}>
                     {TYPE_LABEL[type]}
-                    <span className="text-[10px] font-normal text-muted-foreground">({sectionItems.length})</span>
                   </div>
-                  {/* UOM */}
-                  <div style={cw("uom")}   className={cn(CELL, "justify-center")} />
                   {/* QTY */}
                   <div style={cw("qty")}   className={cn(CELL, "justify-center")} />
+                  {/* UOM */}
+                  <div style={cw("uom")}   className={cn(CELL, "justify-center")} />
                   {/* Rate */}
                   <div style={cw("rate")}  className={cn(CELL, "justify-center")} />
                   {/* Amount (section subtotal preview) */}
@@ -428,7 +439,26 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                         {idx + 1}
                       </div>
 
-                      {/* Description (editable) */}
+                      {/* Description EN (editable) */}
+                      <div
+                        className={cn(CELL, "gap-1")}
+                        style={{ ...cw("description_en"), textAlign: "left" }}
+                        dir="ltr"
+                      >
+                        <EditableCell
+                          value={(it as PaItem & { description_en?: string | null }).description_en ?? ""}
+                          onSave={(v) =>
+                            updateMut.mutate({ id: it.id, patch: { description_en: v } as Partial<PaItem> })
+                          }
+                          className="flex-1"
+                        >
+                          <span className="block w-full whitespace-pre-wrap break-words text-[11px] text-left">
+                            {(it as PaItem & { description_en?: string | null }).description_en ?? ""}
+                          </span>
+                        </EditableCell>
+                      </div>
+
+                      {/* Description AR (editable) */}
                       <div
                         className={cn(CELL, "gap-1", {
                           "font-bold": cellStyles["description"]?.bold,
@@ -461,18 +491,6 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                         />
                       </div>
 
-                      {/* UOM (editable) */}
-                      <EditableCell
-                        value={it.unit}
-                        onSave={(v) =>
-                          updateMut.mutate({ id: it.id, patch: { unit: v || "وحدة" } })
-                        }
-                        className={cn(CELL, "justify-center text-muted-foreground")}
-                        style={cw("uom")}
-                      >
-                        <span className="text-[11px]">{it.unit}</span>
-                      </EditableCell>
-
                       {/* QTY (editable) */}
                       <EditableCell
                         value={String(it.quantity)}
@@ -483,6 +501,18 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                         style={cw("qty")}
                       >
                         <span className="text-[11px]">{fmtNumber(it.quantity, 3)}</span>
+                      </EditableCell>
+
+                      {/* UOM (editable) */}
+                      <EditableCell
+                        value={it.unit}
+                        onSave={(v) =>
+                          updateMut.mutate({ id: it.id, patch: { unit: v || "وحدة" } })
+                        }
+                        className={cn(CELL, "justify-center text-muted-foreground")}
+                        style={cw("uom")}
+                      >
+                        <span className="text-[11px]">{it.unit}</span>
                       </EditableCell>
 
                       {/* Rate (editable) */}
@@ -529,13 +559,16 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                     className={cn("flex border-b text-[11px] font-semibold", SECTION_SUBTOTAL_CLS[type])}
                     style={{ minWidth: totalW }}
                   >
-                    <div style={cw("level")}      className={cn(CELL, "justify-center")} />
-                    <div style={cw("description")} className={cn(CELL, "justify-start text-right font-bold")}>
+                    <div style={cw("level")}          className={cn(CELL, "justify-center")} />
+                    <div style={cw("description_en")} className={cn(CELL, "justify-start text-left font-bold")} dir="ltr">
+                      Total {type === "material" ? "Materials" : type === "labor" ? "Labour" : type === "equipment" ? "Equipment" : "Subcontractor"}
+                    </div>
+                    <div style={cw("description")}    className={cn(CELL, "justify-start text-right font-bold")}>
                       مجموع {TYPE_LABEL[type]}
                     </div>
-                    <div style={cw("uom")}         className={cn(CELL, "justify-center")} />
-                    <div style={cw("qty")}         className={cn(CELL, "justify-center")} />
-                    <div style={cw("rate")}        className={cn(CELL, "justify-center")} />
+                    <div style={cw("qty")}            className={cn(CELL, "justify-center")} />
+                    <div style={cw("uom")}            className={cn(CELL, "justify-center")} />
+                    <div style={cw("rate")}           className={cn(CELL, "justify-center")} />
                     <div style={cw("amount")}
                       className={cn(CELL, "justify-center border-l-0 font-bold")}>
                       {fmtNumber(subtotal, 2)}
@@ -555,8 +588,8 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
             >
               <div style={cw("level")}      className={cn(CELL, "justify-center")} />
               <div
-                style={{ width: cols[1].w + cols[2].w + cols[3].w + cols[4].w,
-                         minWidth: cols[1].w + cols[2].w + cols[3].w + cols[4].w }}
+                style={{ width: cols[1].w + cols[2].w + cols[3].w + cols[4].w + cols[5].w,
+                         minWidth: cols[1].w + cols[2].w + cols[3].w + cols[4].w + cols[5].w }}
                 className={cn(CELL, "justify-end text-primary")}
               >
                 إجمالي التكلفة المباشرة للوحدة ({boqItem.unit ?? "وحدة"})

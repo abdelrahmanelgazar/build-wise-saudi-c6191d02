@@ -268,7 +268,7 @@ function BoqPage() {
                   تصدير
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" dir="rtl">
+              <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", flatRows, extraHeaders as any, extraPreHeaders, "xlsx")}>
                   إلى إكسل (.xlsx)
                 </DropdownMenuItem>
