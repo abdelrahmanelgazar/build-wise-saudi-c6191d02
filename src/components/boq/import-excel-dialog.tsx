@@ -186,7 +186,7 @@ function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; data: ParsedRo
     const r = rows[i] || [];
     if (!r.length || r.every((c) => c === null || c === undefined || String(c).trim() === "")) continue;
 
-    const get = (k: keyof ParsedRow): unknown => {
+    const get = (k: FieldKey): unknown => {
       const idx = Object.entries(colMap).find(([, v]) => v === k)?.[0];
       return idx !== undefined ? r[Number(idx)] : "";
     };
