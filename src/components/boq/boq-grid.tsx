@@ -19,7 +19,6 @@ type CellStyles = Record<
 >;
 
 const BUILTIN_KEYS = ["item_no", "description_ar", "unit", "quantity", "unit_rate", "total"] as const;
-type ColKey = (typeof BUILTIN_KEYS)[number] | `extra_${number}`;
 
 const BUILTIN_LABELS: Record<(typeof BUILTIN_KEYS)[number], string> = {
   item_no: "رقم البند",
