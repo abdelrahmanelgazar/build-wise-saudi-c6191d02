@@ -70,7 +70,27 @@ const HEADER_MAP: Record<string, keyof ParsedRow> = {
   "باطن": "subcontractor_cost",
   "subcontractor": "subcontractor_cost",
   "sub": "subcontractor_cost",
+
+  "سعر الوحدة": "unit_rate",
+  "سعر": "unit_rate",
+  "rate": "unit_rate",
+  "rate sar": "unit_rate",
+  "unit rate": "unit_rate",
+  "unit price": "unit_rate",
+  "price": "unit_rate",
+
+  "الإجمالي": "total",
+  "إجمالي": "total",
+  "اجمالي": "total",
+  "المبلغ": "total",
+  "amount": "amount" as never,
+  "amount sar": "amount" as never,
+  "total": "total" as never,
 };
+
+// Note: 'unit_rate' and 'total' are not stored on ParsedRow but are recognized
+// so they become field-mapped columns in the grid (linkable / computed).
+
 
 type ParsedRow = {
   item_no: string;
