@@ -559,13 +559,16 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                     className={cn("flex border-b text-[11px] font-semibold", SECTION_SUBTOTAL_CLS[type])}
                     style={{ minWidth: totalW }}
                   >
-                    <div style={cw("level")}      className={cn(CELL, "justify-center")} />
-                    <div style={cw("description")} className={cn(CELL, "justify-start text-right font-bold")}>
+                    <div style={cw("level")}          className={cn(CELL, "justify-center")} />
+                    <div style={cw("description_en")} className={cn(CELL, "justify-start text-left font-bold")} dir="ltr">
+                      Total {type === "material" ? "Materials" : type === "labor" ? "Labour" : type === "equipment" ? "Equipment" : "Subcontractor"}
+                    </div>
+                    <div style={cw("description")}    className={cn(CELL, "justify-start text-right font-bold")}>
                       مجموع {TYPE_LABEL[type]}
                     </div>
-                    <div style={cw("uom")}         className={cn(CELL, "justify-center")} />
-                    <div style={cw("qty")}         className={cn(CELL, "justify-center")} />
-                    <div style={cw("rate")}        className={cn(CELL, "justify-center")} />
+                    <div style={cw("qty")}            className={cn(CELL, "justify-center")} />
+                    <div style={cw("uom")}            className={cn(CELL, "justify-center")} />
+                    <div style={cw("rate")}           className={cn(CELL, "justify-center")} />
                     <div style={cw("amount")}
                       className={cn(CELL, "justify-center border-l-0 font-bold")}>
                       {fmtNumber(subtotal, 2)}
