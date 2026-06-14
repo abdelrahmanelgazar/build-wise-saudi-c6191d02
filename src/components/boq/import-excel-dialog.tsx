@@ -349,7 +349,7 @@ export function ImportExcelDialog() {
           is_group: r.is_group,
           level: r._level,
           sort_order: (indexOf.get(r._tmpId) ?? 0) + 1,
-          raw_row: r._raw as unknown as Record<string, unknown>,
+          raw_row: r._raw as unknown as never,
         }));
         const { data, error } = await supabase.from("boq_items").insert(payload).select("id");
         if (error) throw error;
