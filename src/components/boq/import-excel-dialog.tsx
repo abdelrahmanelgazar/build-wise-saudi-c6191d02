@@ -356,59 +356,73 @@ export function ImportExcelDialog() {
       const { data: userData } = await supabase.auth.getUser();
       const user_id = userData.user?.id;
       if (!user_id) throw new Error("غير مسجل دخول");
-      if (!parsed.data.length) throw new Error("لا توجد بنود للاستيراد");
+      if (!workbook) throw new Error("لم يتم تحميل الملف");
+      
+      let allHeaders: Record<string, ExcelHeader[]> = {};
+      let allPreHeaders: Record<string, unknown[][]> = {};
+      let totalImported = 0;
 
-      // Persist original headers on the project so the BOQ grid can render
-      // the exact columns from the Excel file (in original order).
+      for (const sheetName of workbook.SheetNames) {
+        const ws = workbook.Sheets[sheetName];
+        if (!ws) continue;
+        const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "", blankrows: false });
+        const sheetParsed = parseSheet(rows);
+        
+        allHeaders[sheetName] = sheetParsed.headers;
+        allPreHeaders[sheetName] = sheetParsed.preHeaders;
+
+        if (!sheetParsed.data.length) continue;
+        
+        const prepared = linkParents(sheetParsed.data);
+        
+        const tmpToDbId = new Map<string, string>();
+        const indexOf = new Map<string, number>();
+        prepared.forEach((r, i) => indexOf.set(r._tmpId, i));
+        const byLevel = new Map<number, typeof prepared>();
+        prepared.forEach((r) => {
+          const arr = byLevel.get(r._level) ?? [];
+          arr.push(r);
+          byLevel.set(r._level, arr);
+        });
+        const levels = Array.from(byLevel.keys()).sort((a, b) => a - b);
+
+        for (const lvl of levels) {
+          const batch = byLevel.get(lvl)!;
+          const payload = batch.map((r) => ({
+            user_id,
+            project_id: projectId,
+            sheet_name: sheetName,
+            parent_id: r._parentTmpId ? tmpToDbId.get(r._parentTmpId) ?? null : null,
+            item_no: r.item_no,
+            description_ar: r.description_ar,
+            unit: r.is_group ? null : r.unit || null,
+            quantity: r.is_group ? 0 : r.quantity,
+            material_cost: r.material_cost,
+            labor_cost: r.labor_cost,
+            equipment_cost: r.equipment_cost,
+            subcontractor_cost: r.subcontractor_cost,
+            is_group: r.is_group,
+            level: r._level,
+            sort_order: (indexOf.get(r._tmpId) ?? 0) + 1,
+            raw_row: r._raw as unknown as never,
+          }));
+          const { data, error } = await supabase.from("boq_items").upsert(payload, { onConflict: "user_id,project_id,sheet_name,item_no" }).select("id");
+          if (error) throw error;
+          (data ?? []).forEach((row, i) => tmpToDbId.set(batch[i]._tmpId, row.id));
+        }
+        totalImported += sheetParsed.data.length;
+      }
+
       await supabase
         .from("projects")
         .update({ 
-          excel_headers: parsed.headers as unknown as never,
-          excel_pre_headers: parsed.preHeaders as unknown as never
+          excel_headers: allHeaders as unknown as never,
+          excel_pre_headers: allPreHeaders as unknown as never
         })
         .eq("id", projectId);
-
-      const prepared = linkParents(parsed.data);
-
-      // Insert level-by-level so parent_id is resolvable, but PRESERVE the
-      // original Excel row order via sort_order = row index.
-      const tmpToDbId = new Map<string, string>();
-      const indexOf = new Map<string, number>();
-      prepared.forEach((r, i) => indexOf.set(r._tmpId, i));
-      const byLevel = new Map<number, typeof prepared>();
-      prepared.forEach((r) => {
-        const arr = byLevel.get(r._level) ?? [];
-        arr.push(r);
-        byLevel.set(r._level, arr);
-      });
-      const levels = Array.from(byLevel.keys()).sort((a, b) => a - b);
-
-      for (const lvl of levels) {
-        const batch = byLevel.get(lvl)!;
-        const payload = batch.map((r) => ({
-          user_id,
-          project_id: projectId,
-          parent_id: r._parentTmpId ? tmpToDbId.get(r._parentTmpId) ?? null : null,
-          item_no: r.item_no,
-          description_ar: r.description_ar,
-          unit: r.is_group ? null : r.unit || null,
-          quantity: r.is_group ? 0 : r.quantity,
-          material_cost: r.material_cost,
-          labor_cost: r.labor_cost,
-          equipment_cost: r.equipment_cost,
-          subcontractor_cost: r.subcontractor_cost,
-          is_group: r.is_group,
-          level: r._level,
-          sort_order: (indexOf.get(r._tmpId) ?? 0) + 1,
-          raw_row: r._raw as unknown as never,
-        }));
-        const { data, error } = await supabase.from("boq_items").upsert(payload, { onConflict: "user_id,project_id,item_no" }).select("id");
-        if (error) throw error;
-        (data ?? []).forEach((row, i) => tmpToDbId.set(batch[i]._tmpId, row.id));
-      }
     },
     onSuccess: () => {
-      toast.success(`تم استيراد ${parsed.data.length} بنداً بنجاح`);
+      toast.success(`تم استيراد ${totalImported} بنداً بنجاح من جميع الصفحات`);
       qc.invalidateQueries({ queryKey: ["boq_items"] });
       qc.invalidateQueries({ queryKey: ["project", projectId] });
       reset();

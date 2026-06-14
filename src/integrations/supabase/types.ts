@@ -31,6 +31,7 @@ export type Database = {
           project_id: string | null
           quantity: number | null
           raw_row: Json | null
+          sheet_name: string | null
           sort_order: number
           subcontractor_cost: number | null
           unit: string | null
@@ -53,6 +54,7 @@ export type Database = {
           project_id?: string | null
           quantity?: number | null
           raw_row?: Json | null
+          sheet_name?: string | null
           sort_order?: number
           subcontractor_cost?: number | null
           unit?: string | null
@@ -75,6 +77,7 @@ export type Database = {
           project_id?: string | null
           quantity?: number | null
           raw_row?: Json | null
+          sheet_name?: string | null
           sort_order?: number
           subcontractor_cost?: number | null
           unit?: string | null

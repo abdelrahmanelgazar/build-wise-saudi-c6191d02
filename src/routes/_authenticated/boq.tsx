@@ -95,6 +95,7 @@ function BoqPage() {
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [activeSheet, setActiveSheet] = useState<string>("");
 
   const { data: rows = [] } = useQuery({
     queryKey: ["boq_items", projectId],
@@ -109,7 +110,23 @@ function BoqPage() {
     },
   });
 
-  const { data: project } = useQuery({
+  const sheetNames = useMemo(() => {
+    const names = Array.from(new Set(rows.map((r) => r.sheet_name || "Sheet1")));
+    if (names.length === 0) names.push("Sheet1");
+    return names;
+  }, [rows]);
+
+  useEffect(() => {
+    if (!activeSheet && sheetNames.length > 0) {
+      setActiveSheet(sheetNames[0]);
+    } else if (activeSheet && !sheetNames.includes(activeSheet) && sheetNames.length > 0) {
+      setActiveSheet(sheetNames[0]);
+    }
+  }, [sheetNames, activeSheet]);
+
+  const activeRows = useMemo(() => rows.filter(r => (r.sheet_name || "Sheet1") === activeSheet), [rows, activeSheet]);
+
+  const { isLoading: isProjLoading, data: project } = useQuery({
     queryKey: ["project", projectId],
     enabled: !!projectId,
     queryFn: async () => {
@@ -124,14 +141,18 @@ function BoqPage() {
   });
 
   const extraHeaders = useMemo(() => {
-    const h = (project?.excel_headers as unknown) ?? [];
-    return Array.isArray(h) ? h : [];
-  }, [project]);
+    const h = (project?.excel_headers as any);
+    if (!h) return [];
+    if (Array.isArray(h)) return h;
+    return Array.isArray(h[activeSheet]) ? h[activeSheet] : [];
+  }, [project, activeSheet]);
 
   const extraPreHeaders = useMemo(() => {
-    const h = (project?.excel_pre_headers as unknown) ?? [];
-    return Array.isArray(h) ? h : [];
-  }, [project]);
+    const h = (project?.excel_pre_headers as any);
+    if (!h) return [];
+    if (Array.isArray(h)) return h;
+    return Array.isArray(h[activeSheet]) ? h[activeSheet] : [];
+  }, [project, activeSheet]);
 
   // Pull all price-analysis rows + markup for this project to compute the
   // per-item unit selling price displayed in the BOQ "rate" column.
@@ -192,19 +213,19 @@ function BoqPage() {
   }, [paItems, paMarkups]);
 
   useMemo(() => {
-    if (rows.length && expanded.size === 0) {
-      setExpanded(new Set(rows.filter((r) => r.is_group).map((r) => r.id)));
+    if (activeRows.length && expanded.size === 0) {
+      setExpanded(new Set(activeRows.filter((r) => r.is_group).map((r) => r.id)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows.length]);
+  }, [activeRows.length]);
 
-  const tree = useMemo(() => buildTree(rows, paRates.selling), [rows, paRates.selling]);
+  const tree = useMemo(() => buildTree(activeRows, paRates.selling), [activeRows, paRates.selling]);
   const grandTotal = tree.reduce((s, n) => s + n.rolledTotal, 0);
-  const itemsCount = rows.filter((r) => !r.is_group).length;
-  const groupsCount = rows.filter((r) => r.is_group).length;
+  const itemsCount = activeRows.filter((r) => !r.is_group).length;
+  const groupsCount = activeRows.filter((r) => r.is_group).length;
 
   const totalDirectCost = useMemo(() => {
-    return rows
+    return activeRows
       .filter((r) => !r.is_group)
       .reduce((sum, r) => {
         const paDirect = paRates.direct.get(r.id);
@@ -217,7 +238,7 @@ function BoqPage() {
               Number(r.subcontractor_cost ?? 0);
         return sum + unitCost * Number(r.quantity ?? 0);
       }, 0);
-  }, [rows, paRates.direct]);
+  }, [activeRows, paRates.direct]);
 
   const markupMargin = totalDirectCost > 0 ? ((grandTotal - totalDirectCost) / totalDirectCost) * 100 : 0;
 
@@ -287,10 +308,10 @@ function BoqPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", flatRows, extraHeaders as any, extraPreHeaders, "xlsx")}>
+                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", rows, paRates.selling, project?.excel_headers, project?.excel_pre_headers, "xlsx")}>
                   إلى إكسل (.xlsx)
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", flatRows, extraHeaders as any, extraPreHeaders, "csv")}>
+                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", rows, paRates.selling, project?.excel_headers, project?.excel_pre_headers, "csv")}>
                   إلى (.csv)
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -316,7 +337,26 @@ function BoqPage() {
         />
       </div>
 
-      <div className="mt-5 flex flex-1 flex-col overflow-hidden">
+      {sheetNames.length > 1 && (
+        <div className="mt-4 flex flex-wrap gap-2 overflow-x-auto border-b border-border">
+          {sheetNames.map((name) => (
+            <button
+              key={name}
+              onClick={() => setActiveSheet(name)}
+              className={cn(
+                "px-4 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap",
+                activeSheet === name
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
+              )}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className={cn("flex flex-1 flex-col overflow-hidden", sheetNames.length <= 1 ? "mt-5" : "mt-0")}>
         <BoqGrid
           flatRows={flatRows}
           expanded={expanded}
