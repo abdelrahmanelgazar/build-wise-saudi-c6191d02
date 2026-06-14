@@ -55,7 +55,7 @@ export function BoqGrid({
 }) {
   const qc = useQueryClient();
   const storageKey = `boq-grid:${projectId}`;
-  const rowHeightKey = `boq-row-h:${projectId}`;
+  const rowHeightsKey = `boq-row-heights:${projectId}`;
 
   // Column widths persisted to localStorage
   const [widths, setWidths] = useState<Record<string, number>>(() => {
@@ -66,17 +66,22 @@ export function BoqGrid({
       return {};
     }
   });
-  const [rowHeight, setRowHeight] = useState<number>(() => {
-    const v = Number(localStorage.getItem(rowHeightKey));
-    return Number.isFinite(v) && v > 0 ? v : 32;
+  // Per-row heights persisted to localStorage. 0/undefined => auto (wrap)
+  const [rowHeights, setRowHeights] = useState<Record<string, number>>(() => {
+    try {
+      const raw = localStorage.getItem(rowHeightsKey);
+      return raw ? JSON.parse(raw) : {};
+    } catch {
+      return {};
+    }
   });
 
   useEffect(() => {
     localStorage.setItem(storageKey, JSON.stringify(widths));
   }, [widths, storageKey]);
   useEffect(() => {
-    localStorage.setItem(rowHeightKey, String(rowHeight));
-  }, [rowHeight, rowHeightKey]);
+    localStorage.setItem(rowHeightsKey, JSON.stringify(rowHeights));
+  }, [rowHeights, rowHeightsKey]);
 
   const columns: { key: string; label: string; width: number; align?: "right" | "center" | "left" }[] = useMemo(() => {
     const built = BUILTIN_KEYS.map((k) => ({
