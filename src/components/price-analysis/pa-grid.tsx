@@ -439,7 +439,26 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                         {idx + 1}
                       </div>
 
-                      {/* Description (editable) */}
+                      {/* Description EN (editable) */}
+                      <div
+                        className={cn(CELL, "gap-1")}
+                        style={{ ...cw("description_en"), textAlign: "left" }}
+                        dir="ltr"
+                      >
+                        <EditableCell
+                          value={(it as PaItem & { description_en?: string | null }).description_en ?? ""}
+                          onSave={(v) =>
+                            updateMut.mutate({ id: it.id, patch: { description_en: v } as Partial<PaItem> })
+                          }
+                          className="flex-1"
+                        >
+                          <span className="block w-full whitespace-pre-wrap break-words text-[11px] text-left">
+                            {(it as PaItem & { description_en?: string | null }).description_en ?? ""}
+                          </span>
+                        </EditableCell>
+                      </div>
+
+                      {/* Description AR (editable) */}
                       <div
                         className={cn(CELL, "gap-1", {
                           "font-bold": cellStyles["description"]?.bold,
@@ -472,18 +491,6 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                         />
                       </div>
 
-                      {/* UOM (editable) */}
-                      <EditableCell
-                        value={it.unit}
-                        onSave={(v) =>
-                          updateMut.mutate({ id: it.id, patch: { unit: v || "وحدة" } })
-                        }
-                        className={cn(CELL, "justify-center text-muted-foreground")}
-                        style={cw("uom")}
-                      >
-                        <span className="text-[11px]">{it.unit}</span>
-                      </EditableCell>
-
                       {/* QTY (editable) */}
                       <EditableCell
                         value={String(it.quantity)}
@@ -494,6 +501,18 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                         style={cw("qty")}
                       >
                         <span className="text-[11px]">{fmtNumber(it.quantity, 3)}</span>
+                      </EditableCell>
+
+                      {/* UOM (editable) */}
+                      <EditableCell
+                        value={it.unit}
+                        onSave={(v) =>
+                          updateMut.mutate({ id: it.id, patch: { unit: v || "وحدة" } })
+                        }
+                        className={cn(CELL, "justify-center text-muted-foreground")}
+                        style={cw("uom")}
+                      >
+                        <span className="text-[11px]">{it.unit}</span>
                       </EditableCell>
 
                       {/* Rate (editable) */}
