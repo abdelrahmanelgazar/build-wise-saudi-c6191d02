@@ -369,9 +369,9 @@ function ResourceFormDialog({
               </SelectTrigger>
               <SelectContent className="max-h-[300px]">
                 <SelectItem value="none">— بدون قسم —</SelectItem>
-                {DIVISIONS.map((d) => (
+                {divisions.map((d) => (
                   <SelectItem key={d.code} value={d.code}>
-                    القسم {d.code} - {d.name_ar}
+                    القسم {d.code}{d.name_ar ? ` - ${d.name_ar}` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
