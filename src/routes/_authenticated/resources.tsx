@@ -129,7 +129,7 @@ function ResourcesPage() {
       <PageHeader
         title="مكتبة البيانات"
         subtitle="مكتبة المواد والعمالة والمعدات مقسّمة حسب أقسام MasterFormat — تستخدم في تحليل الأسعار."
-        action={<NewResourceDialog defaultType={tab} defaultDivision={divisionFilter !== "all" ? divisionFilter : undefined} />}
+        action={<NewResourceDialog defaultType={tab} />}
       />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as ResourceType)} className="mt-6">
