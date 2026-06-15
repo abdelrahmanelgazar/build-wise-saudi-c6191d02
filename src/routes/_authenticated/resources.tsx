@@ -415,3 +415,111 @@ function ResourceFormDialog({
     </Dialog>
   );
 }
+
+function DivisionHeader({
+  code,
+  count,
+  labelFor,
+  onRename,
+  onRemove,
+}: {
+  code: string;
+  count: number;
+  labelFor: (code: string | null | undefined) => string | null;
+  onRename: (code: string, name: string) => void;
+  onRemove: (code: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const initial = labelFor(code) ?? "بدون قسم";
+  // Extract just the name portion for editing
+  const currentName = (() => {
+    if (!code) return "";
+    const label = labelFor(code);
+    if (!label) return "";
+    const dash = label.indexOf(" - ");
+    return dash >= 0 ? label.slice(dash + 3) : "";
+  })();
+  const [value, setValue] = useState(currentName);
+
+  if (!code) {
+    return (
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
+        <h3 className="text-sm font-semibold text-foreground">بدون قسم</h3>
+        <Badge variant="secondary" className="h-5 bg-background/60 px-2 text-[10px] font-normal">
+          {count}
+        </Badge>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
+      {editing ? (
+        <div className="flex flex-1 items-center gap-2">
+          <span className="text-sm font-semibold text-foreground">القسم {code}</span>
+          <Input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="اسم القسم (اختياري)"
+            className="h-7 max-w-xs text-sm"
+            autoFocus
+          />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 text-primary"
+            onClick={() => {
+              onRename(code, value.trim());
+              setEditing(false);
+            }}
+          >
+            <Check className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 text-muted-foreground"
+            onClick={() => {
+              setValue(currentName);
+              setEditing(false);
+            }}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ) : (
+        <h3 className="text-sm font-semibold text-foreground">{initial}</h3>
+      )}
+      <div className="flex items-center gap-1">
+        <Badge variant="secondary" className="h-5 bg-background/60 px-2 text-[10px] font-normal">
+          {count}
+        </Badge>
+        {!editing && (
+          <>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-muted-foreground"
+              onClick={() => {
+                setValue(currentName);
+                setEditing(true);
+              }}
+              title="تعديل اسم القسم"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              onClick={() => onRemove(code)}
+              title="حذف القسم"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
