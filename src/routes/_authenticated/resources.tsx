@@ -51,9 +51,9 @@ const TYPE_META: Record<ResourceType, { label: string; icon: typeof Boxes; color
 function ResourcesPage() {
   const [tab, setTab] = useState<ResourceType>("material");
   const [search, setSearch] = useState("");
-  const [divisionFilter, setDivisionFilter] = useState<string>("all");
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
+  const { divisions, rename, remove, labelFor } = useDivisions(projectId);
 
   const { data: resources = [], isLoading } = useQuery({
     queryKey: ["resources", projectId],
@@ -71,18 +71,17 @@ function ResourcesPage() {
   });
 
   const ofType = resources.filter((r) => r.type === tab);
-  const filtered = ofType
-    .filter((r) => divisionFilter === "all" || (r.division ?? "") === divisionFilter)
-    .filter(
-      (r) =>
-        !search ||
-        r.name_ar.includes(search) ||
-        (r.code ?? "").toLowerCase().includes(search.toLowerCase()),
-    );
+  const filtered = ofType.filter(
+    (r) =>
+      !search ||
+      r.name_ar.includes(search) ||
+      (r.code ?? "").toLowerCase().includes(search.toLowerCase()),
+  );
 
-  // Group filtered by division
+  // Group filtered by division, include every catalog division even when empty
   const grouped = useMemo(() => {
     const map = new Map<string, ResourceRow[]>();
+    for (const d of divisions) map.set(d.code, []);
     for (const r of filtered) {
       const k = r.division ?? "";
       if (!map.has(k)) map.set(k, []);
@@ -93,16 +92,8 @@ function ResourcesPage() {
       if (b === "") return -1;
       return a.localeCompare(b);
     });
-  }, [filtered]);
+  }, [filtered, divisions]);
 
-  const divisionCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const r of ofType) {
-      const k = r.division ?? "";
-      m.set(k, (m.get(k) ?? 0) + 1);
-    }
-    return m;
-  }, [ofType]);
 
   const delMut = useMutation({
     mutationFn: async (id: string) => {
