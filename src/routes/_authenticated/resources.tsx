@@ -291,6 +291,7 @@ function ResourceFormDialog({
   const [price, setPrice] = useState<string>(String(resource?.unit_price ?? ""));
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
+  const { divisions } = useDivisions(projectId);
 
   const mut = useMutation({
     mutationFn: async () => {
