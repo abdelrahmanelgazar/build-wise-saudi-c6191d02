@@ -22,14 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Pencil, Plus, Search, Trash2, Boxes, Hammer, Truck } from "lucide-react";
+import { Check, Pencil, Plus, Search, Trash2, X, Boxes, Hammer, Truck } from "lucide-react";
 import { fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 import { useActiveProjectId } from "@/lib/active-project";
 import { Link } from "@tanstack/react-router";
 import { FolderPlus } from "lucide-react";
-import { DIVISIONS, DIVISION_LABEL } from "@/lib/divisions";
+import { useDivisions } from "@/lib/divisions";
 
 type ResourceRow = Database["public"]["Tables"]["resources"]["Row"] & {
   division?: string | null;
@@ -51,9 +51,9 @@ const TYPE_META: Record<ResourceType, { label: string; icon: typeof Boxes; color
 function ResourcesPage() {
   const [tab, setTab] = useState<ResourceType>("material");
   const [search, setSearch] = useState("");
-  const [divisionFilter, setDivisionFilter] = useState<string>("all");
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
+  const { divisions, rename, remove, labelFor } = useDivisions(projectId);
 
   const { data: resources = [], isLoading } = useQuery({
     queryKey: ["resources", projectId],
@@ -71,18 +71,17 @@ function ResourcesPage() {
   });
 
   const ofType = resources.filter((r) => r.type === tab);
-  const filtered = ofType
-    .filter((r) => divisionFilter === "all" || (r.division ?? "") === divisionFilter)
-    .filter(
-      (r) =>
-        !search ||
-        r.name_ar.includes(search) ||
-        (r.code ?? "").toLowerCase().includes(search.toLowerCase()),
-    );
+  const filtered = ofType.filter(
+    (r) =>
+      !search ||
+      r.name_ar.includes(search) ||
+      (r.code ?? "").toLowerCase().includes(search.toLowerCase()),
+  );
 
-  // Group filtered by division
+  // Group filtered by division, include every catalog division even when empty
   const grouped = useMemo(() => {
     const map = new Map<string, ResourceRow[]>();
+    for (const d of divisions) map.set(d.code, []);
     for (const r of filtered) {
       const k = r.division ?? "";
       if (!map.has(k)) map.set(k, []);
@@ -93,16 +92,8 @@ function ResourcesPage() {
       if (b === "") return -1;
       return a.localeCompare(b);
     });
-  }, [filtered]);
+  }, [filtered, divisions]);
 
-  const divisionCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const r of ofType) {
-      const k = r.division ?? "";
-      m.set(k, (m.get(k) ?? 0) + 1);
-    }
-    return m;
-  }, [ofType]);
 
   const delMut = useMutation({
     mutationFn: async (id: string) => {
@@ -138,7 +129,7 @@ function ResourcesPage() {
       <PageHeader
         title="مكتبة البيانات"
         subtitle="مكتبة المواد والعمالة والمعدات مقسّمة حسب أقسام MasterFormat — تستخدم في تحليل الأسعار."
-        action={<NewResourceDialog defaultType={tab} defaultDivision={divisionFilter !== "all" ? divisionFilter : undefined} />}
+        action={<NewResourceDialog defaultType={tab} />}
       />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as ResourceType)} className="mt-6">
@@ -162,34 +153,14 @@ function ResourcesPage() {
             })}
           </TabsList>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={divisionFilter} onValueChange={setDivisionFilter}>
-              <SelectTrigger className="h-9 w-[260px]">
-                <SelectValue placeholder="كل الأقسام" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[400px]">
-                <SelectItem value="all">كل الأقسام ({ofType.length})</SelectItem>
-                {DIVISIONS.map((d) => (
-                  <SelectItem key={d.code} value={d.code}>
-                    القسم {d.code} - {d.name_ar}
-                    {divisionCounts.get(d.code) ? ` (${divisionCounts.get(d.code)})` : ""}
-                  </SelectItem>
-                ))}
-                {divisionCounts.get("") ? (
-                  <SelectItem value="">بدون قسم ({divisionCounts.get("")})</SelectItem>
-                ) : null}
-              </SelectContent>
-            </Select>
-
-            <div className="relative w-full max-w-xs">
-              <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="ابحث بالاسم أو الكود…"
-                className="h-9 pr-9"
-              />
-            </div>
+          <div className="relative w-full max-w-xs">
+            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="ابحث بالاسم أو الكود…"
+              className="h-9 pr-9"
+            />
           </div>
         </div>
 
@@ -208,14 +179,19 @@ function ResourcesPage() {
             {!isLoading &&
               grouped.map(([divCode, rows]) => (
                 <div key={divCode || "none"} className="overflow-hidden rounded-lg border border-border bg-card">
-                  <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {divCode ? DIVISION_LABEL(divCode) : "بدون قسم"}
-                    </h3>
-                    <Badge variant="secondary" className="h-5 bg-background/60 px-2 text-[10px] font-normal">
-                      {rows.length}
-                    </Badge>
-                  </div>
+                  <DivisionHeader
+                    code={divCode}
+                    count={rows.length}
+                    labelFor={labelFor}
+                    onRename={rename}
+                    onRemove={(c: string) => {
+                      if (rows.length > 0) {
+                        toast.error("لا يمكن حذف قسم يحتوي على عناصر");
+                        return;
+                      }
+                      if (confirm(`حذف القسم ${c}؟`)) remove(c);
+                    }}
+                  />
                   <table className="w-full text-sm tabular-nums">
                     <thead className="bg-muted/20 text-xs uppercase text-muted-foreground">
                       <tr>
@@ -315,6 +291,7 @@ function ResourceFormDialog({
   const [price, setPrice] = useState<string>(String(resource?.unit_price ?? ""));
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
+  const { divisions } = useDivisions(projectId);
 
   const mut = useMutation({
     mutationFn: async () => {
@@ -392,9 +369,9 @@ function ResourceFormDialog({
               </SelectTrigger>
               <SelectContent className="max-h-[300px]">
                 <SelectItem value="none">— بدون قسم —</SelectItem>
-                {DIVISIONS.map((d) => (
+                {divisions.map((d) => (
                   <SelectItem key={d.code} value={d.code}>
-                    القسم {d.code} - {d.name_ar}
+                    القسم {d.code}{d.name_ar ? ` - ${d.name_ar}` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -436,5 +413,113 @@ function ResourceFormDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function DivisionHeader({
+  code,
+  count,
+  labelFor,
+  onRename,
+  onRemove,
+}: {
+  code: string;
+  count: number;
+  labelFor: (code: string | null | undefined) => string | null;
+  onRename: (code: string, name: string) => void;
+  onRemove: (code: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const initial = labelFor(code) ?? "بدون قسم";
+  // Extract just the name portion for editing
+  const currentName = (() => {
+    if (!code) return "";
+    const label = labelFor(code);
+    if (!label) return "";
+    const dash = label.indexOf(" - ");
+    return dash >= 0 ? label.slice(dash + 3) : "";
+  })();
+  const [value, setValue] = useState(currentName);
+
+  if (!code) {
+    return (
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
+        <h3 className="text-sm font-semibold text-foreground">بدون قسم</h3>
+        <Badge variant="secondary" className="h-5 bg-background/60 px-2 text-[10px] font-normal">
+          {count}
+        </Badge>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
+      {editing ? (
+        <div className="flex flex-1 items-center gap-2">
+          <span className="text-sm font-semibold text-foreground">القسم {code}</span>
+          <Input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="اسم القسم (اختياري)"
+            className="h-7 max-w-xs text-sm"
+            autoFocus
+          />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 text-primary"
+            onClick={() => {
+              onRename(code, value.trim());
+              setEditing(false);
+            }}
+          >
+            <Check className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 text-muted-foreground"
+            onClick={() => {
+              setValue(currentName);
+              setEditing(false);
+            }}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ) : (
+        <h3 className="text-sm font-semibold text-foreground">{initial}</h3>
+      )}
+      <div className="flex items-center gap-1">
+        <Badge variant="secondary" className="h-5 bg-background/60 px-2 text-[10px] font-normal">
+          {count}
+        </Badge>
+        {!editing && (
+          <>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-muted-foreground"
+              onClick={() => {
+                setValue(currentName);
+                setEditing(true);
+              }}
+              title="تعديل اسم القسم"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-muted-foreground hover:text-destructive"
+              onClick={() => onRemove(code)}
+              title="حذف القسم"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
