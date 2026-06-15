@@ -82,6 +82,7 @@ export function BoqGrid({
   extraHeaders: RawHeader[];
   projectId: string;
   grandTotal?: number;
+  onDeleteColumn?: (field: string) => void;
 }) {
   const qc = useQueryClient();
   const storageKey = `boq-grid:${projectId}`;
