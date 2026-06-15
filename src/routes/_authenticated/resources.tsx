@@ -22,14 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Pencil, Plus, Search, Trash2, Boxes, Hammer, Truck } from "lucide-react";
+import { Check, Pencil, Plus, Search, Trash2, X, Boxes, Hammer, Truck } from "lucide-react";
 import { fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 import { useActiveProjectId } from "@/lib/active-project";
 import { Link } from "@tanstack/react-router";
 import { FolderPlus } from "lucide-react";
-import { DIVISIONS, DIVISION_LABEL } from "@/lib/divisions";
+import { useDivisions } from "@/lib/divisions";
 
 type ResourceRow = Database["public"]["Tables"]["resources"]["Row"] & {
   division?: string | null;
