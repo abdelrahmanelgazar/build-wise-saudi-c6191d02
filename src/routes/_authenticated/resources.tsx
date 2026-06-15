@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -29,8 +29,11 @@ import type { Database } from "@/integrations/supabase/types";
 import { useActiveProjectId } from "@/lib/active-project";
 import { Link } from "@tanstack/react-router";
 import { FolderPlus } from "lucide-react";
+import { DIVISIONS, DIVISION_LABEL } from "@/lib/divisions";
 
-type ResourceRow = Database["public"]["Tables"]["resources"]["Row"];
+type ResourceRow = Database["public"]["Tables"]["resources"]["Row"] & {
+  division?: string | null;
+};
 type ResourceType = Database["public"]["Enums"]["resource_type"];
 
 export const Route = createFileRoute("/_authenticated/resources")({
@@ -48,6 +51,7 @@ const TYPE_META: Record<ResourceType, { label: string; icon: typeof Boxes; color
 function ResourcesPage() {
   const [tab, setTab] = useState<ResourceType>("material");
   const [search, setSearch] = useState("");
+  const [divisionFilter, setDivisionFilter] = useState<string>("all");
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
 
@@ -59,20 +63,46 @@ function ResourcesPage() {
         .from("resources")
         .select("*")
         .eq("project_id", projectId!)
+        .order("division", { ascending: true, nullsFirst: false })
         .order("code", { ascending: true });
       if (error) throw error;
       return data as ResourceRow[];
     },
   });
 
-  const filtered = resources
-    .filter((r) => r.type === tab)
+  const ofType = resources.filter((r) => r.type === tab);
+  const filtered = ofType
+    .filter((r) => divisionFilter === "all" || (r.division ?? "") === divisionFilter)
     .filter(
       (r) =>
         !search ||
         r.name_ar.includes(search) ||
         (r.code ?? "").toLowerCase().includes(search.toLowerCase()),
     );
+
+  // Group filtered by division
+  const grouped = useMemo(() => {
+    const map = new Map<string, ResourceRow[]>();
+    for (const r of filtered) {
+      const k = r.division ?? "";
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(r);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      if (a === "") return 1;
+      if (b === "") return -1;
+      return a.localeCompare(b);
+    });
+  }, [filtered]);
+
+  const divisionCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of ofType) {
+      const k = r.division ?? "";
+      m.set(k, (m.get(k) ?? 0) + 1);
+    }
+    return m;
+  }, [ofType]);
 
   const delMut = useMutation({
     mutationFn: async (id: string) => {
@@ -107,8 +137,8 @@ function ResourcesPage() {
     <div className="p-6">
       <PageHeader
         title="مكتبة البيانات"
-        subtitle="مكتبة المواد والعمالة والمعدات بأسعار السوق السعودي — تستخدم في تحليل الأسعار."
-        action={<NewResourceDialog defaultType={tab} />}
+        subtitle="مكتبة المواد والعمالة والمعدات مقسّمة حسب أقسام MasterFormat — تستخدم في تحليل الأسعار."
+        action={<NewResourceDialog defaultType={tab} defaultDivision={divisionFilter !== "all" ? divisionFilter : undefined} />}
       />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as ResourceType)} className="mt-6">
@@ -132,75 +162,102 @@ function ResourcesPage() {
             })}
           </TabsList>
 
-          <div className="relative w-full max-w-xs">
-            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="ابحث بالاسم أو الكود…"
-              className="h-9 pr-9"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={divisionFilter} onValueChange={setDivisionFilter}>
+              <SelectTrigger className="h-9 w-[260px]">
+                <SelectValue placeholder="كل الأقسام" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[400px]">
+                <SelectItem value="all">كل الأقسام ({ofType.length})</SelectItem>
+                {DIVISIONS.map((d) => (
+                  <SelectItem key={d.code} value={d.code}>
+                    القسم {d.code} - {d.name_ar}
+                    {divisionCounts.get(d.code) ? ` (${divisionCounts.get(d.code)})` : ""}
+                  </SelectItem>
+                ))}
+                {divisionCounts.get("") ? (
+                  <SelectItem value="">بدون قسم ({divisionCounts.get("")})</SelectItem>
+                ) : null}
+              </SelectContent>
+            </Select>
+
+            <div className="relative w-full max-w-xs">
+              <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="ابحث بالاسم أو الكود…"
+                className="h-9 pr-9"
+              />
+            </div>
           </div>
         </div>
 
         {(Object.keys(TYPE_META) as ResourceType[]).map((t) => (
-          <TabsContent key={t} value={t} className="mt-4">
-            <div className="overflow-hidden rounded-lg border border-border bg-card">
-              <table className="w-full text-sm tabular-nums">
-                <thead className="bg-muted/30 text-xs uppercase text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-2.5 text-right font-medium">الكود</th>
-                    <th className="px-4 py-2.5 text-right font-medium">الاسم</th>
-                    <th className="px-4 py-2.5 text-right font-medium">الوحدة</th>
-                    <th className="px-4 py-2.5 text-right font-medium">سعر الوحدة</th>
-                    <th className="px-4 py-2.5 text-center font-medium">إجراءات</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {isLoading && (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                        جاري التحميل…
-                      </td>
-                    </tr>
-                  )}
-                  {!isLoading && filtered.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground">
-                        لا توجد عناصر في هذا القسم بعد. أضف أول عنصر باستخدام زر «إضافة مورد».
-                      </td>
-                    </tr>
-                  )}
-                  {filtered.map((r) => (
-                    <tr key={r.id} className="hover:bg-muted/20">
-                      <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
-                        {r.code ?? "—"}
-                      </td>
-                      <td className="px-4 py-2.5 font-medium text-foreground">{r.name_ar}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground">{r.unit}</td>
-                      <td className="px-4 py-2.5 font-semibold text-primary">
-                        {fmtSAR(r.unit_price)}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="flex items-center justify-center gap-1">
-                          <EditResourceDialog resource={r} />
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                            onClick={() => {
-                              if (confirm(`حذف المورد «${r.name_ar}»؟`)) delMut.mutate(r.id);
-                            }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <TabsContent key={t} value={t} className="mt-4 space-y-6">
+            {isLoading && (
+              <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
+                جاري التحميل…
+              </div>
+            )}
+            {!isLoading && grouped.length === 0 && (
+              <div className="rounded-lg border border-dashed border-border bg-card p-12 text-center text-muted-foreground">
+                لا توجد عناصر في هذا القسم بعد. أضف أول عنصر باستخدام زر «إضافة مورد».
+              </div>
+            )}
+            {!isLoading &&
+              grouped.map(([divCode, rows]) => (
+                <div key={divCode || "none"} className="overflow-hidden rounded-lg border border-border bg-card">
+                  <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {divCode ? DIVISION_LABEL(divCode) : "بدون قسم"}
+                    </h3>
+                    <Badge variant="secondary" className="h-5 bg-background/60 px-2 text-[10px] font-normal">
+                      {rows.length}
+                    </Badge>
+                  </div>
+                  <table className="w-full text-sm tabular-nums">
+                    <thead className="bg-muted/20 text-xs uppercase text-muted-foreground">
+                      <tr>
+                        <th className="px-4 py-2 text-right font-medium">الكود</th>
+                        <th className="px-4 py-2 text-right font-medium">الاسم</th>
+                        <th className="px-4 py-2 text-right font-medium">الوحدة</th>
+                        <th className="px-4 py-2 text-right font-medium">سعر الوحدة</th>
+                        <th className="px-4 py-2 text-center font-medium">إجراءات</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {rows.map((r) => (
+                        <tr key={r.id} className="hover:bg-muted/20">
+                          <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
+                            {r.code ?? "—"}
+                          </td>
+                          <td className="px-4 py-2.5 font-medium text-foreground">{r.name_ar}</td>
+                          <td className="px-4 py-2.5 text-muted-foreground">{r.unit}</td>
+                          <td className="px-4 py-2.5 font-semibold text-primary">
+                            {fmtSAR(r.unit_price)}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center justify-center gap-1">
+                              <EditResourceDialog resource={r} />
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                onClick={() => {
+                                  if (confirm(`حذف المورد «${r.name_ar}»؟`)) delMut.mutate(r.id);
+                                }}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
           </TabsContent>
         ))}
       </Tabs>
@@ -230,8 +287,8 @@ export function PageHeader({
   );
 }
 
-function NewResourceDialog({ defaultType }: { defaultType: ResourceType }) {
-  return <ResourceFormDialog mode="create" defaultType={defaultType} />;
+function NewResourceDialog({ defaultType, defaultDivision }: { defaultType: ResourceType; defaultDivision?: string }) {
+  return <ResourceFormDialog mode="create" defaultType={defaultType} defaultDivision={defaultDivision} />;
 }
 
 function EditResourceDialog({ resource }: { resource: ResourceRow }) {
@@ -242,13 +299,16 @@ function ResourceFormDialog({
   mode,
   resource,
   defaultType,
+  defaultDivision,
 }: {
   mode: "create" | "edit";
   resource?: ResourceRow;
   defaultType?: ResourceType;
+  defaultDivision?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<ResourceType>(resource?.type ?? defaultType ?? "material");
+  const [division, setDivision] = useState<string>(resource?.division ?? defaultDivision ?? "");
   const [code, setCode] = useState(resource?.code ?? "");
   const [name, setName] = useState(resource?.name_ar ?? "");
   const [unit, setUnit] = useState(resource?.unit ?? "");
@@ -264,6 +324,7 @@ function ResourceFormDialog({
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
       const payload = {
         type,
+        division: division || null,
         code: code || null,
         name_ar: name,
         unit,
@@ -322,6 +383,22 @@ function ResourceFormDialog({
               <Label>الكود</Label>
               <Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="M001" />
             </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label>القسم</Label>
+            <Select value={division || "none"} onValueChange={(v) => setDivision(v === "none" ? "" : v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="اختر القسم" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[300px]">
+                <SelectItem value="none">— بدون قسم —</SelectItem>
+                {DIVISIONS.map((d) => (
+                  <SelectItem key={d.code} value={d.code}>
+                    القسم {d.code} - {d.name_ar}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label>الاسم بالعربية</Label>
