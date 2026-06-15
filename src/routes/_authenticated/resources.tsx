@@ -179,14 +179,19 @@ function ResourcesPage() {
             {!isLoading &&
               grouped.map(([divCode, rows]) => (
                 <div key={divCode || "none"} className="overflow-hidden rounded-lg border border-border bg-card">
-                  <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
-                    <h3 className="text-sm font-semibold text-foreground">
-                      {divCode ? DIVISION_LABEL(divCode) : "بدون قسم"}
-                    </h3>
-                    <Badge variant="secondary" className="h-5 bg-background/60 px-2 text-[10px] font-normal">
-                      {rows.length}
-                    </Badge>
-                  </div>
+                  <DivisionHeader
+                    code={divCode}
+                    count={rows.length}
+                    labelFor={labelFor}
+                    onRename={rename}
+                    onRemove={(c) => {
+                      if (rows.length > 0) {
+                        toast.error("لا يمكن حذف قسم يحتوي على عناصر");
+                        return;
+                      }
+                      if (confirm(`حذف القسم ${c}؟`)) remove(c);
+                    }}
+                  />
                   <table className="w-full text-sm tabular-nums">
                     <thead className="bg-muted/20 text-xs uppercase text-muted-foreground">
                       <tr>
