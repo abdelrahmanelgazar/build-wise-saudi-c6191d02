@@ -184,7 +184,7 @@ function ResourcesPage() {
                     count={rows.length}
                     labelFor={labelFor}
                     onRename={rename}
-                    onRemove={(c) => {
+                    onRemove={(c: string) => {
                       if (rows.length > 0) {
                         toast.error("لا يمكن حذف قسم يحتوي على عناصر");
                         return;
