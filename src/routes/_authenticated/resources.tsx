@@ -153,34 +153,14 @@ function ResourcesPage() {
             })}
           </TabsList>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={divisionFilter} onValueChange={setDivisionFilter}>
-              <SelectTrigger className="h-9 w-[260px]">
-                <SelectValue placeholder="كل الأقسام" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[400px]">
-                <SelectItem value="all">كل الأقسام ({ofType.length})</SelectItem>
-                {DIVISIONS.map((d) => (
-                  <SelectItem key={d.code} value={d.code}>
-                    القسم {d.code} - {d.name_ar}
-                    {divisionCounts.get(d.code) ? ` (${divisionCounts.get(d.code)})` : ""}
-                  </SelectItem>
-                ))}
-                {divisionCounts.get("") ? (
-                  <SelectItem value="">بدون قسم ({divisionCounts.get("")})</SelectItem>
-                ) : null}
-              </SelectContent>
-            </Select>
-
-            <div className="relative w-full max-w-xs">
-              <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="ابحث بالاسم أو الكود…"
-                className="h-9 pr-9"
-              />
-            </div>
+          <div className="relative w-full max-w-xs">
+            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="ابحث بالاسم أو الكود…"
+              className="h-9 pr-9"
+            />
           </div>
         </div>
 
