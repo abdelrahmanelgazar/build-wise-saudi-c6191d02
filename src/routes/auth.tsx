@@ -9,16 +9,19 @@ import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Building2, Calculator, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useLanguage } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/ui/language-switcher";
 
 export const Route = createFileRoute("/auth")({
   head: () => ({
-    meta: [{ title: "تسجيل الدخول — تقديري" }],
+    meta: [{ title: "تسجيل الدخول — تقديري | Taqdiri Sign In" }],
   }),
   component: AuthPage,
 });
 
 function AuthPage() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -33,7 +36,7 @@ function AuthPage() {
   async function handleEmail(e: React.FormEvent) {
     e.preventDefault();
     if (!email || !password) {
-      toast.error("يرجى تعبئة البريد الإلكتروني وكلمة المرور");
+      toast.error(t("auth.errorFill", "يرجى تعبئة البريد الإلكتروني وكلمة المرور"));
       return;
     }
     setLoading(true);
@@ -45,7 +48,7 @@ function AuthPage() {
           options: { emailRedirectTo: window.location.origin },
         });
         if (error) throw error;
-        toast.success("تم إنشاء الحساب! يمكنك الآن تسجيل الدخول.");
+        toast.success(t("auth.accountCreated", "تم إنشاء الحساب! يمكنك الآن تسجيل الدخول."));
         // attempt auto sign-in
         await supabase.auth.signInWithPassword({ email, password });
       } else {
@@ -56,7 +59,7 @@ function AuthPage() {
       try { await supabase.rpc("seed_demo_data" as never); } catch { /* idempotent */ }
       navigate({ to: "/boq", replace: true });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "حدث خطأ";
+      const msg = err instanceof Error ? err.message : t("auth.errorOccurred", "حدث خطأ");
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -70,7 +73,7 @@ function AuthPage() {
         redirect_uri: window.location.origin,
       });
       if (result.error) {
-        toast.error(result.error.message || "تعذر تسجيل الدخول بـ Google");
+        toast.error(result.error.message || t("auth.googleError", "تعذر تسجيل الدخول بـ Google"));
         setLoading(false);
         return;
       }
@@ -78,7 +81,7 @@ function AuthPage() {
       try { await supabase.rpc("seed_demo_data" as never); } catch { /* idempotent */ }
       navigate({ to: "/boq", replace: true });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "خطأ غير متوقع";
+      const msg = err instanceof Error ? err.message : t("auth.errorOccurred", "خطأ غير متوقع");
       toast.error(msg);
       setLoading(false);
     }
@@ -86,6 +89,11 @@ function AuthPage() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center bg-background p-6">
+      {/* Language Switcher in top corner */}
+      <div className="absolute top-6 end-6 z-10">
+        <LanguageSwitcher variant="outline" className="shadow-sm border-border/80" />
+      </div>
+
       {/* ambient gradient */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 left-1/2 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-primary/10 blur-[120px]" />
@@ -97,17 +105,17 @@ function AuthPage() {
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/15 ring-1 ring-primary/30">
             <Calculator className="h-7 w-7 text-primary" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">تقديري</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("auth.brandTitle", "تقديري")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            منصة تسعير المقاولات وإدارة المناقصات
+            {t("auth.brandSubtitle", "منصة تسعير المقاولات وإدارة المناقصات")}
           </p>
         </div>
 
         <Card className="border-border/60 p-6">
           <Tabs value={mode} onValueChange={(v) => setMode(v as "signin" | "signup")}>
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">تسجيل الدخول</TabsTrigger>
-              <TabsTrigger value="signup">إنشاء حساب</TabsTrigger>
+              <TabsTrigger value="signin">{t("auth.signInTab", "تسجيل الدخول")}</TabsTrigger>
+              <TabsTrigger value="signup">{t("auth.signUpTab", "إنشاء حساب")}</TabsTrigger>
             </TabsList>
 
             <TabsContent value="signin" className="mt-5">
@@ -119,7 +127,7 @@ function AuthPage() {
                   setPassword={setPassword}
                 />
                 <Button type="submit" disabled={loading} className="w-full">
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "تسجيل الدخول"}
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t("auth.signInButton", "تسجيل الدخول")}
                 </Button>
               </form>
             </TabsContent>
@@ -133,7 +141,7 @@ function AuthPage() {
                   setPassword={setPassword}
                 />
                 <Button type="submit" disabled={loading} className="w-full">
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "إنشاء حساب"}
+                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t("auth.signUpButton", "إنشاء حساب")}
                 </Button>
               </form>
             </TabsContent>
@@ -141,7 +149,7 @@ function AuthPage() {
 
           <div className="my-5 flex items-center gap-3">
             <div className="h-px flex-1 bg-border" />
-            <span className="text-xs text-muted-foreground">أو</span>
+            <span className="text-xs text-muted-foreground">{t("auth.or", "أو")}</span>
             <div className="h-px flex-1 bg-border" />
           </div>
 
@@ -153,13 +161,13 @@ function AuthPage() {
             className="w-full gap-2"
           >
             <GoogleIcon />
-            متابعة باستخدام Google
+            {t("auth.googleSignIn", "متابعة باستخدام Google")}
           </Button>
         </Card>
 
         <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
-          <Building2 className="h-3.5 w-3.5" />
-          مُصمَّم لشركات المقاولات في المملكة العربية السعودية
+          <Building2 className="h-3.5 w-3.5 shrink-0" />
+          {t("auth.footerNote", "مُصمَّم لشركات المقاولات في المملكة العربية السعودية")}
         </p>
       </div>
     </div>
@@ -177,22 +185,24 @@ function FormFields({
   setEmail: (v: string) => void;
   setPassword: (v: string) => void;
 }) {
+  const { t } = useLanguage();
+
   return (
     <>
       <div className="space-y-1.5">
-        <Label htmlFor="email">البريد الإلكتروني</Label>
+        <Label htmlFor="email">{t("auth.emailLabel", "البريد الإلكتروني")}</Label>
         <Input
           id="email"
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder="name@company.com"
+          placeholder={t("auth.emailPlaceholder", "name@company.com")}
           dir="ltr"
           required
         />
       </div>
       <div className="space-y-1.5">
-        <Label htmlFor="password">كلمة المرور</Label>
+        <Label htmlFor="password">{t("auth.passwordLabel", "كلمة المرور")}</Label>
         <Input
           id="password"
           type="password"
@@ -210,7 +220,7 @@ function FormFields({
 
 function GoogleIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24">
+    <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
       <path
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
         fill="#4285F4"

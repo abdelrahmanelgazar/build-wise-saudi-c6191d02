@@ -1,12 +1,13 @@
-// Saudi locale number/currency helpers (Arabic UI but Western digits for tables — clearer for cost work)
+// Saudi locale number/currency helpers
 const nf2 = new Intl.NumberFormat("en-SA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const nf0 = new Intl.NumberFormat("en-SA", { maximumFractionDigits: 0 });
 const nf3 = new Intl.NumberFormat("en-SA", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
 
-export function fmtSAR(value: number | string | null | undefined): string {
+export function fmtSAR(value: number | string | null | undefined, lang: "ar" | "en" = "ar"): string {
   const n = Number(value ?? 0);
-  if (!Number.isFinite(n)) return "0.00 ر.س";
-  return `${nf2.format(n)} ر.س`;
+  const currencySymbol = lang === "en" ? "SAR" : "ر.س";
+  if (!Number.isFinite(n)) return `0.00 ${currencySymbol}`;
+  return `${nf2.format(n)} ${currencySymbol}`;
 }
 
 export function fmtNumber(value: number | string | null | undefined, decimals = 2): string {

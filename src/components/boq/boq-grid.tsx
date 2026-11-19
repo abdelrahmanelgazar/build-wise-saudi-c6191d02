@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { ChevronDown, ChevronLeft, TrendingUp, Trash2, Bold, Italic, AlignLeft, AlignCenter, AlignRight, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, TrendingUp, Trash2, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Globe } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -9,6 +9,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Database } from "@/integrations/supabase/types";
+import { useLanguage } from "@/lib/i18n";
+import { getTextDirection } from "@/lib/text-direction";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 export type TreeNode = BoqRow & { children: TreeNode[]; rolledTotal: number; unitRate: number };
@@ -30,8 +32,6 @@ type FieldKey =
   | "unit_rate"
   | "total";
 
-// `extraHeaders` is the persisted excel_headers value — either the legacy
-// string[] shape or the new {label, field} shape.
 type RawHeader = string | { label: string; field: FieldKey | null };
 
 type Column = {
@@ -40,17 +40,8 @@ type Column = {
   width: number;
   align: "right" | "center" | "left";
   field: FieldKey | null;
-  rawIdx: number | null; // index into raw_row for unmapped/extra columns
+  rawIdx: number | null;
 };
-
-const DEFAULT_BUILTIN: Column[] = [
-  { key: "item_no", label: "رقم البند", width: 100, align: "right", field: "item_no", rawIdx: null },
-  { key: "description_ar", label: "الوصف", width: 360, align: "right", field: "description_ar", rawIdx: null },
-  { key: "unit", label: "الوحدة", width: 70, align: "center", field: "unit", rawIdx: null },
-  { key: "quantity", label: "الكمية", width: 90, align: "center", field: "quantity", rawIdx: null },
-  { key: "unit_rate", label: "سعر الوحدة", width: 130, align: "center", field: "unit_rate", rawIdx: null },
-  { key: "total", label: "الإجمالي", width: 150, align: "center", field: "total", rawIdx: null },
-];
 
 const DEFAULT_FIELD_WIDTHS: Record<FieldKey, number> = {
   item_no: 80,
@@ -85,6 +76,7 @@ export function BoqGrid({
   onDeleteColumn?: (field: string) => void;
 }) {
   const qc = useQueryClient();
+  const { t, language, direction } = useLanguage();
   const storageKey = `boq-grid:${projectId}`;
   const rowHeightsKey = `boq-row-heights:${projectId}`;
 
@@ -105,38 +97,30 @@ export function BoqGrid({
     }
   });
 
-  useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(widths));
-  }, [widths, storageKey]);
-  useEffect(() => {
-    localStorage.setItem(rowHeightsKey, JSON.stringify(rowHeights));
-  }, [rowHeights, rowHeightsKey]);
-
-  // Build columns: from Excel headers when present, otherwise defaults.
   const columns: Column[] = useMemo(() => {
+    const defaultCols: Column[] = [
+      { key: "item_no", label: t("boq.itemNo", "رقم البند"), width: 100, align: "right", field: "item_no", rawIdx: null },
+      { key: "description_ar", label: t("common.description", "التوصيف"), width: 360, align: "right", field: "description_ar", rawIdx: null },
+      { key: "unit", label: t("boq.unitCol", "الوحدة"), width: 70, align: "center", field: "unit", rawIdx: null },
+      { key: "quantity", label: t("boq.quantityCol", "الكمية"), width: 90, align: "center", field: "quantity", rawIdx: null },
+      { key: "unit_rate", label: t("boq.unitRateCol", "سعر الوحدة"), width: 130, align: "center", field: "unit_rate", rawIdx: null },
+      { key: "total", label: t("boq.totalCol", "الإجمالي"), width: 150, align: "center", field: "total", rawIdx: null },
+    ];
+
     let base: Column[];
-    if (extraHeaders.length === 0) {
-      base = DEFAULT_BUILTIN.map((c) => ({ ...c, width: widths[c.key] ?? c.width }));
+    if (!extraHeaders || extraHeaders.length === 0) {
+      base = defaultCols.map((c) => ({ ...c, width: widths[c.key] ?? c.width }));
     } else {
-      base = extraHeaders.map((h, idx): Column => {
-        const isObj = typeof h === "object" && h !== null;
-        const label = isObj ? h.label : String(h ?? "");
-        const field: FieldKey | null = isObj ? h.field : null;
-        const key = field ? field : `extra_${idx}`;
-        const defW = field ? DEFAULT_FIELD_WIDTHS[field] : 130;
-        const align: Column["align"] =
-          field === "description_ar"
-            ? "right"
-            : field === "item_no"
-              ? "right"
-              : field === "unit"
-                ? "center"
-                : field
-                  ? "center"
-                  : "right";
+      base = extraHeaders.map((h, idx) => {
+        const rawLabel = typeof h === "string" ? h : h.label;
+        const field = typeof h === "string" ? null : h.field;
+        const key = field ?? `col_${idx}`;
+        const defW = field ? DEFAULT_FIELD_WIDTHS[field] ?? 100 : 120;
+        const align: "right" | "center" | "left" =
+          field === "quantity" || field === "unit" ? "center" : "right";
         return {
           key,
-          label: label || `عمود ${idx + 1}`,
+          label: rawLabel,
           width: widths[key] ?? defW,
           align,
           field,
@@ -146,9 +130,9 @@ export function BoqGrid({
     }
     return [
       ...base,
-      { key: "__actions", label: "إجراءات", width: widths["__actions"] ?? 70, align: "center", field: null, rawIdx: null },
+      { key: "__actions", label: t("common.actions", "إجراءات"), width: widths["__actions"] ?? 70, align: "center", field: null, rawIdx: null },
     ];
-  }, [widths, extraHeaders]);
+  }, [widths, extraHeaders, t]);
 
   const resizingRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
   const onResizeStart = (key: string, startW: number) => (e: React.MouseEvent) => {
@@ -156,7 +140,7 @@ export function BoqGrid({
     resizingRef.current = { key, startX: e.clientX, startW };
     const move = (ev: MouseEvent) => {
       if (!resizingRef.current) return;
-      const dx = resizingRef.current.startX - ev.clientX;
+      const dx = (resizingRef.current.startX - ev.clientX) * (direction === "rtl" ? 1 : -1);
       const next = Math.max(40, resizingRef.current.startW + dx);
       setWidths((w) => ({ ...w, [resizingRef.current!.key]: next }));
     };
@@ -220,8 +204,8 @@ export function BoqGrid({
               {c.key !== "__actions" && (
                 <span
                   onMouseDown={onResizeStart(c.key, c.width)}
-                  className="absolute inset-y-0 left-0 w-1.5 cursor-col-resize hover:bg-primary/40"
-                  title="اسحب لتغيير عرض العمود"
+                  className="absolute inset-y-0 start-0 w-1.5 cursor-col-resize hover:bg-primary/40"
+                  title={t("boq.resizeCol", "اسحب لتغيير عرض العمود")}
                 />
               )}
             </div>
@@ -231,7 +215,7 @@ export function BoqGrid({
         {/* Body */}
         {flatRows.length === 0 && (
           <div className="px-4 py-16 text-center text-muted-foreground">
-            لا توجد بنود بعد. ابدأ بإضافة مجموعة ثم بنود تحتها، أو استورد ملف Excel.
+            {t("boq.emptyState", "لا توجد بنود بعد. ابدأ بإضافة مجموعة ثم بنود تحتها، أو استورد ملف Excel.")}
           </div>
         )}
         {flatRows.map(({ node, depth }) => {
@@ -282,13 +266,15 @@ export function BoqGrid({
                     onToggle={onToggle}
                     onDelete={onDelete}
                     onPatch={(patch) => updateMut.mutate({ id: node.id, patch })}
+                    language={language}
+                    direction={direction}
                   />
                 );
               })}
               <div
                 onMouseDown={onRowResizeStart(node.id, customH ?? 32)}
                 className="absolute inset-x-0 bottom-0 z-10 h-1 cursor-row-resize opacity-0 hover:bg-primary/50 group-hover:opacity-100"
-                title="اسحب لتغيير ارتفاع الصف"
+                title={t("boq.resizeRow", "اسحب لتغيير ارتفاع الصف")}
               />
             </div>
           );
@@ -306,7 +292,7 @@ export function BoqGrid({
                   c.align === "right" && "justify-end text-right",
                 )}
               >
-                {c.key === "description_ar" && "الإجمالي الكلي"}
+                {c.key === "description_ar" && t("common.grandTotal", "الإجمالي الكلي")}
                 {c.key === "total" && grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
             ))}
@@ -329,6 +315,8 @@ function CellRenderer({
   onToggle,
   onDelete,
   onPatch,
+  language,
+  direction,
 }: {
   col: Column;
   node: TreeNode;
@@ -341,6 +329,8 @@ function CellRenderer({
   onToggle: (id: string) => void;
   onDelete: (n: TreeNode) => void;
   onPatch: (patch: Partial<BoqRow>) => void;
+  language: "ar" | "en";
+  direction: "rtl" | "ltr";
 }) {
   if (col.key === "__actions") {
     return (
@@ -365,11 +355,19 @@ function CellRenderer({
           style={styleAttr}
           value={node.item_no}
           onSave={(v) => onPatch({ item_no: v })}
+          fixedLtr
         >
           <span className="font-mono text-[11px] text-muted-foreground">{node.item_no}</span>
         </EditableCell>
       );
-    case "description_ar":
+    case "description_ar": {
+      // Respect user's selected language:
+      // In English mode, display description_en if present; fallback to description_ar with visual note
+      const isEn = language === "en";
+      const hasEn = Boolean(node.description_en?.trim());
+      const displayDesc = isEn ? (hasEn ? node.description_en! : node.description_ar) : node.description_ar;
+      const isFallback = isEn && !hasEn;
+
       return (
         <div className={baseClass} style={styleAttr}>
           <div
@@ -381,7 +379,13 @@ function CellRenderer({
                 onClick={() => onToggle(node.id)}
                 className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
               >
-                {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+                {isOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : direction === "rtl" ? (
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
               </button>
             ) : (
               <span className="inline-block w-5 shrink-0" />
@@ -389,10 +393,26 @@ function CellRenderer({
             <EditableCell
               className="flex-1 min-w-0"
               style={{}}
-              value={node.description_ar}
-              onSave={(v) => onPatch({ description_ar: v })}
+              value={displayDesc}
+              onSave={(v) => {
+                if (isEn) {
+                  onPatch({ description_en: v });
+                } else {
+                  onPatch({ description_ar: v });
+                }
+              }}
             >
-              <span className="block w-full whitespace-pre-wrap break-words">{node.description_ar}</span>
+              <div className="flex items-center gap-1.5 w-full">
+                <span className="block w-full whitespace-pre-wrap break-words">{displayDesc}</span>
+                {isFallback && (
+                  <span
+                    className="shrink-0 rounded bg-amber-500/10 px-1 py-0.5 text-[9px] text-amber-500"
+                    title="هذا البند معروض بالعربية لعدم توفر ترجمة إنجليزية له"
+                  >
+                    AR
+                  </span>
+                )}
+              </div>
             </EditableCell>
             <FormatPopover
               styles={styles}
@@ -402,6 +422,7 @@ function CellRenderer({
           </div>
         </div>
       );
+    }
     case "unit":
       return (
         <EditableCell
@@ -420,6 +441,7 @@ function CellRenderer({
           style={styleAttr}
           value={String(node.quantity ?? "")}
           onSave={(v) => onPatch({ quantity: Number(v) || 0 })}
+          fixedLtr
         >
           <span>{node.is_group ? "—" : fmtNumber(node.quantity, 2)}</span>
         </EditableCell>
@@ -434,7 +456,7 @@ function CellRenderer({
               to="/price-analysis"
               search={{ item: node.id }}
               className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
-              title="افتح تحليل الأسعار لهذا البند"
+              title="تحليل أسعار البند"
             >
               {fmtNumber(node.unitRate, 2)}
               <TrendingUp className="h-3 w-3 opacity-60" />
@@ -452,7 +474,6 @@ function CellRenderer({
     case "labor_cost":
     case "equipment_cost":
     case "subcontractor_cost": {
-      // Cost columns from Excel: display read-only; real edits happen in price analysis
       const v = Number((node[col.field] as number | null) ?? 0);
       return (
         <div className={baseClass} style={styleAttr}>
@@ -461,7 +482,6 @@ function CellRenderer({
       );
     }
     default: {
-      // Unmapped Excel column → render raw value exactly as in the file
       const v = col.rawIdx !== null ? raw?.[col.rawIdx] : "";
       return (
         <div className={baseClass} style={styleAttr}>
@@ -480,22 +500,28 @@ function EditableCell({
   children,
   className,
   style,
+  fixedLtr = false,
 }: {
   value: string;
   onSave: (v: string) => void;
   children: React.ReactNode;
   className?: string;
   style?: React.CSSProperties;
+  fixedLtr?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
+  const { direction: appDir } = useLanguage();
   useEffect(() => setDraft(value), [value]);
+
+  const cellDir = fixedLtr ? "ltr" : getTextDirection(draft, appDir) ?? appDir;
 
   if (editing) {
     return (
       <div className={className} style={style}>
         <textarea
           autoFocus
+          dir={cellDir}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => {
@@ -513,7 +539,10 @@ function EditableCell({
             }
           }}
           className="h-full w-full resize-none bg-background px-1 text-xs outline-none ring-1 ring-primary"
-          style={{ direction: "inherit", textAlign: "inherit" }}
+          style={{
+            direction: cellDir,
+            textAlign: cellDir === "rtl" ? "right" : "left",
+          }}
         />
       </div>
     );
@@ -521,9 +550,13 @@ function EditableCell({
   return (
     <div
       className={cn(className, "cursor-text")}
-      style={style}
+      style={{
+        ...style,
+        direction: cellDir,
+        textAlign: cellDir === "rtl" ? "right" : cellDir === "ltr" ? "left" : undefined,
+      }}
       onDoubleClick={() => setEditing(true)}
-      title="انقر مرّتين للتحرير"
+      title="انقر مرّتين للتحرير | Double-click to edit"
     >
       {children}
     </div>
@@ -555,7 +588,7 @@ function FormatPopover({
           <Bold className="mx-auto h-3 w-3" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-1.5" align="end" dir="rtl">
+      <PopoverContent className="w-auto p-1.5" align="end">
         <div className="flex items-center gap-0.5">
           <button
             className={cn("rounded p-1 hover:bg-muted", cur.bold && "bg-muted")}

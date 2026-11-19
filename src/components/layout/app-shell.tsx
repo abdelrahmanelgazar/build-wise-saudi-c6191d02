@@ -26,30 +26,34 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useActiveProjectId, setActiveProjectId } from "@/lib/active-project";
+import { useLanguage } from "@/lib/i18n";
+import { LanguageSwitcher } from "@/components/ui/language-switcher";
 
-type NavItem = {
+type NavItemConfig = {
   to: string;
-  label: string;
+  translationKey: string;
+  defaultLabel: string;
   icon: typeof LayoutDashboard;
   enabled: boolean;
 };
 
-const NAV: NavItem[] = [
-  { to: "/dashboard", label: "لوحة التحكم", icon: LayoutDashboard, enabled: true },
-  { to: "/projects", label: "المشاريع", icon: FileText, enabled: true },
-  { to: "/boq", label: "جدول الكميات", icon: Calculator, enabled: true },
-  { to: "/price-analysis", label: "تحليل الأسعار", icon: TrendingUp, enabled: true },
-  { to: "/resources", label: "مكتبة البيانات", icon: Database, enabled: true },
-  { to: "/financial", label: "المراجعة المالية", icon: ShieldCheck, enabled: false },
-  { to: "/reports", label: "التقارير", icon: BarChart3, enabled: true },
-  { to: "/ai-assistant", label: "مساعد الذكاء الاصطناعي", icon: Sparkles, enabled: false },
-  { to: "/settings", label: "الإعدادات والصلاحيات", icon: Settings, enabled: false },
+const NAV_ITEMS: NavItemConfig[] = [
+  { to: "/dashboard", translationKey: "nav.dashboard", defaultLabel: "لوحة التحكم", icon: LayoutDashboard, enabled: true },
+  { to: "/projects", translationKey: "nav.projects", defaultLabel: "المشاريع", icon: FileText, enabled: true },
+  { to: "/boq", translationKey: "nav.boq", defaultLabel: "جدول الكميات", icon: Calculator, enabled: true },
+  { to: "/price-analysis", translationKey: "nav.priceAnalysis", defaultLabel: "تحليل الأسعار", icon: TrendingUp, enabled: true },
+  { to: "/resources", translationKey: "nav.resources", defaultLabel: "مكتبة البيانات", icon: Database, enabled: true },
+  { to: "/financial", translationKey: "nav.financial", defaultLabel: "المراجعة المالية", icon: ShieldCheck, enabled: false },
+  { to: "/reports", translationKey: "nav.reports", defaultLabel: "التقارير", icon: BarChart3, enabled: true },
+  { to: "/ai-assistant", translationKey: "nav.aiAssistant", defaultLabel: "مساعد الذكاء الاصطناعي", icon: Sparkles, enabled: false },
+  { to: "/settings", translationKey: "nav.settings", defaultLabel: "الإعدادات والصلاحيات", icon: Settings, enabled: false },
 ];
 
 function ProjectSwitcher() {
   const [open, setOpen] = useState(false);
   const activeId = useActiveProjectId();
   const qc = useQueryClient();
+  const { t } = useLanguage();
   const { data: projects = [] } = useQuery({
     queryKey: ["project-switcher-projects"],
     queryFn: async () => {
@@ -74,11 +78,11 @@ function ProjectSwitcher() {
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          className="h-9 w-full justify-between gap-2 px-3 text-right"
+          className="h-9 w-full justify-between gap-2 px-3 text-start"
         >
           <FolderKanban className="h-3.5 w-3.5 text-primary shrink-0" />
           <span className="flex-1 truncate text-xs font-medium">
-            {active?.name ?? (projects.length === 0 ? "أنشئ مشروعاً" : "اختر مشروعاً")}
+            {active?.name ?? (projects.length === 0 ? t("nav.newProject", "أنشئ مشروعاً") : t("nav.selectProject", "اختر مشروعاً للبدء"))}
           </span>
           <ChevronsUpDown className="h-3 w-3 text-muted-foreground shrink-0" />
         </Button>
@@ -87,7 +91,7 @@ function ProjectSwitcher() {
         <div className="max-h-72 overflow-auto">
           {projects.length === 0 && (
             <div className="p-3 text-center text-xs text-muted-foreground">
-              لا توجد مشاريع بعد
+              {t("projects.empty", "لا توجد مشاريع بعد")}
             </div>
           )}
           {projects.map((p) => (
@@ -99,7 +103,7 @@ function ProjectSwitcher() {
                 setOpen(false);
               }}
               className={cn(
-                "flex w-full items-start justify-between gap-2 rounded-md px-2.5 py-2 text-right text-xs hover:bg-accent",
+                "flex w-full items-start justify-between gap-2 rounded-md px-2.5 py-2 text-start text-xs hover:bg-accent",
                 p.id === activeId && "bg-primary/10 text-primary",
               )}
             >
@@ -119,7 +123,7 @@ function ProjectSwitcher() {
             onClick={() => setOpen(false)}
             className="block rounded-md px-2.5 py-2 text-center text-xs text-primary hover:bg-accent"
           >
-            إدارة كل المشاريع ←
+            {t("nav.manageAllProjects", "إدارة كل المشاريع ←")}
           </Link>
         </div>
       </PopoverContent>
@@ -132,6 +136,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [email, setEmail] = useState<string>("");
+  const { t, direction } = useLanguage();
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ""));
@@ -146,15 +151,20 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen w-full bg-background text-foreground">
-      {/* Sidebar (right side for RTL) */}
-      <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-l border-sidebar-border bg-sidebar">
+      {/* Sidebar (adapts side automatically via flex and border) */}
+      <aside
+        className={cn(
+          "sticky top-0 flex h-screen w-64 shrink-0 flex-col bg-sidebar",
+          direction === "rtl" ? "border-l border-sidebar-border" : "border-r border-sidebar-border"
+        )}
+      >
         <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border px-4">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/15 ring-1 ring-primary/30">
             <Calculator className="h-4 w-4 text-primary" />
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-bold text-sidebar-foreground">تقديري</div>
-            <div className="text-[10px] text-muted-foreground">منصة التسعير الاحترافية</div>
+            <div className="text-sm font-bold text-sidebar-foreground">{t("nav.brand", "تقديري")}</div>
+            <div className="text-[10px] text-muted-foreground">{t("nav.subtitle", "منصة التسعير الاحترافية")}</div>
           </div>
         </div>
 
@@ -164,9 +174,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <nav className="flex-1 overflow-y-auto p-2">
           <ul className="space-y-0.5">
-            {NAV.map((item) => {
+            {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const active = pathname.startsWith(item.to);
+              const label = t(item.translationKey, item.defaultLabel);
               return (
                 <li key={item.to}>
                   <Link
@@ -174,7 +185,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     onClick={(e) => {
                       if (!item.enabled) {
                         e.preventDefault();
-                        toast.info(`${item.label} — قيد التطوير في المرحلة التالية`);
+                        toast.info(`${label} — ${t("common.underDevelopment", "قيد التطوير في المرحلة التالية")}`);
                       }
                     }}
                     className={cn(
@@ -187,14 +198,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                   >
                     <div className="flex items-center gap-2.5">
                       <Icon className="h-4 w-4 shrink-0" />
-                      <span>{item.label}</span>
+                      <span>{label}</span>
                     </div>
                     {!item.enabled && (
                       <Badge
                         variant="outline"
                         className="h-5 border-border/60 px-1.5 text-[9px] font-normal text-muted-foreground"
                       >
-                        قريباً
+                        {t("nav.comingSoonBadge", "قريباً")}
                       </Badge>
                     )}
                   </Link>
@@ -211,9 +222,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div className="min-w-0 flex-1 leading-tight">
               <div className="truncate text-xs font-medium text-sidebar-foreground">
-                {email || "مستخدم"}
+                {email || t("common.user", "مستخدم")}
               </div>
-              <div className="text-[10px] text-muted-foreground">مدير التسعير</div>
+              <div className="text-[10px] text-muted-foreground">{t("common.pricingManager", "مدير التسعير")}</div>
             </div>
           </div>
           <Button
@@ -223,19 +234,24 @@ export function AppShell({ children }: { children: ReactNode }) {
             className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
           >
             <LogOut className="h-4 w-4" />
-            تسجيل الخروج
+            {t("nav.signOut", "تسجيل الخروج")}
           </Button>
         </div>
       </aside>
 
       {/* Main area */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-6 backdrop-blur">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-background/80 px-6 backdrop-blur">
           <div className="relative flex-1 max-w-md">
-            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search
+              className={cn(
+                "pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground",
+                direction === "rtl" ? "right-3" : "left-3"
+              )}
+            />
             <Input
-              placeholder="ابحث في البنود، الموارد، المناقصات…"
-              className="h-9 pr-9 text-sm"
+              placeholder={t("nav.searchPlaceholder", "ابحث في البنود، الموارد، المناقصات…")}
+              className={cn("h-9 text-sm", direction === "rtl" ? "pr-9" : "pl-9")}
             />
           </div>
           <div className="flex items-center gap-2">
@@ -244,12 +260,13 @@ export function AppShell({ children }: { children: ReactNode }) {
               className="hidden h-7 gap-1.5 border-primary/30 bg-primary/10 text-primary md:flex"
             >
               <Sparkles className="h-3 w-3" />
-              مساعد الذكاء الاصطناعي
+              {t("nav.aiAssistant", "مساعد الذكاء الاصطناعي")}
             </Badge>
             <Badge variant="outline" className="h-7 gap-1.5 border-border/60">
               <Building2 className="h-3 w-3" />
-              السوق السعودي
+              {t("nav.saudiMarket", "السوق السعودي")}
             </Badge>
+            <LanguageSwitcher />
           </div>
         </header>
 
