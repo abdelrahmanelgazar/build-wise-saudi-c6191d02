@@ -25,7 +25,9 @@
         var ampIndex = path.indexOf('&');
         var route = '/' + (ampIndex >= 0 ? path.slice(0, ampIndex) : path);
         var qs = ampIndex >= 0 ? '?' + path.slice(ampIndex + 1) : '';
-        history.replaceState(null, null, '/build-wise-saudi' + route + qs + hash);
+        var parts = location.pathname.split('/').filter(Boolean);
+        var repo = parts.length > 0 ? '/' + parts[0] : '';
+        history.replaceState(null, null, repo + route + qs + hash);
       }
     })();
   </script>
