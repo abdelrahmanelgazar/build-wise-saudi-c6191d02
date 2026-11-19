@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  ArrowLeft,
   ArrowRight,
   Calculator,
   Database as DatabaseIcon,
@@ -29,26 +30,13 @@ import {
 import { fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
 import { setActiveProjectId } from "@/lib/active-project";
+import { useLanguage } from "@/lib/i18n";
+import { STATUS_CONFIGS, ALL_STATUSES, type ProjectStatus } from "@/lib/status";
 import type { Database } from "@/integrations/supabase/types";
 
 type Project = Database["public"]["Tables"]["projects"]["Row"];
 type Status = Database["public"]["Enums"]["project_status"];
 type ProjectFile = Database["public"]["Tables"]["project_files"]["Row"];
-
-const STATUS_META: Record<Status, { label: string; cls: string }> = {
-  studying: { label: "قيد الدراسة", cls: "bg-muted/60 text-muted-foreground border-border/60" },
-  submitted_to_medial_man: { label: "مُرسل للوسيط (GM)", cls: "bg-amber-500/15 text-amber-500 border-amber-500/30" },
-  submitted_to_client: { label: "مُرسل للعميل", cls: "bg-primary/15 text-primary border-primary/30" },
-  waiting_for_reply: { label: "بانتظار الرد", cls: "bg-yellow-500/15 text-yellow-600 border-yellow-500/30" },
-  inquiries_sent: { label: "استفسارات للعميل", cls: "bg-cyan-500/15 text-cyan-500 border-cyan-500/30" },
-  answers_received: { label: "ردود مستلمة - دراسة", cls: "bg-indigo-500/15 text-indigo-500 border-indigo-500/30" },
-  on_hold: { label: "مُعلّق", cls: "bg-orange-500/15 text-orange-500 border-orange-500/30" },
-  client_rejected: { label: "رفض العميل", cls: "bg-red-500/15 text-red-500 border-red-500/30" },
-  construction_ongoing: { label: "تنفيذ جاري", cls: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30" },
-  construction_complete: { label: "تنفيذ مكتمل", cls: "bg-teal-500/15 text-teal-500 border-teal-500/30" },
-  finished: { label: "منتهي", cls: "bg-blue-500/15 text-blue-500 border-blue-500/30" },
-  closed: { label: "مغلق", cls: "bg-muted/60 text-muted-foreground border-border/60" },
-};
 
 export const Route = createFileRoute("/_authenticated/projects/$projectId")({
   component: ProjectDetail,
@@ -57,6 +45,7 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
 function ProjectDetail() {
   const { projectId } = Route.useParams();
   const navigate = useNavigate();
+  const { t, language, direction } = useLanguage();
 
   useEffect(() => {
     setActiveProjectId(projectId);
@@ -98,19 +87,24 @@ function ProjectDetail() {
   });
 
   if (isLoading) {
-    return <div className="p-6 text-muted-foreground">جاري التحميل…</div>;
+    return <div className="p-6 text-muted-foreground">{t("common.loading")}</div>;
   }
 
   if (!project) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">المشروع غير موجود.</p>
+        <p className="text-muted-foreground">{t("projects.notFound")}</p>
         <Button variant="link" onClick={() => navigate({ to: "/projects" })}>
-          العودة للمشاريع
+          {t("projects.backToProjects")}
         </Button>
       </div>
     );
   }
+
+  const BackArrow = direction === "rtl" ? ArrowRight : ArrowLeft;
+  const cfg = STATUS_CONFIGS[project.status as ProjectStatus];
+  const statusLabel = cfg ? t(cfg.translationKey) : project.status;
+  const badgeCls = cfg ? cfg.badgeClass : "bg-muted/60 text-muted-foreground border-border/60";
 
   return (
     <div className="p-6">
@@ -118,14 +112,14 @@ function ProjectDetail() {
         <div className="flex items-center gap-3">
           <Link to="/projects">
             <Button variant="ghost" size="icon" className="h-8 w-8">
-              <ArrowRight className="h-4 w-4" />
+              <BackArrow className="h-4 w-4" />
             </Button>
           </Link>
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold">{project.name}</h1>
-              <Badge variant="outline" className={STATUS_META[project.status].cls}>
-                {STATUS_META[project.status].label}
+              <Badge variant="outline" className={badgeCls}>
+                {statusLabel}
               </Badge>
             </div>
             <div className="mt-1 text-sm text-muted-foreground">
@@ -137,24 +131,24 @@ function ProjectDetail() {
 
       <Tabs defaultValue="overview" className="mt-6">
         <TabsList>
-          <TabsTrigger value="overview">نظرة عامة</TabsTrigger>
-          <TabsTrigger value="info">البيانات الأساسية</TabsTrigger>
-          <TabsTrigger value="requirements">المتطلبات</TabsTrigger>
-          <TabsTrigger value="files">الملفات</TabsTrigger>
+          <TabsTrigger value="overview">{t("projects.tabOverview")}</TabsTrigger>
+          <TabsTrigger value="info">{t("projects.tabInfo")}</TabsTrigger>
+          <TabsTrigger value="requirements">{t("projects.tabRequirements")}</TabsTrigger>
+          <TabsTrigger value="files">{t("projects.tabFiles")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-4">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="القيمة التقديرية" value={fmtSAR(Number(project.estimated_value ?? 0))} />
-            <StatCard label="الميزانية" value={fmtSAR(Number(project.budget ?? 0))} />
-            <StatCard label="إجمالي تكلفة الكميات" value={fmtSAR(stats?.boqTotal ?? 0)} hl />
-            <StatCard label="بنود الكميات" value={String(stats?.boqCount ?? 0)} sub={`${stats?.resourcesCount ?? 0} مورد`} />
+            <StatCard label={t("projects.statEstimatedValue")} value={fmtSAR(Number(project.estimated_value ?? 0), language)} />
+            <StatCard label={t("projects.statBudget")} value={fmtSAR(Number(project.budget ?? 0), language)} />
+            <StatCard label={t("projects.statBoqTotal")} value={fmtSAR(stats?.boqTotal ?? 0, language)} hl />
+            <StatCard label={t("projects.statBoqItems")} value={String(stats?.boqCount ?? 0)} sub={`${stats?.resourcesCount ?? 0} ${t("projects.resourceCountSub")}`} />
           </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            <QuickLink to="/boq" icon={Calculator} title="جدول الكميات" desc="بنود الـ BOQ الخاصة بالمشروع" />
-            <QuickLink to="/price-analysis" icon={TrendingUp} title="تحليل الأسعار" desc="موارد وتكاليف كل بند" />
-            <QuickLink to="/resources" icon={DatabaseIcon} title="مكتبة البيانات" desc="مواد وعمالة ومعدات" />
+            <QuickLink to="/boq" icon={Calculator} title={t("nav.boq")} desc={t("projects.linkBoqDesc")} />
+            <QuickLink to="/price-analysis" icon={TrendingUp} title={t("nav.priceAnalysis")} desc={t("projects.linkPaDesc")} />
+            <QuickLink to="/resources" icon={DatabaseIcon} title={t("nav.resources")} desc={t("projects.linkResDesc")} />
           </div>
         </TabsContent>
 
@@ -206,6 +200,7 @@ function QuickLink({
 
 function ProjectInfoForm({ project }: { project: Project }) {
   const qc = useQueryClient();
+  const { t } = useLanguage();
   const [form, setForm] = useState({
     project_no: project.project_no != null ? String(project.project_no) : "",
     code: project.code ?? "",
@@ -255,7 +250,7 @@ function ProjectInfoForm({ project }: { project: Project }) {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("تم الحفظ");
+      toast.success(t("common.saved"));
       qc.invalidateQueries({ queryKey: ["project", project.id] });
       qc.invalidateQueries({ queryKey: ["projects"] });
     },
@@ -265,76 +260,76 @@ function ProjectInfoForm({ project }: { project: Project }) {
   return (
     <div className="rounded-lg border border-border bg-card p-5">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="رقم المشروع">
+        <Field label={t("projects.colNo")}>
           <Input type="number" value={form.project_no} onChange={(e) => setForm({ ...form, project_no: e.target.value })} />
         </Field>
-        <Field label="الكود">
+        <Field label={t("projects.colCode")}>
           <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
         </Field>
-        <Field label="اسم المشروع">
+        <Field label={t("projects.colName")}>
           <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         </Field>
-        <Field label="الحالة">
+        <Field label={t("projects.colStatus")}>
           <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as Status })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              {(Object.keys(STATUS_META) as Status[]).map((s) => (
-                <SelectItem key={s} value={s}>{STATUS_META[s].label}</SelectItem>
+              {ALL_STATUSES.map((s) => (
+                <SelectItem key={s} value={s}>{t(STATUS_CONFIGS[s].translationKey)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
         </Field>
-        <Field label="العميل">
+        <Field label={t("projects.colClient")}>
           <Input value={form.client_name} onChange={(e) => setForm({ ...form, client_name: e.target.value })} />
         </Field>
-        <Field label="الموقع">
+        <Field label={t("projects.colLocation")}>
           <Input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
         </Field>
-        <Field label="المنطقة">
+        <Field label={t("projects.colArea")}>
           <Input value={form.area} onChange={(e) => setForm({ ...form, area: e.target.value })} />
         </Field>
-        <Field label="نوع العقد">
+        <Field label={t("projects.contractTypeLabel")}>
           <Input value={form.contract_type} onChange={(e) => setForm({ ...form, contract_type: e.target.value })} />
         </Field>
-        <Field label="القيمة التقديرية (ر.س)">
+        <Field label={t("projects.colValue")}>
           <Input type="number" value={form.estimated_value} onChange={(e) => setForm({ ...form, estimated_value: e.target.value })} />
         </Field>
-        <Field label="الميزانية (ر.س)">
+        <Field label={t("projects.statBudget")}>
           <Input type="number" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} />
         </Field>
-        <Field label="تاريخ استلام المناقصة">
+        <Field label={t("projects.tenderReceivedDate")}>
           <Input type="date" value={form.tender_entry_date} onChange={(e) => setForm({ ...form, tender_entry_date: e.target.value })} />
         </Field>
-        <Field label="تاريخ آخر تقديم">
+        <Field label={t("projects.colLastSubmit")}>
           <Input type="date" value={form.last_submit_date} onChange={(e) => setForm({ ...form, last_submit_date: e.target.value })} />
         </Field>
-        <Field label="تاريخ آخر استفسار (RFI)">
+        <Field label={t("projects.colLastRfi")}>
           <Input type="date" value={form.last_rfi_date} onChange={(e) => setForm({ ...form, last_rfi_date: e.target.value })} />
         </Field>
-        <Field label="تاريخ التسليم">
+        <Field label={t("projects.submissionDate")}>
           <Input type="date" value={form.submission_date} onChange={(e) => setForm({ ...form, submission_date: e.target.value })} />
         </Field>
-        <Field label="مدة المشروع">
-          <Input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="مثال: 12 شهر" />
+        <Field label={t("projects.colDuration")}>
+          <Input value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} />
         </Field>
       </div>
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <Field label="نطاق العمل">
+        <Field label={t("projects.colScope")}>
           <Textarea rows={3} value={form.scope_of_work} onChange={(e) => setForm({ ...form, scope_of_work: e.target.value })} />
         </Field>
-        <Field label="ملاحظة (Note)">
+        <Field label={t("projects.colNotes")}>
           <Textarea rows={3} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
         </Field>
       </div>
       <div className="mt-4">
-        <Field label="ملاحظات إضافية">
+        <Field label={t("projects.additionalNotes")}>
           <Textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
         </Field>
       </div>
       <div className="mt-5 flex justify-end">
         <Button onClick={() => mut.mutate()} disabled={mut.isPending} className="gap-2">
           <Save className="h-4 w-4" />
-          {mut.isPending ? "جاري الحفظ…" : "حفظ التغييرات"}
+          {mut.isPending ? t("common.saving") : t("projects.saveChanges")}
         </Button>
       </div>
     </div>
@@ -343,6 +338,7 @@ function ProjectInfoForm({ project }: { project: Project }) {
 
 function RequirementsForm({ project }: { project: Project }) {
   const qc = useQueryClient();
+  const { t } = useLanguage();
   const [tech, setTech] = useState(project.technical_requirements ?? "");
   const [fin, setFin] = useState(project.financial_requirements ?? "");
 
@@ -355,7 +351,7 @@ function RequirementsForm({ project }: { project: Project }) {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("تم الحفظ");
+      toast.success(t("common.saved"));
       qc.invalidateQueries({ queryKey: ["project", project.id] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -364,36 +360,36 @@ function RequirementsForm({ project }: { project: Project }) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="rounded-lg border border-border bg-card p-5">
-        <h3 className="mb-3 font-semibold">متطلبات العرض الفني</h3>
+        <h3 className="mb-3 font-semibold">{t("projects.techRequirements")}</h3>
         <Textarea
           rows={12}
           value={tech}
           onChange={(e) => setTech(e.target.value)}
-          placeholder="اكتب متطلبات العرض الفني للمشروع (المواصفات، المعايير، الجودة، الجدول الزمني المطلوب…)"
+          placeholder={t("projects.techRequirementsPlaceholder")}
         />
       </div>
       <div className="rounded-lg border border-border bg-card p-5">
-        <h3 className="mb-3 font-semibold">متطلبات العرض المالي</h3>
+        <h3 className="mb-3 font-semibold">{t("projects.finRequirements")}</h3>
         <Textarea
           rows={12}
           value={fin}
           onChange={(e) => setFin(e.target.value)}
-          placeholder="اكتب متطلبات العرض المالي (شروط الدفع، الضمانات، نسبة الدفعة المقدمة، الغرامات…)"
+          placeholder={t("projects.finRequirementsPlaceholder")}
         />
       </div>
       <div className="lg:col-span-2 flex justify-end">
         <Button onClick={() => mut.mutate()} disabled={mut.isPending} className="gap-2">
           <Save className="h-4 w-4" />
-          {mut.isPending ? "جاري الحفظ…" : "حفظ المتطلبات"}
+          {mut.isPending ? t("common.saving") : t("projects.saveRequirements")}
         </Button>
       </div>
     </div>
   );
 }
 
-
 function ProjectFiles({ projectId, userId }: { projectId: string; userId: string }) {
   const qc = useQueryClient();
+  const { t } = useLanguage();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -425,7 +421,7 @@ function ProjectFiles({ projectId, userId }: { projectId: string; userId: string
         file_type: file.type,
       });
       if (insErr) throw insErr;
-      toast.success("تم رفع الملف");
+      toast.success(t("projects.fileUploaded"));
       qc.invalidateQueries({ queryKey: ["project_files", projectId] });
     } catch (e) {
       toast.error((e as Error).message);
@@ -445,64 +441,66 @@ function ProjectFiles({ projectId, userId }: { projectId: string; userId: string
   }
 
   async function handleDelete(f: ProjectFile) {
-    if (!confirm(`حذف الملف "${f.file_name}"؟`)) return;
+    if (!confirm(`${t("projects.deleteFileConfirm")} ("${f.file_name}")`)) return;
     await supabase.storage.from("project-files").remove([f.file_path]);
     await supabase.from("project_files").delete().eq("id", f.id);
-    toast.success("تم الحذف");
+    toast.success(t("projects.fileDeleted"));
     qc.invalidateQueries({ queryKey: ["project_files", projectId] });
   }
 
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="font-semibold">ملفات المشروع</h3>
-          <p className="mt-1 text-xs text-muted-foreground">ارفع كراسة الشروط، المخططات، العروض، وأي ملفات مرفقة.</p>
+          <h2 className="text-lg font-semibold">{t("projects.tabFiles")}</h2>
         </div>
-        <Button
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          className="gap-2"
-        >
-          <Upload className="h-4 w-4" />
-          {uploading ? "جاري الرفع…" : "رفع ملف"}
-        </Button>
-        <input
-          ref={fileRef}
-          type="file"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleUpload(f);
-          }}
-        />
+        <div>
+          <input
+            ref={fileRef}
+            type="file"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleUpload(file);
+            }}
+          />
+          <Button onClick={() => fileRef.current?.click()} disabled={uploading} className="gap-2">
+            <Upload className="h-4 w-4" />
+            {uploading ? t("projects.uploading") : t("projects.uploadFile")}
+          </Button>
+        </div>
       </div>
 
-      <div className="mt-4 divide-y divide-border">
-        {files.length === 0 && (
-          <div className="py-8 text-center text-sm text-muted-foreground">لا توجد ملفات مرفوعة بعد.</div>
-        )}
-        {files.map((f) => (
-          <div key={f.id} className="flex items-center justify-between gap-3 py-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-              <div className="min-w-0">
-                <div className="truncate text-sm font-medium">{f.file_name}</div>
-                <div className="text-[11px] text-muted-foreground">
-                  {f.file_size ? `${(f.file_size / 1024).toFixed(1)} KB` : ""} · {new Date(f.created_at).toLocaleDateString("ar-SA")}
+      <div className="mt-4">
+        {files.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">
+            {t("projects.noFiles")}
+          </div>
+        ) : (
+          <div className="divide-y divide-border">
+            {files.map((f) => (
+              <div key={f.id} className="flex items-center justify-between py-3">
+                <div className="flex items-center gap-3">
+                  <FileText className="h-5 w-5 text-muted-foreground" />
+                  <div>
+                    <div className="text-sm font-medium">{f.file_name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {f.file_size ? `${(f.file_size / 1024).toFixed(0)} KB` : ""}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button size="icon" variant="ghost" onClick={() => handleDownload(f)}>
+                    <Download className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon" variant="ghost" onClick={() => handleDelete(f)} className="hover:text-red-500">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => handleDownload(f)}>
-                <Download className="h-4 w-4" />
-              </Button>
-              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-red-500" onClick={() => handleDelete(f)}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
+            ))}
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
@@ -511,7 +509,7 @@ function ProjectFiles({ projectId, userId }: { projectId: string; userId: string
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid gap-1.5">
-      <Label className="text-xs text-muted-foreground">{label}</Label>
+      <Label>{label}</Label>
       {children}
     </div>
   );

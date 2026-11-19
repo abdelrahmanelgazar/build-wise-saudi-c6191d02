@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Database } from "@/integrations/supabase/types";
 import { useLanguage } from "@/lib/i18n";
-import { getTextDirection } from "@/lib/text-direction";
+import { getTextDirection, containsArabic } from "@/lib/text-direction";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 export type TreeNode = BoqRow & { children: TreeNode[]; rolledTotal: number; unitRate: number };
@@ -362,11 +362,14 @@ function CellRenderer({
       );
     case "description_ar": {
       // Respect user's selected language:
-      // In English mode, display description_en if present; fallback to description_ar with visual note
+      // In English mode, display description_en if present; fallback to description_ar with visual note only if text is truly Arabic
       const isEn = language === "en";
       const hasEn = Boolean(node.description_en?.trim());
-      const displayDesc = isEn ? (hasEn ? node.description_en! : node.description_ar) : node.description_ar;
-      const isFallback = isEn && !hasEn;
+      const displayDesc = isEn
+        ? (hasEn ? node.description_en! : (node.description_ar || ""))
+        : (node.description_ar || node.description_en || "");
+      const isArabicFallback = isEn && !hasEn && containsArabic(displayDesc);
+      const isEnglishFallback = !isEn && !node.description_ar?.trim() && Boolean(node.description_en?.trim());
 
       return (
         <div className={baseClass} style={styleAttr}>
@@ -404,12 +407,20 @@ function CellRenderer({
             >
               <div className="flex items-center gap-1.5 w-full">
                 <span className="block w-full whitespace-pre-wrap break-words">{displayDesc}</span>
-                {isFallback && (
+                {isArabicFallback && (
                   <span
-                    className="shrink-0 rounded bg-amber-500/10 px-1 py-0.5 text-[9px] text-amber-500"
-                    title="هذا البند معروض بالعربية لعدم توفر ترجمة إنجليزية له"
+                    className="shrink-0 rounded bg-amber-500/10 px-1 py-0.5 text-[9px] text-amber-500 font-mono"
+                    title={t("boq.untranslated", "غير مترجم")}
                   >
                     AR
+                  </span>
+                )}
+                {isEnglishFallback && (
+                  <span
+                    className="shrink-0 rounded bg-blue-500/10 px-1 py-0.5 text-[9px] text-blue-500 font-mono"
+                    title={t("boq.untranslated", "غير مترجم")}
+                  >
+                    EN
                   </span>
                 )}
               </div>

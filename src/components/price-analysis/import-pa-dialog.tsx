@@ -16,6 +16,7 @@ import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from "lucide-react
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useActiveProjectId } from "@/lib/active-project";
+import { useLanguage } from "@/lib/i18n";
 import type { Database } from "@/integrations/supabase/types";
 
 type ResourceType = Database["public"]["Enums"]["resource_type"];
@@ -175,6 +176,7 @@ function parseSheet(rows: unknown[][]): { items: ParsedRow[]; markup: ParsedMark
 }
 
 export function ImportPaDialog({ boqItemId }: { boqItemId: string }) {
+  const { t, language } = useLanguage();
   const [open, setOpen] = useState(false);
   const [parsed, setParsed] = useState<{ items: ParsedRow[]; markup: ParsedMarkup } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -267,15 +269,16 @@ export function ImportPaDialog({ boqItemId }: { boqItemId: string }) {
       <DialogTrigger asChild>
         <Button size="sm" variant="outline" className="gap-1.5">
           <Upload className="h-3.5 w-3.5" />
-          استيراد Excel
+          {t("common.importExcel")}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl" dir="rtl">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>استيراد تحليل أسعار من Excel</DialogTitle>
+          <DialogTitle>{language === "en" ? "Import Unit Rate Analysis from Excel" : "استيراد تحليل أسعار من Excel"}</DialogTitle>
           <DialogDescription>
-            يدعم تنسيقين: (1) عمود <strong>النوع</strong> + الوصف/الوحدة/الكمية/سعر الوحدة، أو
-            (2) شيت Excel نمطي بأعمدة <strong>Task / Description / UOM / QTY / Rate</strong> حيث يُستنتج النوع من كود المهمة (MA/MP/EQ/SUB).
+            {language === "en"
+              ? "Supports formats with Type + Description/Unit/Qty/Rate, or standard Excel with Task/Description/UOM/QTY/Rate."
+              : "يدعم تنسيقين: (1) عمود النوع + الوصف/الوحدة/الكمية/سعر الوحدة، أو (2) شيت Excel نمطي بأعمدة Task / Description / UOM / QTY / Rate حيث يُستنتج النوع من كود المهمة (MA/MP/EQ/SUB)."}
           </DialogDescription>
         </DialogHeader>
 
@@ -296,7 +299,7 @@ export function ImportPaDialog({ boqItemId }: { boqItemId: string }) {
             className="flex h-32 w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-muted/20 hover:bg-muted/40"
           >
             <FileSpreadsheet className="h-8 w-8 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">اضغط لاختيار ملف .xlsx</span>
+            <span className="text-sm text-muted-foreground">{t("boq.dragDropExcel")}</span>
           </button>
         )}
 
@@ -304,10 +307,10 @@ export function ImportPaDialog({ boqItemId }: { boqItemId: string }) {
           <div className="flex items-start gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <div>
-              <div className="font-semibold">فشل القراءة</div>
+              <div className="font-semibold">{language === "en" ? "Read Failed" : "فشل القراءة"}</div>
               <div>{error}</div>
               <Button size="sm" variant="ghost" className="mt-2" onClick={() => fileRef.current?.click()}>
-                اختر ملف آخر
+                {t("boq.changeFile")}
               </Button>
             </div>
           </div>
@@ -317,29 +320,29 @@ export function ImportPaDialog({ boqItemId }: { boqItemId: string }) {
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm">
               <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              تم العثور على {parsed.items.length} عنصراً
-              {Object.keys(parsed.markup).length > 0 && ` + هوامش (${Object.keys(parsed.markup).length})`}
+              {parsed.items.length} {t("common.items")}
+              {Object.keys(parsed.markup).length > 0 && ` + (${Object.keys(parsed.markup).length})`}
             </div>
             <label className="flex items-center gap-2 text-xs text-muted-foreground">
               <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
-              استبدال البنود الحالية للبند (بدلاً من الإضافة إليها)
+              {language === "en" ? "Replace existing line items (instead of appending)" : "استبدال البنود الحالية للبند (بدلاً من الإضافة إليها)"}
             </label>
             <div className="max-h-60 overflow-auto rounded border border-border text-xs">
               <table className="w-full">
                 <thead className="sticky top-0 bg-muted/50 text-[10px] uppercase">
                   <tr>
-                    <th className="px-2 py-1 text-right">النوع</th>
-                    <th className="px-2 py-1 text-right">الوصف</th>
-                    <th className="px-2 py-1">الوحدة</th>
-                    <th className="px-2 py-1">الكمية</th>
-                    <th className="px-2 py-1">السعر</th>
+                    <th className="px-2 py-1 text-start">{t("common.type")}</th>
+                    <th className="px-2 py-1 text-start">{t("common.description")}</th>
+                    <th className="px-2 py-1">{t("common.unit")}</th>
+                    <th className="px-2 py-1">{t("common.quantity")}</th>
+                    <th className="px-2 py-1">{t("common.unitRate")}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {parsed.items.slice(0, 50).map((it, i) => (
                     <tr key={i} className={cn("border-t border-border/60")}>
-                      <td className="px-2 py-1 text-right">{it.resource_type}</td>
-                      <td className="px-2 py-1 text-right">{it.description_ar}</td>
+                      <td className="px-2 py-1 text-start">{it.resource_type}</td>
+                      <td className="px-2 py-1 text-start">{it.description_ar}</td>
                       <td className="px-2 py-1 text-center">{it.unit}</td>
                       <td className="px-2 py-1 text-center tabular-nums">{it.quantity}</td>
                       <td className="px-2 py-1 text-center tabular-nums">{it.unit_price}</td>
@@ -353,10 +356,10 @@ export function ImportPaDialog({ boqItemId }: { boqItemId: string }) {
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => setOpen(false)}>
-            إلغاء
+            {t("common.cancel")}
           </Button>
           <Button onClick={() => importMut.mutate()} disabled={!parsed || importMut.isPending}>
-            {importMut.isPending ? "جاري الاستيراد…" : "استيراد"}
+            {importMut.isPending ? t("common.loading") : t("common.import")}
           </Button>
         </DialogFooter>
       </DialogContent>

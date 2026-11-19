@@ -29,6 +29,7 @@ import { useActiveProjectId } from "@/lib/active-project";
 import type { Database } from "@/integrations/supabase/types";
 import { ImportPaDialog } from "./import-pa-dialog";
 import { exportPriceAnalysis } from "@/lib/pa-export";
+import { useLanguage } from "@/lib/i18n";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 type PaItem = Database["public"]["Tables"]["price_analysis_items"]["Row"];
@@ -93,6 +94,7 @@ const CELL = "flex shrink-0 items-center overflow-hidden border-l border-border/
 export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   const qc        = useQueryClient();
   const projectId = useActiveProjectId();
+  const { t, language } = useLanguage();
   const storageKey = `pa-grid-v2-widths:${boqItem.id}`;
 
   // ── Column widths (persisted) ──────────────────────────────────────────────
@@ -104,10 +106,20 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     localStorage.setItem(storageKey, JSON.stringify(colWidths));
   }, [colWidths, storageKey]);
 
-  const cols = useMemo(
-    () => COLS.map((c) => ({ ...c, w: colWidths[c.key] ?? c.defaultW })),
-    [colWidths],
-  );
+  const cols = useMemo(() => {
+    const isEn = language === "en";
+    const rawCols: Col[] = [
+      { key: "level",          label: t("pa.colItemNo"),      defaultW: 70,  align: "center" },
+      { key: "description_en", label: isEn ? t("common.description") : "Description (EN)",    defaultW: 320, align: "left"   },
+      { key: "description",    label: isEn ? "التوصيف (عربي)" : t("common.description"), defaultW: 320, align: "right"  },
+      { key: "qty",            label: t("common.quantity"),   defaultW: 70,  align: "center" },
+      { key: "uom",            label: t("common.unit"),       defaultW: 70,  align: "center" },
+      { key: "rate",           label: t("common.directCost"), defaultW: 110, align: "center" },
+      { key: "amount",         label: t("pa.itemTotalCost"),  defaultW: 140, align: "center" },
+      { key: "__actions",      label: "",                     defaultW: 48,  align: "center" },
+    ];
+    return rawCols.map((c) => ({ ...c, w: colWidths[c.key] ?? c.defaultW }));
+  }, [colWidths, t, language]);
   const totalW = cols.reduce((s, c) => s + c.w, 0);
 
   // ── Collapsed sections ─────────────────────────────────────────────────────
@@ -231,9 +243,16 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
 
   const TYPES: ResourceType[] = ["material", "labor", "equipment", "subcontractor"];
 
+  const typeLabelMap: Record<ResourceType, string> = {
+    material: t("pa.materials"),
+    labor: t("pa.labour"),
+    equipment: t("pa.equipment"),
+    subcontractor: t("pa.subcontractor"),
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full flex-col overflow-hidden" dir="rtl">
+    <div className="flex h-full flex-col overflow-hidden">
 
       {/* ══ Toolbar ══════════════════════════════════════════════════════════ */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/20 px-4 py-2">
@@ -241,11 +260,13 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
           <span className="rounded bg-primary/10 px-2 py-0.5 font-mono font-semibold text-primary">
             {boqItem.item_no}
           </span>
-          <span className="truncate max-w-xs">{boqItem.description_ar}</span>
+          <span className="truncate max-w-xs">
+            {language === "en" && boqItem.description_en ? boqItem.description_en : boqItem.description_ar}
+          </span>
           <span className="text-border">·</span>
-          <span>الكمية: <strong className="text-foreground">{fmtNumber(boqItem.quantity, 2)}</strong> {boqItem.unit}</span>
+          <span>{t("pa.quantityLabel")} <strong className="text-foreground">{fmtNumber(boqItem.quantity, 2)}</strong> {boqItem.unit}</span>
           <span className="text-border">·</span>
-          <span>سعر البيع: <strong className="text-primary">{fmtSAR(selling)}</strong></span>
+          <span>{t("pa.sellingPriceLabel")} <strong className="text-primary">{fmtSAR(selling, language)}</strong></span>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -253,7 +274,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
             <DropdownMenuTrigger asChild>
               <Button size="sm" className="gap-1.5">
                 <Plus className="h-3.5 w-3.5" />
-                إضافة صف
+                {t("pa.addRow")}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -265,7 +286,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                     "bg-primary":  t === "equipment",
                     "bg-chart-4":  t === "subcontractor",
                   })} />
-                  {TYPE_LABEL[t]}
+                  {typeLabelMap[t]}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -277,10 +298,10 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
             size="sm"
             variant="outline"
             className="gap-1.5"
-            onClick={() => exportPriceAnalysis(boqItem, items, markup ?? null)}
+            onClick={() => exportPriceAnalysis(boqItem, items, markup ?? null, language)}
           >
             <Download className="h-3.5 w-3.5" />
-            تصدير Excel
+            {t("common.exportExcel")}
           </Button>
         </div>
       </div>
@@ -365,7 +386,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
           {items.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-muted-foreground">
               <div className="text-5xl opacity-20">📋</div>
-              <p className="text-sm">لا توجد بنود — أضف صفوفاً أو استورد من Excel.</p>
+              <p className="text-sm">{t("pa.noItemsEmpty")}</p>
             </div>
           )}
 
@@ -405,7 +426,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                   {/* Description AR */}
                   <div style={cw("description")}
                     className={cn(CELL, "gap-1.5 text-[13px] font-bold justify-start text-right")}>
-                    {TYPE_LABEL[type]}
+                    {typeLabelMap[type]}
                   </div>
                   {/* QTY */}
                   <div style={cw("qty")}   className={cn(CELL, "justify-center")} />
@@ -564,7 +585,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                       Total {type === "material" ? "Materials" : type === "labor" ? "Labour" : type === "equipment" ? "Equipment" : "Subcontractor"}
                     </div>
                     <div style={cw("description")}    className={cn(CELL, "justify-start text-right font-bold")}>
-                      مجموع {TYPE_LABEL[type]}
+                      {t("common.total")} {typeLabelMap[type]}
                     </div>
                     <div style={cw("qty")}            className={cn(CELL, "justify-center")} />
                     <div style={cw("uom")}            className={cn(CELL, "justify-center")} />
@@ -590,13 +611,13 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               <div
                 style={{ width: cols[1].w + cols[2].w + cols[3].w + cols[4].w + cols[5].w,
                          minWidth: cols[1].w + cols[2].w + cols[3].w + cols[4].w + cols[5].w }}
-                className={cn(CELL, "justify-end text-primary")}
+                className={cn(CELL, "justify-end text-primary font-bold")}
               >
-                إجمالي التكلفة المباشرة للوحدة ({boqItem.unit ?? "وحدة"})
+                {t("pa.directCostPerUnit")} ({boqItem.unit ?? t("common.unit")})
               </div>
               <div style={cw("amount")}
                 className={cn(CELL, "justify-center border-l-0 text-primary")}>
-                {fmtSAR(directCost)}
+                {fmtSAR(directCost, language)}
               </div>
               <div style={cw("__actions")} className={cn(CELL, "border-l-0")} />
             </div>
@@ -607,21 +628,23 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
       {/* ══ Markup footer ════════════════════════════════════════════════════ */}
       <div className="border-t border-border bg-secondary/30 px-4 py-3">
         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs tabular-nums md:grid-cols-3">
-          <SumLine label="التكلفة المباشرة" value={fmtSAR(directCost)} />
-          <MarkupLine label="غير مباشرة"  pct={indirect} value={indirectVal} field="indirect_pct" boqItemId={boqItem.id} markup={markup} projectId={projectId} />
-          <MarkupLine label="مصاريف عامة" pct={overhead}  value={overheadVal} field="overhead_pct"  boqItemId={boqItem.id} markup={markup} projectId={projectId} />
-          <MarkupLine label="المخاطر"     pct={risk}      value={riskVal}     field="risk_pct"      boqItemId={boqItem.id} markup={markup} projectId={projectId} />
-          <MarkupLine label="الربح"       pct={profit}    value={profitVal}   field="profit_pct"    boqItemId={boqItem.id} markup={markup} projectId={projectId} />
+          <SumLine label={t("pa.directCostLabel")} value={fmtSAR(directCost, language)} />
+          <MarkupLine label={t("pa.indirectLabel")}  pct={indirect} value={indirectVal} field="indirect_pct" boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
+          <MarkupLine label={t("pa.overheadLabel")} pct={overhead}  value={overheadVal} field="overhead_pct"  boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
+          <MarkupLine label={t("pa.riskLabel")}     pct={risk}      value={riskVal}     field="risk_pct"      boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
+          <MarkupLine label={t("pa.profitLabel")}   pct={profit}    value={profitVal}   field="profit_pct"    boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
           <div className="col-span-2 md:col-span-3 mt-1 flex items-center justify-between rounded-md bg-primary/10 px-3 py-2 ring-1 ring-primary/30">
-            <span className="text-sm font-bold text-primary">سعر البيع لكل {boqItem.unit}</span>
-            <span className="text-lg font-bold tabular-nums text-primary">{fmtSAR(selling)}</span>
+            <span className="text-sm font-bold text-primary">{t("pa.sellingPricePer")} {boqItem.unit}</span>
+            <span className="text-lg font-bold tabular-nums text-primary">{fmtSAR(selling, language)}</span>
           </div>
           <div className="col-span-2 flex items-center justify-between text-muted-foreground md:col-span-3">
-            <span>الإجمالي للكمية ({fmtNumber(boqItem.quantity, 2)} {boqItem.unit})</span>
+            <span>{t("pa.totalForQty")} ({fmtNumber(boqItem.quantity, 2)} {boqItem.unit})</span>
             <span className="font-semibold text-foreground">
-              {fmtSAR(selling * Number(boqItem.quantity ?? 0))}
+              {fmtSAR(selling * Number(boqItem.quantity ?? 0), language)}
             </span>
           </div>
+        </div>
+      </div>
         </div>
       </div>
     </div>
@@ -640,7 +663,7 @@ function SumLine({ label, value }: { label: string; value: string }) {
 
 // ─── MarkupLine ───────────────────────────────────────────────────────────────
 function MarkupLine({
-  label, pct, value, field, boqItemId, markup, projectId,
+  label, pct, value, field, boqItemId, markup, projectId, lang,
 }: {
   label: string;
   pct: number;
@@ -649,13 +672,14 @@ function MarkupLine({
   boqItemId: string;
   markup: Markup | null | undefined;
   projectId: string | null;
+  lang?: "ar" | "en";
 }) {
   const qc  = useQueryClient();
   const mut = useMutation({
     mutationFn: async (newPct: number) => {
       const { data: u } = await supabase.auth.getUser();
       const userId = u.user?.id;
-      if (!userId) throw new Error("غير مسجل دخول");
+      if (!userId) throw new Error("Not logged in");
       if (markup) {
         const { error } = await supabase
           .from("price_analysis_markup")
@@ -692,7 +716,7 @@ function MarkupLine({
         />
         <span className="text-[10px] text-muted-foreground">%</span>
       </span>
-      <span className="font-semibold text-foreground">{fmtSAR(value)}</span>
+      <span className="font-semibold text-foreground">{fmtSAR(value, lang)}</span>
     </div>
   );
 }
