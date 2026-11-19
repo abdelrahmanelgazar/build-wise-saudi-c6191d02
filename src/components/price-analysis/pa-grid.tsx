@@ -645,8 +645,6 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
           </div>
         </div>
       </div>
-        </div>
-      </div>
     </div>
   );
 }
