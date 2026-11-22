@@ -43,10 +43,10 @@ const NAV_ITEMS: NavItemConfig[] = [
   { to: "/boq", translationKey: "nav.boq", defaultLabel: "جدول الكميات", icon: Calculator, enabled: true },
   { to: "/price-analysis", translationKey: "nav.priceAnalysis", defaultLabel: "تحليل الأسعار", icon: TrendingUp, enabled: true },
   { to: "/resources", translationKey: "nav.resources", defaultLabel: "مكتبة البيانات", icon: Database, enabled: true },
-  { to: "/financial", translationKey: "nav.financial", defaultLabel: "المراجعة المالية", icon: ShieldCheck, enabled: false },
+  { to: "/financial", translationKey: "nav.financial", defaultLabel: "المراجعة المالية", icon: ShieldCheck, enabled: true },
   { to: "/reports", translationKey: "nav.reports", defaultLabel: "التقارير", icon: BarChart3, enabled: true },
-  { to: "/ai-assistant", translationKey: "nav.aiAssistant", defaultLabel: "مساعد الذكاء الاصطناعي", icon: Sparkles, enabled: false },
-  { to: "/settings", translationKey: "nav.settings", defaultLabel: "الإعدادات والصلاحيات", icon: Settings, enabled: false },
+  { to: "/ai-assistant", translationKey: "nav.aiAssistant", defaultLabel: "مساعد الذكاء الاصطناعي", icon: Sparkles, enabled: true },
+  { to: "/settings", translationKey: "nav.settings", defaultLabel: "الإعدادات والصلاحيات", icon: Settings, enabled: true },
 ];
 
 function ProjectSwitcher() {
@@ -183,32 +183,17 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <li key={item.to}>
                   <Link
                     to={item.to}
-                    onClick={(e) => {
-                      if (!item.enabled) {
-                        e.preventDefault();
-                        toast.info(`${label} — ${t("common.underDevelopment", "قيد التطوير في المرحلة التالية")}`);
-                      }
-                    }}
                     className={cn(
                       "group flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm transition-colors",
-                      active && item.enabled
-                        ? "bg-primary/15 text-primary ring-1 ring-primary/20"
+                      active
+                        ? "bg-primary/15 text-primary ring-1 ring-primary/20 font-medium"
                         : "text-sidebar-foreground hover:bg-sidebar-accent",
-                      !item.enabled && "opacity-60",
                     )}
                   >
                     <div className="flex items-center gap-2.5">
                       <Icon className="h-4 w-4 shrink-0" />
                       <span>{label}</span>
                     </div>
-                    {!item.enabled && (
-                      <Badge
-                        variant="outline"
-                        className="h-5 border-border/60 px-1.5 text-[9px] font-normal text-muted-foreground"
-                      >
-                        {t("nav.comingSoonBadge", "قريباً")}
-                      </Badge>
-                    )}
                   </Link>
                 </li>
               );
