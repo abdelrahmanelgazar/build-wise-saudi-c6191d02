@@ -32,7 +32,6 @@ jobs:
 
       - name: Build project
         env:
-          NITRO_PRESET: static
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://desjchcthsjaeiplhuls.supabase.co' }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_7fJcrVmM18B9gBGeXhRpjA_jFmgOxC-' }}
           SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://desjchcthsjaeiplhuls.supabase.co' }}
