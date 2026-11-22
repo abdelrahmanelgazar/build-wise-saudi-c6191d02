@@ -30,6 +30,7 @@ import { useActiveProjectId } from "@/lib/active-project";
 import { Link } from "@tanstack/react-router";
 import { FolderPlus } from "lucide-react";
 import { useDivisions } from "@/lib/divisions";
+import { useLanguage } from "@/lib/i18n";
 
 type ResourceRow = Database["public"]["Tables"]["resources"]["Row"] & {
   division?: string | null;
@@ -49,11 +50,19 @@ const TYPE_META: Record<ResourceType, { label: string; icon: typeof Boxes; color
 };
 
 function ResourcesPage() {
+  const { t, language } = useLanguage();
   const [tab, setTab] = useState<ResourceType>("material");
   const [search, setSearch] = useState("");
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
   const { divisions, rename, remove, labelFor } = useDivisions(projectId);
+
+  const typeLabels: Record<ResourceType, string> = {
+    material: t("resources.tabMaterials", "المواد"),
+    labor: t("resources.tabLabour", "العمالة"),
+    equipment: t("resources.tabEquipment", "المعدات"),
+    subcontractor: t("resources.tabSubcontractor", "مقاول الباطن"),
+  };
 
   const { data: resources = [], isLoading } = useQuery({
     queryKey: ["resources", projectId],
@@ -76,6 +85,7 @@ function ResourcesPage() {
     (r) =>
       !search ||
       r.name_ar.includes(search) ||
+      (r.name_en && r.name_en.toLowerCase().includes(search.toLowerCase())) ||
       (r.code ?? "").toLowerCase().includes(search.toLowerCase()),
   );
 
@@ -95,14 +105,13 @@ function ResourcesPage() {
     });
   }, [filtered, divisions]);
 
-
   const delMut = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from("resources").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("تم الحذف");
+      toast.success(t("resources.deletedSuccess", "تم الحذف"));
       qc.invalidateQueries({ queryKey: ["resources"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -113,12 +122,12 @@ function ResourcesPage() {
       <div className="p-6">
         <div className="rounded-lg border border-dashed border-border bg-card p-10 text-center">
           <FolderPlus className="mx-auto h-10 w-10 text-muted-foreground opacity-50" />
-          <h2 className="mt-3 text-lg font-semibold">اختر مشروعاً</h2>
+          <h2 className="mt-3 text-lg font-semibold">{t("resources.selectProjectPrompt", "اختر مشروعاً")}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            مكتبة الموارد خاصة بكل مشروع. اختر مشروعاً من القائمة الجانبية للبدء.
+            {t("resources.selectProjectDesc", "مكتبة الموارد خاصة بكل مشروع. اختر مشروعاً من القائمة الجانبية للبدء.")}
           </p>
           <Link to="/projects" className="mt-4 inline-block">
-            <Button>الذهاب للمشاريع</Button>
+            <Button>{t("boq.goToProjects", "الذهاب للمشاريع")}</Button>
           </Link>
         </div>
       </div>
@@ -128,21 +137,21 @@ function ResourcesPage() {
   return (
     <div className="p-6">
       <PageHeader
-        title="مكتبة البيانات"
-        subtitle="مكتبة المواد والعمالة والمعدات مقسّمة حسب أقسام MasterFormat — تستخدم في تحليل الأسعار."
+        title={t("resources.title", "مكتبة البيانات")}
+        subtitle={t("resources.subtitle", "مكتبة المواد والعمالة والمعدات مقسّمة حسب أقسام MasterFormat — تستخدم في تحليل الأسعار.")}
         action={<NewResourceDialog defaultType={tab} />}
       />
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as ResourceType)} className="mt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <TabsList>
-            {(Object.keys(TYPE_META) as ResourceType[]).map((t) => {
-              const Icon = TYPE_META[t].icon;
-              const count = resources.filter((r) => r.type === t).length;
+            {(Object.keys(TYPE_META) as ResourceType[]).map((tKey) => {
+              const Icon = TYPE_META[tKey].icon;
+              const count = resources.filter((r) => r.type === tKey).length;
               return (
-                <TabsTrigger key={t} value={t} className="gap-2">
+                <TabsTrigger key={tKey} value={tKey} className="gap-2">
                   <Icon className="h-3.5 w-3.5" />
-                  {TYPE_META[t].label}
+                  {typeLabels[tKey]}
                   <Badge
                     variant="secondary"
                     className="h-5 bg-muted/60 px-1.5 text-[10px] font-normal"
@@ -155,26 +164,26 @@ function ResourcesPage() {
           </TabsList>
 
           <div className="relative w-full max-w-xs">
-            <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="ابحث بالاسم أو الكود…"
-              className="h-9 pr-9"
+              placeholder={t("resources.searchPlaceholder", "ابحث بالاسم أو الكود…")}
+              className="h-9 ps-9"
             />
           </div>
         </div>
 
-        {(Object.keys(TYPE_META) as ResourceType[]).map((t) => (
-          <TabsContent key={t} value={t} className="mt-4 space-y-6">
+        {(Object.keys(TYPE_META) as ResourceType[]).map((tKey) => (
+          <TabsContent key={tKey} value={tKey} className="mt-4 space-y-6">
             {isLoading && (
               <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
-                جاري التحميل…
+                {t("common.loading", "جاري التحميل…")}
               </div>
             )}
             {!isLoading && grouped.length === 0 && (
               <div className="rounded-lg border border-dashed border-border bg-card p-12 text-center text-muted-foreground">
-                لا توجد عناصر في هذا القسم بعد. أضف أول عنصر باستخدام زر «إضافة مورد».
+                {t("resources.emptySection", "لا توجد عناصر في هذا القسم بعد. أضف أول عنصر باستخدام زر «إضافة مورد».")}
               </div>
             )}
             {!isLoading &&
@@ -187,20 +196,20 @@ function ResourcesPage() {
                     onRename={rename}
                     onRemove={(c: string) => {
                       if (rows.length > 0) {
-                        toast.error("لا يمكن حذف قسم يحتوي على عناصر");
+                        toast.error(t("resources.cannotDeleteDiv", "لا يمكن حذف قسم يحتوي على عناصر"));
                         return;
                       }
-                      if (confirm(`حذف القسم ${c}؟`)) remove(c);
+                      if (confirm(t("resources.deleteDivConfirm", `حذف القسم ${c}؟`))) remove(c);
                     }}
                   />
                   <table className="w-full text-sm tabular-nums">
                     <thead className="bg-muted/20 text-xs uppercase text-muted-foreground">
                       <tr>
-                        <th className="px-4 py-2 text-right font-medium">الكود</th>
-                        <th className="px-4 py-2 text-right font-medium">الاسم</th>
-                        <th className="px-4 py-2 text-right font-medium">الوحدة</th>
-                        <th className="px-4 py-2 text-right font-medium">سعر الوحدة</th>
-                        <th className="px-4 py-2 text-center font-medium">إجراءات</th>
+                        <th className="px-4 py-2 text-start font-medium">{t("resources.colCode", "الكود")}</th>
+                        <th className="px-4 py-2 text-start font-medium">{t("resources.colName", "الاسم")}</th>
+                        <th className="px-4 py-2 text-start font-medium">{t("common.unit", "الوحدة")}</th>
+                        <th className="px-4 py-2 text-start font-medium">{t("resources.colRate", "سعر الوحدة")}</th>
+                        <th className="px-4 py-2 text-center font-medium">{t("resources.colActions", "إجراءات")}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border">
@@ -209,10 +218,12 @@ function ResourcesPage() {
                           <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
                             {r.code ?? "—"}
                           </td>
-                          <td className="px-4 py-2.5 font-medium text-foreground">{r.name_ar}</td>
+                          <td className="px-4 py-2.5 font-medium text-foreground">
+                            {language === "en" && r.name_en ? r.name_en : r.name_ar}
+                          </td>
                           <td className="px-4 py-2.5 text-muted-foreground">{r.unit}</td>
                           <td className="px-4 py-2.5 font-semibold text-primary">
-                            {fmtSAR(r.unit_price)}
+                            {fmtSAR(r.unit_price, language)}
                           </td>
                           <td className="px-4 py-2.5">
                             <div className="flex items-center justify-center gap-1">
@@ -222,7 +233,7 @@ function ResourcesPage() {
                                 variant="ghost"
                                 className="h-7 w-7 text-muted-foreground hover:text-destructive"
                                 onClick={() => {
-                                  if (confirm(`حذف المورد «${r.name_ar}»؟`)) delMut.mutate(r.id);
+                                  if (confirm(t("resources.deleteResourceConfirm", `حذف المورد «${r.name_ar}»؟`))) delMut.mutate(r.id);
                                 }}
                               >
                                 <Trash2 className="h-3.5 w-3.5" />

@@ -13,16 +13,23 @@ import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
 
 export const Route = createFileRoute("/auth")({
-  head: () => ({ meta: [{ title: 'تسجيل الدخول — تقديري' }, { name: "description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:title", content: 'تسجيل الدخول — تقديري' }, { property: "og:description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
+  head: () => ({
+    meta: [
+      { title: "تسجيل الدخول — تقديري | Taqdiri Sign In" },
+      { name: "description", content: "منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي." },
+    ],
+  }),
   component: AuthPage,
 });
 
 function AuthPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [mode, setMode] = useState<"signin" | "otp" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -46,12 +53,13 @@ function AuthPage() {
           options: { emailRedirectTo: window.location.origin },
         });
         if (error) throw error;
-        toast.success(t("auth.confirmEmail", "تحقق من بريدك الإلكتروني لتأكيد الحساب ثم سجل الدخول."));
-        return;
+        toast.success(t("auth.accountCreated", "تم إنشاء الحساب! يمكنك الآن تسجيل الدخول."));
+        await supabase.auth.signInWithPassword({ email, password });
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
+      try { await supabase.rpc("seed_demo_data" as never); } catch { /* idempotent */ }
       navigate({ to: "/boq", replace: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : t("auth.errorOccurred", "حدث خطأ");
@@ -61,7 +69,77 @@ function AuthPage() {
     }
   }
 
+  async function handleSendOtp(e?: React.FormEvent) {
+    if (e) e.preventDefault();
+    if (!email) {
+      toast.error(t("auth.enterEmailFirst", "يرجى كتابة البريد الإلكتروني أولاً"));
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth`,
+        },
+      });
+      if (error) throw error;
+      setOtpSent(true);
+      toast.success(t("auth.otpSentMsg", "تم إرسال كود التحقق ورابط الدخول إلى بريدك الإلكتروني! تفقّد بريدك وأدخل الكود للدخول فوراً."));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : t("auth.errorOccurred", "تعذر إرسال كود التحقق");
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!email || !otpCode) {
+      toast.error(t("auth.enterOtpCode", "يرجى إدخال رمز التحقق المكون من 6 أرقام"));
+      return;
+    }
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: otpCode.trim(),
+        type: "email",
+      });
+      if (error) throw error;
+      if (data.session) {
+        toast.success(t("auth.signInSuccess", "تم تسجيل الدخول بنجاح!"));
+        try { await supabase.rpc("seed_demo_data" as never); } catch { /* idempotent */ }
+        navigate({ to: "/boq", replace: true });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : t("auth.invalidOtp", "رمز التحقق غير صحيح أو انتهت صلاحيته");
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleGoogle() {
+    const isLocalhost = typeof window !== "undefined" && (
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      window.location.hostname.endsWith(".local")
+    );
+
+    if (isLocalhost) {
+      toast.info(
+        t(
+          "auth.googleLocalWarning",
+          "تسجيل الدخول بـ Google مخصص لسيرفر Lovable السحابي. على Localhost استخدم تبويب «كود التحقق (OTP)» أو كلمة المرور بالبريد نفسه."
+        ),
+        { duration: 7000 }
+      );
+      setMode("otp");
+      return;
+    }
+
     setLoading(true);
     try {
       const result = await lovable.auth.signInWithOAuth("google", {
@@ -82,36 +160,33 @@ function AuthPage() {
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center bg-background p-6">
-      {/* Language Switcher in top corner */}
-      <div className="absolute top-6 end-6 z-10">
-        <LanguageSwitcher variant="outline" className="shadow-sm border-border/80" />
+    <div className="flex min-h-screen items-center justify-center bg-background p-4">
+      <div className="absolute top-4 left-4">
+        <LanguageSwitcher />
       </div>
 
-      {/* ambient gradient */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 left-1/2 h-[500px] w-[500px] -translate-x-1/2 rounded-full bg-primary/10 blur-[120px]" />
-        <div className="absolute bottom-0 right-0 h-[400px] w-[400px] rounded-full bg-chart-2/10 blur-[100px]" />
-      </div>
-
-      <div className="relative w-full max-w-md">
+      <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/15 ring-1 ring-primary/30">
-            <Calculator className="h-7 w-7 text-primary" />
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
+            <Calculator className="h-7 w-7" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">{t("auth.brandTitle", "تقديري")}</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            {t("auth.brandName", "تـقـديـري")}
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("auth.brandSubtitle", "منصة تسعير المقاولات وإدارة المناقصات")}
+            {t("auth.brandTagline", "منصة تسعير وإدارة المناقصات — السوق السعودي")}
           </p>
         </div>
 
-        <Card className="border-border/60 p-6">
-          <Tabs value={mode} onValueChange={(v) => setMode(v as "signin" | "signup")}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="signin">{t("auth.signInTab", "تسجيل الدخول")}</TabsTrigger>
-              <TabsTrigger value="signup">{t("auth.signUpTab", "إنشاء حساب")}</TabsTrigger>
+        <Card className="border-border/60 bg-card/80 p-6 shadow-xl backdrop-blur-sm">
+          <Tabs value={mode} onValueChange={(v) => setMode(v as typeof mode)}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="signin">{t("auth.signInTab", "دخول")}</TabsTrigger>
+              <TabsTrigger value="otp">{t("auth.otpTab", "كود التحقق (OTP)")}</TabsTrigger>
+              <TabsTrigger value="signup">{t("auth.signUpTab", "حساب جديد")}</TabsTrigger>
             </TabsList>
 
+            {/* Email + Password */}
             <TabsContent value="signin" className="mt-5">
               <form onSubmit={handleEmail} className="space-y-4">
                 <FormFields
@@ -126,6 +201,69 @@ function AuthPage() {
               </form>
             </TabsContent>
 
+            {/* OTP Tab */}
+            <TabsContent value="otp" className="mt-5">
+              {!otpSent ? (
+                <form onSubmit={handleSendOtp} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="otp-email">{t("auth.emailLabel", "البريد الإلكتروني")}</Label>
+                    <Input
+                      id="otp-email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="abdelrahmanelgazar1@gmail.com"
+                      dir="ltr"
+                      required
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      {t("auth.otpHint", "سيصلك كود من 6 أرقام على بريدك للدخول فوراً بدون كلمة مرور")}
+                    </p>
+                  </div>
+                  <Button type="submit" disabled={loading} className="w-full">
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t("auth.sendOtp", "إرسال كود التحقق للبريد")}
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={handleVerifyOtp} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="otp-code">{t("auth.otpLabel", "رمز التحقق (6 أرقام)")}</Label>
+                    <Input
+                      id="otp-code"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={8}
+                      value={otpCode}
+                      onChange={(e) => setOtpCode(e.target.value)}
+                      placeholder="123456"
+                      className="text-center font-mono text-lg tracking-widest"
+                      dir="ltr"
+                      autoFocus
+                      required
+                    />
+                    <p className="text-[11px] text-muted-foreground text-center">
+                      {t("auth.otpSentTo", "تم إرسال الرمز إلى:")} <strong className="text-foreground">{email}</strong>
+                    </p>
+                  </div>
+                  <Button type="submit" disabled={loading} className="w-full">
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t("auth.verifyOtp", "تأكيد الكود والدخول")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={loading}
+                    onClick={() => { setOtpSent(false); setOtpCode(""); }}
+                    className="w-full text-xs text-muted-foreground"
+                  >
+                    {t("auth.changeEmailOrResend", "تغيير البريد أو إعادة الإرسال")}
+                  </Button>
+                </form>
+              )}
+            </TabsContent>
+
+            {/* Sign Up */}
             <TabsContent value="signup" className="mt-5">
               <form onSubmit={handleEmail} className="space-y-4">
                 <FormFields

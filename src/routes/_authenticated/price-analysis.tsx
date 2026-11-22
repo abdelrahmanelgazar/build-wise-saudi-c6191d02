@@ -16,6 +16,7 @@ import { PageHeader } from "./resources";
 import { useActiveProjectId } from "@/lib/active-project";
 import { PaGrid } from "@/components/price-analysis/pa-grid";
 import type { Database } from "@/integrations/supabase/types";
+import { useLanguage } from "@/lib/i18n";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
@@ -28,6 +29,7 @@ export const Route = createFileRoute("/_authenticated/price-analysis")({
 });
 
 function PriceAnalysisPage() {
+  const { t, language } = useLanguage();
   const { item } = Route.useSearch();
   const navigate = Route.useNavigate();
   const projectId = useActiveProjectId();
@@ -65,12 +67,12 @@ function PriceAnalysisPage() {
       <div className="p-6">
         <div className="rounded-lg border border-dashed border-border bg-card p-10 text-center">
           <FolderPlus className="mx-auto h-10 w-10 text-muted-foreground opacity-50" />
-          <h2 className="mt-3 text-lg font-semibold">اختر مشروعاً</h2>
+          <h2 className="mt-3 text-lg font-semibold">{t("pa.selectProjectPrompt", "اختر مشروعاً")}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            تحليل الأسعار يعتمد على بنود مشروع.
+            {t("pa.selectProjectDesc", "تحليل الأسعار يعتمد على بنود مشروع.")}
           </p>
           <Link to="/projects" className="mt-4 inline-block">
-            <Button>الذهاب للمشاريع</Button>
+            <Button>{t("boq.goToProjects", "الذهاب للمشاريع")}</Button>
           </Link>
         </div>
       </div>
@@ -80,12 +82,12 @@ function PriceAnalysisPage() {
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col p-4">
       <PageHeader
-        title="تحليل الأسعار (Price Build-up)"
-        subtitle="شيت Excel كامل — تحرير مباشر، تنسيق خلايا، استيراد وتصدير."
+        title={t("sidebar.priceAnalysis", "تحليل الأسعار (Price Build-up)")}
+        subtitle={t("pa.subtitle", "شيت Excel كامل — تحرير مباشر، تنسيق خلايا، استيراد وتصدير.")}
       />
 
       <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-3 py-2">
-        <span className="text-xs font-semibold text-muted-foreground">البند:</span>
+        <span className="text-xs font-semibold text-muted-foreground">{t("pa.itemLabel", "البند:")}</span>
         <Select
           value={selectedId ?? ""}
           onValueChange={(v) => {
@@ -94,19 +96,19 @@ function PriceAnalysisPage() {
           }}
         >
           <SelectTrigger className="h-8 w-[420px] max-w-full text-xs">
-            <SelectValue placeholder="اختر بنداً من جدول الكميات…" />
+            <SelectValue placeholder={t("pa.selectItemPlaceholder", "اختر بنداً من جدول الكميات…")} />
           </SelectTrigger>
           <SelectContent>
             {boqItems.length === 0 && (
               <div className="px-3 py-2 text-xs text-muted-foreground">
-                لا توجد بنود — أضف بنوداً في جدول الكميات أولاً.
+                {t("pa.noItemsInBoq", "لا توجد بنود — أضف بنوداً في جدول الكميات أولاً.")}
               </div>
             )}
             {boqItems.map((b) => (
               <SelectItem key={b.id} value={b.id}>
                 <span className="font-mono text-[10px] text-muted-foreground">{b.item_no}</span>
                 {" — "}
-                {b.description_ar}
+                {language === "en" && b.description_en ? b.description_en : b.description_ar}
               </SelectItem>
             ))}
           </SelectContent>
@@ -118,7 +120,7 @@ function PriceAnalysisPage() {
           <PaGrid boqItem={selected} key={selected.id} />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            اختر بنداً لعرض تحليله السعري.
+            {t("pa.selectItemPromptEmpty", "اختر بنداً لعرض تحليله السعري.")}
           </div>
         )}
       </div>

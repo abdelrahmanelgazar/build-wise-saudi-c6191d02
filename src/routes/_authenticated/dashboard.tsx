@@ -11,6 +11,7 @@ import {
   TrendingUp,
   CheckCircle2,
   ArrowLeft,
+  ArrowRight,
   Database,
   Calculator,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import {
 } from "recharts";
 import { fmtSAR, fmtNumber } from "@/lib/format";
 import type { Database as DB } from "@/integrations/supabase/types";
+import { useLanguage } from "@/lib/i18n";
 
 type Project = DB["public"]["Tables"]["projects"]["Row"];
 type Status = DB["public"]["Enums"]["project_status"];
@@ -57,6 +59,7 @@ const WON_STATUSES: Status[] = ["construction_ongoing", "construction_complete",
 const LOST_STATUSES: Status[] = ["client_rejected"];
 
 function DashboardPage() {
+  const { t, language, dir } = useLanguage();
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ["dashboard-projects"],
     queryFn: async () => {
@@ -112,20 +115,23 @@ function DashboardPage() {
       counts[s] = (counts[s] ?? 0) + 1;
     });
     return Object.entries(counts).map(([status, value]) => ({
-      name: STATUS_META[status as Status]?.label ?? status,
+      name: t(`status.${status}`, STATUS_META[status as Status]?.label ?? status),
       value,
       color: STATUS_META[status as Status]?.color ?? "#94a3b8",
     }));
-  }, [projects]);
+  }, [projects, t]);
 
   const monthlyData = useMemo(() => {
     const months: Record<string, { month: string; value: number; count: number }> = {};
-    const monthNames = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
     projects.forEach((p) => {
       if (!p.created_at) return;
       const d = new Date(p.created_at);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      if (!months[key]) months[key] = { month: `${monthNames[d.getMonth()]} ${d.getFullYear()}`, value: 0, count: 0 };
+      if (!months[key]) {
+        const monthNum = d.getMonth() + 1;
+        const monthName = t(`month.${monthNum}`, d.toLocaleString("default", { month: "short" }));
+        months[key] = { month: `${monthName} ${d.getFullYear()}`, value: 0, count: 0 };
+      }
       months[key].value += Number(p.estimated_value ?? 0);
       months[key].count += 1;
     });
@@ -133,39 +139,64 @@ function DashboardPage() {
       .sort(([a], [b]) => a.localeCompare(b))
       .slice(-6)
       .map(([, v]) => v);
-  }, [projects]);
+  }, [projects, t]);
 
   const recentProjects = projects.slice(0, 5);
+  const ArrowIcon = dir === "rtl" ? ArrowLeft : ArrowRight;
 
   return (
-    <div className="space-y-6" dir="rtl">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">لوحة التحكم</h1>
-          <p className="text-sm text-muted-foreground">نظرة شاملة على المشاريع والأداء</p>
+          <h1 className="text-2xl font-bold">{t("dashboard.title", "لوحة التحكم")}</h1>
+          <p className="text-sm text-muted-foreground">{t("dashboard.subtitle", "نظرة شاملة على المشاريع والأداء")}</p>
         </div>
         <Button asChild variant="outline" size="sm">
-          <Link to="/projects">إدارة المشاريع <ArrowLeft className="ms-1 h-4 w-4" /></Link>
+          <Link to="/projects">{t("dashboard.manageProjects", "إدارة المشاريع")} <ArrowIcon className="ms-1 h-4 w-4" /></Link>
         </Button>
       </div>
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard icon={Building2} label="إجمالي المشاريع" value={fmtNumber(stats.total, 0)} hint={`${stats.active} نشطة`} color="text-primary" />
-        <KpiCard icon={Wallet} label="إجمالي القيمة التقديرية" value={fmtSAR(stats.totalValue)} hint={`الميزانية: ${fmtSAR(stats.totalBudget)}`} color="text-emerald-500" />
-        <KpiCard icon={TrendingUp} label="نسبة الفوز" value={`${stats.winRate.toFixed(1)}%`} hint={`${stats.won} فائز / ${stats.lost} خاسر`} color="text-blue-500" />
-        <KpiCard icon={CheckCircle2} label="بيانات المكتبة" value={fmtNumber(resourcesCount, 0)} hint={`${boqCount} بند كميات`} color="text-violet-500" />
+        <KpiCard
+          icon={Building2}
+          label={t("dashboard.totalProjects", "إجمالي المشاريع")}
+          value={fmtNumber(stats.total, 0)}
+          hint={`${stats.active} ${t("dashboard.active", "نشطة")}`}
+          color="text-primary"
+        />
+        <KpiCard
+          icon={Wallet}
+          label={t("dashboard.totalValue", "إجمالي القيمة التقديرية")}
+          value={fmtSAR(stats.totalValue, language)}
+          hint={`${t("dashboard.budget", "الميزانية")}: ${fmtSAR(stats.totalBudget, language)}`}
+          color="text-emerald-500"
+        />
+        <KpiCard
+          icon={TrendingUp}
+          label={t("dashboard.winRate", "نسبة الفوز")}
+          value={`${stats.winRate.toFixed(1)}%`}
+          hint={`${stats.won} ${t("dashboard.won", "فائز")} / ${stats.lost} ${t("dashboard.lost", "خاسر")}`}
+          color="text-blue-500"
+        />
+        <KpiCard
+          icon={CheckCircle2}
+          label={t("dashboard.libraryData", "بيانات المكتبة")}
+          value={fmtNumber(resourcesCount, 0)}
+          hint={`${boqCount} ${t("dashboard.boqItemsCount", "بند كميات")}`}
+          color="text-violet-500"
+        />
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">القيمة التقديرية للمشاريع الشهرية</CardTitle>
+            <CardTitle className="text-base">{t("dashboard.monthlyValue", "القيمة التقديرية للمشاريع الشهرية")}</CardTitle>
           </CardHeader>
           <CardContent>
             {monthlyData.length === 0 ? (
-              <EmptyState text="لا توجد بيانات بعد" />
+              <EmptyState text={t("common.noData", "لا توجد بيانات بعد")} />
             ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={monthlyData}>
@@ -173,7 +204,7 @@ function DashboardPage() {
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                   <Tooltip
-                    formatter={(v: number) => fmtSAR(v)}
+                    formatter={(v: number) => fmtSAR(v, language)}
                     contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: 8 }}
                   />
                   <Bar dataKey="value" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
@@ -185,11 +216,11 @@ function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">توزيع المشاريع حسب الحالة</CardTitle>
+            <CardTitle className="text-base">{t("dashboard.statusDistribution", "توزيع المشاريع حسب الحالة")}</CardTitle>
           </CardHeader>
           <CardContent>
             {statusData.length === 0 ? (
-              <EmptyState text="لا توجد بيانات بعد" />
+              <EmptyState text={t("common.noData", "لا توجد بيانات بعد")} />
             ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <PieChart>
@@ -211,20 +242,21 @@ function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">أحدث المشاريع</CardTitle>
+            <CardTitle className="text-base">{t("dashboard.recentProjects", "أحدث المشاريع")}</CardTitle>
             <Button asChild variant="ghost" size="sm">
-              <Link to="/projects">عرض الكل <ArrowLeft className="ms-1 h-3.5 w-3.5" /></Link>
+              <Link to="/projects">{t("common.viewAll", "عرض الكل")} <ArrowIcon className="ms-1 h-3.5 w-3.5" /></Link>
             </Button>
           </CardHeader>
           <CardContent>
             {isLoading ? (
-              <div className="text-center text-sm text-muted-foreground py-8">جارٍ التحميل...</div>
+              <div className="text-center text-sm text-muted-foreground py-8">{t("common.loading", "جارٍ التحميل...")}</div>
             ) : recentProjects.length === 0 ? (
-              <EmptyState text="لا توجد مشاريع بعد" />
+              <EmptyState text={t("dashboard.noProjects", "لا توجد مشاريع بعد")} />
             ) : (
               <div className="space-y-2">
                 {recentProjects.map((p) => {
                   const meta = STATUS_META[p.status as Status];
+                  const label = t(`status.${p.status}`, meta?.label ?? p.status);
                   return (
                     <Link
                       key={p.id}
@@ -238,10 +270,10 @@ function DashboardPage() {
                           {p.client_name ?? "—"} · {p.project_no ? `#${p.project_no}` : ""}
                         </div>
                       </div>
-                      <div className="text-left shrink-0">
-                        <div className="text-sm font-semibold">{fmtSAR(p.estimated_value)}</div>
+                      <div className="text-start shrink-0">
+                        <div className="text-sm font-semibold">{fmtSAR(Number(p.estimated_value ?? 0), language)}</div>
                         <Badge variant="outline" className="text-[10px] mt-0.5" style={{ borderColor: meta?.color, color: meta?.color }}>
-                          {meta?.label ?? p.status}
+                          {label}
                         </Badge>
                       </div>
                     </Link>
@@ -254,13 +286,13 @@ function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">إجراءات سريعة</CardTitle>
+            <CardTitle className="text-base">{t("dashboard.quickActions", "إجراءات سريعة")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            <QuickAction to="/projects" icon={Building2} label="إضافة مشروع جديد" />
-            <QuickAction to="/boq" icon={Calculator} label="جدول الكميات" />
-            <QuickAction to="/resources" icon={Database} label="مكتبة الموارد" />
-            <QuickAction to="/reports" icon={TrendingUp} label="عرض التقارير" />
+            <QuickAction to="/projects" icon={Building2} label={t("dashboard.newProjectAction", "إضافة مشروع جديد")} />
+            <QuickAction to="/boq" icon={Calculator} label={t("sidebar.boq", "جدول الكميات")} />
+            <QuickAction to="/resources" icon={Database} label={t("sidebar.resources", "مكتبة الموارد")} />
+            <QuickAction to="/reports" icon={TrendingUp} label={t("dashboard.viewReports", "عرض التقارير")} />
           </CardContent>
         </Card>
       </div>

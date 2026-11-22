@@ -22,11 +22,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronLeft, FolderPlus, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, FolderPlus, Plus, Search, Trash2 } from "lucide-react";
 import { fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
 import { setActiveProjectId } from "@/lib/active-project";
 import type { Database } from "@/integrations/supabase/types";
+import { useLanguage } from "@/lib/i18n";
 
 type Project = Database["public"]["Tables"]["projects"]["Row"];
 type Status = Database["public"]["Enums"]["project_status"];
@@ -59,6 +60,7 @@ export const Route = createFileRoute("/_authenticated/projects/")({
 
 function ProjectsIndex() {
   const qc = useQueryClient();
+  const { t, language, dir } = useLanguage();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
 
@@ -80,7 +82,7 @@ function ProjectsIndex() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("تم تحديث رقم المشروع");
+      toast.success(t("projects.noUpdated", "تم تحديث رقم المشروع"));
       qc.invalidateQueries({ queryKey: ["projects"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -92,7 +94,7 @@ function ProjectsIndex() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success("تم حذف المشروع");
+      toast.success(t("projects.deletedSuccess", "تم حذف المشروع"));
       qc.invalidateQueries({ queryKey: ["projects"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -112,13 +114,15 @@ function ProjectsIndex() {
       );
     });
 
+  const ChevronIcon = dir === "rtl" ? ChevronLeft : ChevronRight;
+
   return (
     <div className="p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">المشاريع</h1>
+          <h1 className="text-2xl font-bold">{t("projects.title", "المشاريع")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            إدارة المشاريع والمناقصات — كل مشروع يحتوي على بنود الكميات وتحليل الأسعار والمتطلبات والملفات.
+            {t("projects.subtitle", "إدارة المشاريع والمناقصات — كل مشروع يحتوي على بنود الكميات وتحليل الأسعار والمتطلبات والملفات.")}
           </p>
         </div>
         <NewProjectDialog />
@@ -126,12 +130,12 @@ function ProjectsIndex() {
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <div className="relative w-full max-w-sm">
-          <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ابحث بالاسم أو الكود أو العميل أو الموقع…"
-            className="h-9 pr-9"
+            placeholder={t("projects.searchPlaceholder", "ابحث بالاسم أو الكود أو العميل أو الموقع…")}
+            className="h-9 ps-9"
           />
         </div>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as Status | "all")}>
@@ -139,38 +143,38 @@ function ProjectsIndex() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">كل الحالات</SelectItem>
+            <SelectItem value="all">{t("projects.allStatuses", "كل الحالات")}</SelectItem>
             {(Object.keys(STATUS_META) as Status[]).map((s) => (
               <SelectItem key={s} value={s}>
-                {STATUS_META[s].label}
+                {t(`status.${s}`, STATUS_META[s].label)}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
         <div className="text-xs text-muted-foreground">
-          {filtered.length} من {projects.length} مشروع
+          {filtered.length} {t("common.of", "من")} {projects.length} {t("projects.projectsCount", "مشروع")}
         </div>
       </div>
 
       <div className="mt-4 overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full min-w-[1400px] text-right text-xs">
+        <table className="w-full min-w-[1400px] text-start text-xs">
           <thead className="bg-muted/40 text-[11px] text-muted-foreground">
             <tr>
               <th className="px-3 py-3 font-medium">No</th>
               <th className="px-3 py-3 font-medium">Code</th>
-              <th className="px-3 py-3 font-medium">العميل</th>
-              <th className="px-3 py-3 font-medium">اسم المشروع</th>
-              <th className="px-3 py-3 font-medium">الموقع</th>
-              <th className="px-3 py-3 font-medium">المنطقة</th>
-              <th className="px-3 py-3 font-medium">نطاق العمل</th>
-              <th className="px-3 py-3 font-medium">نوع التعاقد</th>
-              <th className="px-3 py-3 font-medium">دخول المناقصة</th>
-              <th className="px-3 py-3 font-medium">آخر تقديم</th>
-              <th className="px-3 py-3 font-medium">آخر استفسارات</th>
-              <th className="px-3 py-3 font-medium">مدة المشروع</th>
-              <th className="px-3 py-3 font-medium">الحالة</th>
-              <th className="px-3 py-3 font-medium">ملاحظات</th>
-              <th className="px-3 py-3 font-medium">القيمة (ر.س)</th>
+              <th className="px-3 py-3 font-medium">{t("projects.client", "العميل")}</th>
+              <th className="px-3 py-3 font-medium">{t("projects.name", "اسم المشروع")}</th>
+              <th className="px-3 py-3 font-medium">{t("projects.location", "الموقع")}</th>
+              <th className="px-3 py-3 font-medium">{t("projects.area", "المنطقة")}</th>
+              <th className="px-3 py-3 font-medium">{t("projects.scopeOfWork", "نطاق العمل")}</th>
+              <th className="px-3 py-3 font-medium">{t("projects.contractType", "نوع التعاقد")}</th>
+              <th className="px-3 py-3 font-medium">{t("projects.tenderEntryDate", "دخول المناقصة")}</th>
+              <th className="px-3 py-3 font-medium">{t("projects.lastSubmitDate", "آخر تقديم")}</th>
+              <th className="px-3 py-3 font-medium">{t("projects.lastRfiDate", "آخر استفسارات")}</th>
+              <th className="px-3 py-3 font-medium">{t("projects.duration", "مدة المشروع")}</th>
+              <th className="px-3 py-3 font-medium">{t("projects.status", "الحالة")}</th>
+              <th className="px-3 py-3 font-medium">{t("projects.notes", "ملاحظات")}</th>
+              <th className="px-3 py-3 font-medium">{t("projects.value", "القيمة")} ({t("currency.sar", "ر.س")})</th>
               <th className="px-3 py-3 font-medium"></th>
             </tr>
           </thead>
@@ -178,7 +182,7 @@ function ProjectsIndex() {
             {isLoading && (
               <tr>
                 <td colSpan={16} className="px-4 py-8 text-center text-muted-foreground">
-                  جاري التحميل…
+                  {t("common.loading", "جاري التحميل…")}
                 </td>
               </tr>
             )}
@@ -186,12 +190,13 @@ function ProjectsIndex() {
               <tr>
                 <td colSpan={16} className="px-4 py-12 text-center text-muted-foreground">
                   <FolderPlus className="mx-auto mb-2 h-8 w-8 opacity-40" />
-                  <div>لا توجد مشاريع — أضف مشروعك الأول للبدء</div>
+                  <div>{t("projects.noProjects", "لا توجد مشاريع — أضف مشروعك الأول للبدء")}</div>
                 </td>
               </tr>
             )}
             {filtered.map((p: any) => {
               const m = STATUS_META[p.status as Status] ?? { label: p.status ?? "—", cls: "bg-muted/60 text-muted-foreground border-border/60" };
+              const statusLabel = t(`status.${p.status}`, m.label);
               return (
                 <tr key={p.id} className="hover:bg-muted/30">
                   <td className="px-3 py-3">
@@ -221,10 +226,10 @@ function ProjectsIndex() {
                   <td className="px-3 py-3 text-muted-foreground">{p.last_rfi_date || "—"}</td>
                   <td className="px-3 py-3 text-muted-foreground">{p.duration || "—"}</td>
                   <td className="px-3 py-3">
-                    <Badge variant="outline" className={m.cls}>{m.label}</Badge>
+                    <Badge variant="outline" className={m.cls}>{statusLabel}</Badge>
                   </td>
                   <td className="px-3 py-3 max-w-[200px] truncate text-muted-foreground" title={p.note || ""}>{p.note || "—"}</td>
-                  <td className="px-3 py-3 tabular-nums">{fmtSAR(Number(p.estimated_value ?? 0))}</td>
+                  <td className="px-3 py-3 tabular-nums">{fmtSAR(Number(p.estimated_value ?? 0), language)}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <Link
@@ -233,15 +238,15 @@ function ProjectsIndex() {
                         onClick={() => setActiveProjectId(p.id)}
                       >
                         <Button size="sm" variant="ghost" className="gap-1">
-                          فتح
-                          <ChevronLeft className="h-3.5 w-3.5" />
+                          {t("common.open", "فتح")}
+                          <ChevronIcon className="h-3.5 w-3.5" />
                         </Button>
                       </Link>
                       <Button
                         size="icon"
                         variant="ghost"
                         onClick={() => {
-                          if (confirm(`حذف المشروع "${p.name}" مع كل بياناته؟`)) {
+                          if (confirm(t("projects.confirmDelete", `حذف المشروع "${p.name}" مع كل بياناته؟`))) {
                             delMut.mutate(p.id);
                           }
                         }}
@@ -296,6 +301,7 @@ function NoEditor({ value, onSave }: { value: number | null | undefined; onSave:
 }
 
 function NewProjectDialog() {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     project_no: "",
@@ -322,8 +328,8 @@ function NewProjectDialog() {
     mutationFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       const user_id = u.user?.id;
-      if (!user_id) throw new Error("غير مسجل دخول");
-      if (!form.name.trim()) throw new Error("اسم المشروع مطلوب");
+      if (!user_id) throw new Error(t("auth.notLoggedIn", "غير مسجل دخول"));
+      if (!form.name.trim()) throw new Error(t("projects.nameRequired", "اسم المشروع مطلوب"));
       const { data, error } = await supabase
         .from("projects")
         .insert({
@@ -350,7 +356,7 @@ function NewProjectDialog() {
       return data as Project;
     },
     onSuccess: (p) => {
-      toast.success("تم إنشاء المشروع");
+      toast.success(t("projects.createdSuccess", "تم إنشاء المشروع"));
       qc.invalidateQueries({ queryKey: ["projects"] });
       setActiveProjectId(p.id);
       setOpen(false);
@@ -371,17 +377,17 @@ function NewProjectDialog() {
       <DialogTrigger asChild>
         <Button className="gap-2">
           <Plus className="h-4 w-4" />
-          مشروع جديد
+          {t("projects.newProject", "مشروع جديد")}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>مشروع جديد</DialogTitle>
+          <DialogTitle>{t("projects.newProject", "مشروع جديد")}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="grid grid-cols-3 gap-3">
             <div className="grid gap-1.5">
-              <Label>رقم المشروع (No)</Label>
+              <Label>{t("projects.colNo", "رقم المشروع (No)")}</Label>
               <Input type="number" value={form.project_no} onChange={(e) => set("project_no", e.target.value)} placeholder="675" />
             </div>
             <div className="grid gap-1.5">
@@ -389,27 +395,27 @@ function NewProjectDialog() {
               <Input value={form.code} onChange={(e) => set("code", e.target.value)} placeholder="AFC-MAS-26-01" />
             </div>
             <div className="grid gap-1.5">
-              <Label>العميل (Owner)</Label>
+              <Label>{t("projects.client", "العميل")}</Label>
               <Input value={form.client} onChange={(e) => set("client", e.target.value)} placeholder="اسم العميل" />
             </div>
           </div>
           <div className="grid gap-1.5">
-            <Label>اسم المشروع *</Label>
+            <Label>{t("projects.name", "اسم المشروع")} *</Label>
             <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="مثال: مبنى إداري - الرياض" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label>الموقع (Project Location)</Label>
+              <Label>{t("projects.location", "الموقع")}</Label>
               <Input value={form.location} onChange={(e) => set("location", e.target.value)} placeholder="الرياض" />
             </div>
             <div className="grid gap-1.5">
-              <Label>المنطقة (Area)</Label>
+              <Label>{t("projects.area", "المنطقة")}</Label>
               <Input value={form.area} onChange={(e) => set("area", e.target.value)} placeholder="مدينة الملك عبد العزيز" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label>نطاق العمل (Scope of Work)</Label>
+              <Label>{t("projects.scopeOfWork", "نطاق العمل")}</Label>
               <Select value={form.scope_of_work} onValueChange={(v) => set("scope_of_work", v)}>
                 <SelectTrigger><SelectValue placeholder="اختر…" /></SelectTrigger>
                 <SelectContent>
@@ -418,7 +424,7 @@ function NewProjectDialog() {
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label>نوع التعاقد (Re-Measured / Lump sum)</Label>
+              <Label>{t("projects.contractType", "نوع التعاقد")}</Label>
               <Select value={form.contract_type} onValueChange={(v) => set("contract_type", v)}>
                 <SelectTrigger><SelectValue placeholder="اختر…" /></SelectTrigger>
                 <SelectContent>
@@ -429,50 +435,50 @@ function NewProjectDialog() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="grid gap-1.5">
-              <Label>تاريخ دخول المناقصة</Label>
+              <Label>{t("projects.tenderEntryDate", "تاريخ دخول المناقصة")}</Label>
               <Input type="date" value={form.tender_entry_date} onChange={(e) => set("tender_entry_date", e.target.value)} />
             </div>
             <div className="grid gap-1.5">
-              <Label>آخر تاريخ للتقديم</Label>
+              <Label>{t("projects.lastSubmitDate", "آخر تاريخ للتقديم")}</Label>
               <Input type="date" value={form.last_submit_date} onChange={(e) => set("last_submit_date", e.target.value)} />
             </div>
             <div className="grid gap-1.5">
-              <Label>آخر تاريخ للاستفسارات</Label>
+              <Label>{t("projects.lastRfiDate", "آخر تاريخ للاستفسارات")}</Label>
               <Input type="date" value={form.last_rfi_date} onChange={(e) => set("last_rfi_date", e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label>مدة المشروع</Label>
+              <Label>{t("projects.duration", "مدة المشروع")}</Label>
               <Input value={form.duration} onChange={(e) => set("duration", e.target.value)} placeholder="مثال: 12 شهر" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label>الحالة</Label>
+              <Label>{t("projects.status", "الحالة")}</Label>
               <Select value={form.status} onValueChange={(v) => set("status", v as Status)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {(Object.keys(STATUS_META) as Status[]).map((s) => (
-                    <SelectItem key={s} value={s}>{STATUS_META[s].label}</SelectItem>
+                    <SelectItem key={s} value={s}>{t(`status.${s}`, STATUS_META[s].label)}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label>قيمة المشروع (ر.س)</Label>
+              <Label>{t("projects.value", "قيمة المشروع")} ({t("currency.sar", "ر.س")})</Label>
               <Input type="number" value={form.estValue} onChange={(e) => set("estValue", e.target.value)} placeholder="0" />
             </div>
           </div>
           <div className="grid gap-1.5">
-            <Label>ملاحظة (Note)</Label>
+            <Label>{t("projects.notes", "ملاحظة")}</Label>
             <Textarea rows={2} value={form.note} onChange={(e) => set("note", e.target.value)} placeholder="ملاحظات…" />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => setOpen(false)}>إلغاء</Button>
+          <Button variant="ghost" onClick={() => setOpen(false)}>{t("common.cancel", "إلغاء")}</Button>
           <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
-            {mut.isPending ? "جاري الإنشاء…" : "إنشاء"}
+            {mut.isPending ? t("common.creating", "جاري الإنشاء…") : t("common.create", "إنشاء")}
           </Button>
         </DialogFooter>
       </DialogContent>

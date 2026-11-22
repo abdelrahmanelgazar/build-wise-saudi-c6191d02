@@ -371,11 +371,12 @@ function CellRenderer({
       );
     case "description_ar": {
       // Respect user's selected language:
-      // In English mode, display description_en if present; fallback to description_ar with visual note
+      // In English mode, display description_en if present; fallback to description_ar with visual note only if description_ar is Arabic
       const isEn = language === "en";
       const hasEn = Boolean(node.description_en?.trim());
       const displayDesc = isEn ? (hasEn ? (node.description_en ?? node.description_ar) : node.description_ar) : node.description_ar;
-      const isFallback = isEn && !hasEn;
+      const textHasArabic = /[\u0600-\u06FF]/.test(node.description_ar || "");
+      const isFallback = isEn && !hasEn && textHasArabic;
 
       return (
         <div className={baseClass} style={styleAttr}>

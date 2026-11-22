@@ -37,6 +37,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { useActiveProjectId } from "@/lib/active-project";
 import { ImportExcelDialog } from "@/components/boq/import-excel-dialog";
 import { BoqGrid, type TreeNode } from "@/components/boq/boq-grid";
+import { useLanguage } from "@/lib/i18n";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
@@ -99,6 +100,7 @@ function buildTree(
 }
 
 function BoqPage() {
+  const { t, language } = useLanguage();
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -316,12 +318,12 @@ function BoqPage() {
       <div className="p-6">
         <div className="rounded-lg border border-dashed border-border bg-card p-10 text-center">
           <FolderPlus className="mx-auto h-10 w-10 text-muted-foreground opacity-50" />
-          <h2 className="mt-3 text-lg font-semibold">اختر مشروعاً للبدء</h2>
+          <h2 className="mt-3 text-lg font-semibold">{t("boq.selectProjectPrompt", "اختر مشروعاً للبدء")}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            بنود جدول الكميات تنتمي لمشروع. اختر مشروعاً من القائمة الجانبية أو أنشئ مشروعاً جديداً.
+            {t("boq.selectProjectDesc", "بنود جدول الكميات تنتمي لمشروع. اختر مشروعاً من القائمة الجانبية أو أنشئ مشروعاً جديداً.")}
           </p>
           <Link to="/projects" className="mt-4 inline-block">
-            <Button>الذهاب للمشاريع</Button>
+            <Button>{t("boq.goToProjects", "الذهاب للمشاريع")}</Button>
           </Link>
         </div>
       </div>
@@ -331,23 +333,23 @@ function BoqPage() {
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col p-6">
       <PageHeader
-        title="جدول الكميات (BOQ)"
-        subtitle="جدول تفاعلي مشابه لإكسل — أعمدة قابلة للتغيير، خلايا قابلة للتحرير، وسعر الوحدة يفتح تحليل الأسعار."
+        title={t("boq.title", "جدول الكميات (BOQ)")}
+        subtitle={t("boq.subtitle", "جدول تفاعلي مشابه لإكسل — أعمدة قابلة للتغيير، خلايا قابلة للتحرير، وسعر الوحدة يفتح تحليل الأسعار.")}
         action={
           <div className="flex flex-wrap gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5" disabled={flatRows.length === 0}>
                   <Download className="h-4 w-4" />
-                  تصدير
+                  {t("common.export", "تصدير")}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", rows, paRates.selling, project?.excel_headers, project?.excel_pre_headers, "xlsx")}>
-                  إلى إكسل (.xlsx)
+                  {t("common.toExcel", "إلى إكسل (.xlsx)")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", rows, paRates.selling, project?.excel_headers, project?.excel_pre_headers, "csv")}>
-                  إلى (.csv)
+                  {t("common.toCsv", "إلى (.csv)")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -364,7 +366,7 @@ function BoqPage() {
           <div className="flex w-full md:w-80">
             <Select value={activeSheet || ""} onValueChange={(v) => setActiveSheet(v)}>
               <SelectTrigger className="w-full font-bold bg-card border-border/50">
-                <SelectValue placeholder="اختر الصفحة (Sheet)" />
+                <SelectValue placeholder={t("boq.selectSheet", "اختر الصفحة (Sheet)")} />
               </SelectTrigger>
               <SelectContent>
                 {sheetNames.map((name) => (
@@ -380,22 +382,22 @@ function BoqPage() {
         <div className="flex flex-wrap items-center justify-between gap-4 bg-muted/30 p-2.5 rounded-lg border border-border/50">
           <div className="flex flex-wrap items-center gap-6 px-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground uppercase tracking-wider">سعر البيع:</span>
-              <span className="font-bold tabular-nums text-base text-primary">{fmtSAR(grandTotal)}</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">{t("boq.sellingPrice", "سعر البيع")}:</span>
+              <span className="font-bold tabular-nums text-base text-primary">{fmtSAR(grandTotal, language)}</span>
             </div>
             <div className="w-px h-6 bg-border/60 hidden sm:block"></div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground uppercase tracking-wider">التكلفة المباشرة:</span>
-              <span className="font-bold tabular-nums text-sm">{fmtSAR(totalDirectCost)}</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">{t("common.directCost", "التكلفة المباشرة")}:</span>
+              <span className="font-bold tabular-nums text-sm">{fmtSAR(totalDirectCost, language)}</span>
             </div>
             <div className="w-px h-6 bg-border/60 hidden sm:block"></div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground uppercase tracking-wider">هامش الزيادة:</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">{t("boq.markupRate", "هامش الزيادة")}:</span>
               <span className="font-bold tabular-nums text-sm text-emerald-600 dark:text-emerald-400">{markupMargin.toFixed(2)}%</span>
             </div>
             <div className="w-px h-6 bg-border/60 hidden sm:block"></div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground uppercase tracking-wider">الصفوف:</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">{t("common.rows", "الصفوف")}:</span>
               <span className="font-medium tabular-nums text-sm">{itemsCount + groupsCount}</span>
             </div>
           </div>
