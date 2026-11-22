@@ -33,10 +33,26 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) navigate({ to: "/boq", replace: true });
+    // 1. Check existing session on load
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user) {
+        navigate({ to: "/boq", replace: true });
+      }
     });
-  }, [navigate]);
+
+    // 2. Listen to auth state changes (crucial for Google OAuth redirects on both localhost & cloud)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        toast.success(t("auth.signInSuccess", "تم تسجيل الدخول بنجاح!"));
+        try { await supabase.rpc("seed_demo_data" as never); } catch { /* idempotent */ }
+        navigate({ to: "/boq", replace: true });
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [navigate, t]);
 
   async function handleEmail(e: React.FormEvent) {
     e.preventDefault();
@@ -122,38 +138,28 @@ function AuthPage() {
   }
 
   async function handleGoogle() {
-    const isLocalhost = typeof window !== "undefined" && (
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1" ||
-      window.location.hostname.endsWith(".local")
-    );
-
-    if (isLocalhost) {
-      toast.info(
-        t(
-          "auth.googleLocalWarning",
-          "تسجيل الدخول بـ Google مخصص لسيرفر Lovable السحابي. على Localhost استخدم تبويب «كود التحقق (OTP)» أو كلمة المرور بالبريد نفسه."
-        ),
-        { duration: 7000 }
-      );
-      setMode("otp");
-      return;
-    }
-
     setLoading(true);
     try {
-      const result = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: window.location.origin,
+      // 1. Try Lovable OAuth helper
+      const lovableResult = await lovable.auth.signInWithOAuth("google", {
+        redirect_uri: `${window.location.origin}/auth`,
       });
-      if (result.error) {
-        toast.error(result.error.message || t("auth.googleError", "تعذر تسجيل الدخول بـ Google"));
-        setLoading(false);
+      if (lovableResult?.redirected) return;
+      if (!lovableResult?.error) {
+        navigate({ to: "/boq", replace: true });
         return;
       }
-      if (result.redirected) return;
-      navigate({ to: "/boq", replace: true });
+
+      // 2. Direct Supabase OAuth fallback
+      const { error: sbError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth`,
+        },
+      });
+      if (sbError) throw sbError;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : t("auth.errorOccurred", "خطأ غير متوقع");
+      const msg = err instanceof Error ? err.message : t("auth.errorOccurred", "تعذر تسجيل الدخول بـ Google");
       toast.error(msg);
       setLoading(false);
     }

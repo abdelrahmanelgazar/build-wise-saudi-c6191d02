@@ -17,6 +17,18 @@ import { LanguageProvider, useLanguage } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
 
 function NotFoundComponent() {
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const isAuthCallback =
+        window.location.hash.includes("access_token") ||
+        window.location.search.includes("code=") ||
+        window.location.hash.includes("error=");
+      if (isAuthCallback) {
+        window.location.href = `/auth${window.location.search}${window.location.hash}`;
+      }
+    }
+  }, []);
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="max-w-md text-center">
