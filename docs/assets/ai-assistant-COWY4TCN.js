@@ -1,1 +1,0 @@
-import{t as e}from"./jsx-runtime-n5LQ9ujS.js";import{t}from"./coming-soon-kVxtHMV5.js";var n=e(),r=()=>(0,n.jsx)(t,{title:`مساعد الذكاء الاصطناعي`,description:`قراءة ملفات BOQ، اقتراح أسعار البنود، كشف البنود الناقصة، حساب الربح، وإنشاء تحليل الأسعار تلقائياً عبر Lovable AI.`});export{r as component};

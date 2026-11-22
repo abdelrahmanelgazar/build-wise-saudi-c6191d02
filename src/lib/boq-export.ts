@@ -28,9 +28,11 @@ export function exportBoq(
     sheetRows.forEach((r) => map.set(r.id, { ...r, children: [], rolledTotal: 0, unitRate: 0 }));
     const roots: TreeNode[] = [];
     sheetRows.forEach((r) => {
-      const node = map.get(r.id)!;
-      if (r.parent_id && map.has(r.parent_id)) {
-        map.get(r.parent_id)!.children.push(node);
+      const node = map.get(r.id);
+      if (!node) return;
+      const parent = r.parent_id ? map.get(r.parent_id) : undefined;
+      if (parent) {
+        parent.children.push(node);
       } else {
         roots.push(node);
       }

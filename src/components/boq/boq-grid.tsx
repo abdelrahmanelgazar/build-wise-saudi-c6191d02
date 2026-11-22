@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Database } from "@/integrations/supabase/types";
 import { useLanguage } from "@/lib/i18n";
-import { getTextDirection, containsArabic } from "@/lib/text-direction";
+import { getTextDirection } from "@/lib/text-direction";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 export type TreeNode = BoqRow & { children: TreeNode[]; rolledTotal: number; unitRate: number };
@@ -97,6 +97,13 @@ export function BoqGrid({
     }
   });
 
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, JSON.stringify(widths)); } catch { /* Storage unavailable */ }
+  }, [widths, storageKey]);
+  useEffect(() => {
+    try { localStorage.setItem(rowHeightsKey, JSON.stringify(rowHeights)); } catch { /* Storage unavailable */ }
+  }, [rowHeights, rowHeightsKey]);
+
   const columns: Column[] = useMemo(() => {
     const defaultCols: Column[] = [
       { key: "item_no", label: t("boq.itemNo", "رقم البند"), width: 100, align: "right", field: "item_no", rawIdx: null },
@@ -114,7 +121,7 @@ export function BoqGrid({
       base = extraHeaders.map((h, idx) => {
         const rawLabel = typeof h === "string" ? h : h.label;
         const field = typeof h === "string" ? null : h.field;
-        const key = field ?? `col_${idx}`;
+        const key = field ?? `extra_${idx}`;
         const defW = field ? DEFAULT_FIELD_WIDTHS[field] ?? 100 : 120;
         const align: "right" | "center" | "left" =
           field === "quantity" || field === "unit" ? "center" : "right";
@@ -139,10 +146,11 @@ export function BoqGrid({
     e.preventDefault();
     resizingRef.current = { key, startX: e.clientX, startW };
     const move = (ev: MouseEvent) => {
-      if (!resizingRef.current) return;
-      const dx = (resizingRef.current.startX - ev.clientX) * (direction === "rtl" ? 1 : -1);
-      const next = Math.max(40, resizingRef.current.startW + dx);
-      setWidths((w) => ({ ...w, [resizingRef.current!.key]: next }));
+      const current = resizingRef.current;
+      if (!current) return;
+      const dx = (current.startX - ev.clientX) * (direction === "rtl" ? 1 : -1);
+      const next = Math.max(40, current.startW + dx);
+      setWidths((w) => ({ ...w, [current.key]: next }));
     };
     const up = () => {
       resizingRef.current = null;
@@ -159,10 +167,11 @@ export function BoqGrid({
     e.stopPropagation();
     rowResizingRef.current = { id, startY: e.clientY, startH: currentH };
     const move = (ev: MouseEvent) => {
-      if (!rowResizingRef.current) return;
-      const dy = ev.clientY - rowResizingRef.current.startY;
-      const next = Math.max(24, Math.min(600, rowResizingRef.current.startH + dy));
-      setRowHeights((m) => ({ ...m, [rowResizingRef.current!.id]: next }));
+      const current = rowResizingRef.current;
+      if (!current) return;
+      const dy = ev.clientY - current.startY;
+      const next = Math.max(24, Math.min(600, current.startH + dy));
+      setRowHeights((m) => ({ ...m, [current.id]: next }));
     };
     const up = () => {
       rowResizingRef.current = null;
@@ -362,14 +371,11 @@ function CellRenderer({
       );
     case "description_ar": {
       // Respect user's selected language:
-      // In English mode, display description_en if present; fallback to description_ar with visual note only if text is truly Arabic
+      // In English mode, display description_en if present; fallback to description_ar with visual note
       const isEn = language === "en";
       const hasEn = Boolean(node.description_en?.trim());
-      const displayDesc = isEn
-        ? (hasEn ? node.description_en! : (node.description_ar || ""))
-        : (node.description_ar || node.description_en || "");
-      const isArabicFallback = isEn && !hasEn && containsArabic(displayDesc);
-      const isEnglishFallback = !isEn && !node.description_ar?.trim() && Boolean(node.description_en?.trim());
+      const displayDesc = isEn ? (hasEn ? (node.description_en ?? node.description_ar) : node.description_ar) : node.description_ar;
+      const isFallback = isEn && !hasEn;
 
       return (
         <div className={baseClass} style={styleAttr}>
@@ -407,20 +413,12 @@ function CellRenderer({
             >
               <div className="flex items-center gap-1.5 w-full">
                 <span className="block w-full whitespace-pre-wrap break-words">{displayDesc}</span>
-                {isArabicFallback && (
+                {isFallback && (
                   <span
-                    className="shrink-0 rounded bg-amber-500/10 px-1 py-0.5 text-[9px] text-amber-500 font-mono"
-                    title={t("boq.untranslated", "غير مترجم")}
+                    className="shrink-0 rounded bg-primary/10 px-1 py-0.5 text-[9px] text-primary"
+                    title="هذا البند معروض بالعربية لعدم توفر ترجمة إنجليزية له"
                   >
                     AR
-                  </span>
-                )}
-                {isEnglishFallback && (
-                  <span
-                    className="shrink-0 rounded bg-blue-500/10 px-1 py-0.5 text-[9px] text-blue-500 font-mono"
-                    title={t("boq.untranslated", "غير مترجم")}
-                  >
-                    EN
                   </span>
                 )}
               </div>

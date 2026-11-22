@@ -5,16 +5,6 @@ const ARABIC_REGEX = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE7
 // Unicode range for Latin characters
 const LATIN_REGEX = /[A-Za-z]/;
 
-export function containsArabic(value: string | number | undefined | null): boolean {
-  if (!value) return false;
-  return ARABIC_REGEX.test(String(value));
-}
-
-export function containsLatin(value: string | number | undefined | null): boolean {
-  if (!value) return false;
-  return LATIN_REGEX.test(String(value));
-}
-
 /**
  * Determines text direction based on the full text value:
  * 1. If any Arabic character is present -> "rtl" (Arabic priority rule).

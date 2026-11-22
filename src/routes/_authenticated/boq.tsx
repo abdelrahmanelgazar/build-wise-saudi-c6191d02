@@ -37,12 +37,11 @@ import type { Database } from "@/integrations/supabase/types";
 import { useActiveProjectId } from "@/lib/active-project";
 import { ImportExcelDialog } from "@/components/boq/import-excel-dialog";
 import { BoqGrid, type TreeNode } from "@/components/boq/boq-grid";
-import { useLanguage } from "@/lib/i18n";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
 export const Route = createFileRoute("/_authenticated/boq")({
-  head: () => ({ meta: [{ title: "جدول الكميات — تقديري" }] }),
+  head: () => ({ meta: [{ title: 'جدول الكميات — تقديري' }, { name: "description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:title", content: 'جدول الكميات — تقديري' }, { property: "og:description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
   component: BoqPage,
 });
 
@@ -58,9 +57,10 @@ function buildTree(
   );
   const roots: TreeNode[] = [];
   rows.forEach((r) => {
-    const node = map.get(r.id)!;
+    const node = map.get(r.id);
+    if (!node) return;
     if (r.parent_id && map.has(r.parent_id)) {
-      map.get(r.parent_id)!.children.push(node);
+      map.get(r.parent_id)?.children.push(node);
     } else {
       roots.push(node);
     }
@@ -76,7 +76,7 @@ function buildTree(
       n.rolledTotal = n.children.reduce((s, c) => s + computeTotal(c), 0);
     } else {
       if (sheetTotals && n.description_ar && sheetTotals[n.description_ar] !== undefined) {
-        n.rolledTotal = sheetTotals[n.description_ar];
+        n.rolledTotal = sheetTotals[n.description_ar] ?? 0;
         n.unitRate = Number(n.quantity) ? n.rolledTotal / Number(n.quantity) : n.rolledTotal;
       } else {
         // Prefer the unit selling price computed from price analysis when present;
@@ -100,7 +100,6 @@ function buildTree(
 
 function BoqPage() {
   const qc = useQueryClient();
-  const { t, language } = useLanguage();
   const projectId = useActiveProjectId();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [activeSheet, setActiveSheet] = useState<string>("");
@@ -109,10 +108,11 @@ function BoqPage() {
     queryKey: ["boq_items", projectId],
     enabled: !!projectId,
     queryFn: async () => {
+      if (!projectId) throw new Error("اختر مشروعاً أولاً");
       const { data, error } = await supabase
         .from("boq_items")
         .select("*")
-        .eq("project_id", projectId!);
+        .eq("project_id", projectId);
       if (error) throw error;
       return data as BoqRow[];
     },
@@ -122,10 +122,11 @@ function BoqPage() {
     queryKey: ["project", projectId],
     enabled: !!projectId,
     queryFn: async () => {
+      if (!projectId) throw new Error("اختر مشروعاً أولاً");
       const { data, error } = await supabase
         .from("projects")
         .select("id, name, excel_headers, excel_pre_headers, excel_sheets_order")
-        .eq("id", projectId!)
+        .eq("id", projectId)
         .maybeSingle();
       if (error) throw error;
       return data;
@@ -154,9 +155,9 @@ function BoqPage() {
 
   useEffect(() => {
     if (!activeSheet && sheetNames.length > 0) {
-      setActiveSheet(sheetNames[0]);
+      setActiveSheet(sheetNames[0] ?? "Sheet1");
     } else if (activeSheet && !sheetNames.includes(activeSheet) && sheetNames.length > 0) {
-      setActiveSheet(sheetNames[0]);
+      setActiveSheet(sheetNames[0] ?? "Sheet1");
     }
   }, [sheetNames, activeSheet]);
 
@@ -182,10 +183,11 @@ function BoqPage() {
     queryKey: ["pa_items_project", projectId],
     enabled: !!projectId,
     queryFn: async () => {
+      if (!projectId) throw new Error("اختر مشروعاً أولاً");
       const { data, error } = await supabase
         .from("price_analysis_items")
         .select("boq_item_id, quantity, unit_price")
-        .eq("project_id", projectId!);
+        .eq("project_id", projectId);
       if (error) throw error;
       return data as { boq_item_id: string; quantity: number; unit_price: number }[];
     },
@@ -195,10 +197,11 @@ function BoqPage() {
     queryKey: ["pa_markup_project", projectId],
     enabled: !!projectId,
     queryFn: async () => {
+      if (!projectId) throw new Error("اختر مشروعاً أولاً");
       const { data, error } = await supabase
         .from("price_analysis_markup")
         .select("boq_item_id, indirect_pct, overhead_pct, risk_pct, profit_pct")
-        .eq("project_id", projectId!);
+        .eq("project_id", projectId);
       if (error) throw error;
       return data as {
         boq_item_id: string;
@@ -313,12 +316,12 @@ function BoqPage() {
       <div className="p-6">
         <div className="rounded-lg border border-dashed border-border bg-card p-10 text-center">
           <FolderPlus className="mx-auto h-10 w-10 text-muted-foreground opacity-50" />
-          <h2 className="mt-3 text-lg font-semibold">{t("boq.selectProjectPrompt")}</h2>
+          <h2 className="mt-3 text-lg font-semibold">اختر مشروعاً للبدء</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("boq.selectProjectDesc")}
+            بنود جدول الكميات تنتمي لمشروع. اختر مشروعاً من القائمة الجانبية أو أنشئ مشروعاً جديداً.
           </p>
           <Link to="/projects" className="mt-4 inline-block">
-            <Button>{t("boq.goToProjects")}</Button>
+            <Button>الذهاب للمشاريع</Button>
           </Link>
         </div>
       </div>
@@ -328,23 +331,23 @@ function BoqPage() {
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col p-6">
       <PageHeader
-        title={t("boq.title")}
-        subtitle={t("boq.subtitle")}
+        title="جدول الكميات (BOQ)"
+        subtitle="جدول تفاعلي مشابه لإكسل — أعمدة قابلة للتغيير، خلايا قابلة للتحرير، وسعر الوحدة يفتح تحليل الأسعار."
         action={
           <div className="flex flex-wrap gap-2">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-1.5" disabled={flatRows.length === 0}>
                   <Download className="h-4 w-4" />
-                  {t("common.export")}
+                  تصدير
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", rows, paRates.selling, project?.excel_headers, project?.excel_pre_headers, "xlsx", language)}>
-                  {t("boq.exportToXlsx")}
+                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", rows, paRates.selling, project?.excel_headers, project?.excel_pre_headers, "xlsx")}>
+                  إلى إكسل (.xlsx)
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", rows, paRates.selling, project?.excel_headers, project?.excel_pre_headers, "csv", language)}>
-                  {t("boq.exportToCsv")}
+                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", rows, paRates.selling, project?.excel_headers, project?.excel_pre_headers, "csv")}>
+                  إلى (.csv)
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -361,7 +364,7 @@ function BoqPage() {
           <div className="flex w-full md:w-80">
             <Select value={activeSheet || ""} onValueChange={(v) => setActiveSheet(v)}>
               <SelectTrigger className="w-full font-bold bg-card border-border/50">
-                <SelectValue placeholder={t("boq.selectSheet")} />
+                <SelectValue placeholder="اختر الصفحة (Sheet)" />
               </SelectTrigger>
               <SelectContent>
                 {sheetNames.map((name) => (
@@ -377,22 +380,22 @@ function BoqPage() {
         <div className="flex flex-wrap items-center justify-between gap-4 bg-muted/30 p-2.5 rounded-lg border border-border/50">
           <div className="flex flex-wrap items-center gap-6 px-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground uppercase tracking-wider">{t("boq.sellingPriceBar")}</span>
-              <span className="font-bold tabular-nums text-base text-primary">{fmtSAR(grandTotal, language)}</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">سعر البيع:</span>
+              <span className="font-bold tabular-nums text-base text-primary">{fmtSAR(grandTotal)}</span>
             </div>
             <div className="w-px h-6 bg-border/60 hidden sm:block"></div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground uppercase tracking-wider">{t("boq.directCostBar")}</span>
-              <span className="font-bold tabular-nums text-sm">{fmtSAR(totalDirectCost, language)}</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">التكلفة المباشرة:</span>
+              <span className="font-bold tabular-nums text-sm">{fmtSAR(totalDirectCost)}</span>
             </div>
             <div className="w-px h-6 bg-border/60 hidden sm:block"></div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground uppercase tracking-wider">{t("boq.markupBar")}</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">هامش الزيادة:</span>
               <span className="font-bold tabular-nums text-sm text-emerald-600 dark:text-emerald-400">{markupMargin.toFixed(2)}%</span>
             </div>
             <div className="w-px h-6 bg-border/60 hidden sm:block"></div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground uppercase tracking-wider">{t("boq.rowsBar")}</span>
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">الصفوف:</span>
               <span className="font-medium tabular-nums text-sm">{itemsCount + groupsCount}</span>
             </div>
           </div>
@@ -412,7 +415,7 @@ function BoqPage() {
             }
           }}
           extraHeaders={extraHeaders as any}
-          projectId={projectId!}
+          projectId={projectId}
           grandTotal={grandTotal}
         />
       </div>
@@ -451,7 +454,6 @@ function NewBoqDialog({
   isGroup?: boolean;
   parentOptions: TreeNode[];
 }) {
-  const { t, language } = useLanguage();
   const [open, setOpen] = useState(false);
   const [itemNo, setItemNo] = useState("");
   const [desc, setDesc] = useState("");
@@ -469,17 +471,15 @@ function NewBoqDialog({
     mutationFn: async () => {
       const { data: userData } = await supabase.auth.getUser();
       const user_id = userData.user?.id;
-      if (!user_id) throw new Error("Not logged in");
-      if (!projectId) throw new Error("Select project first");
+      if (!user_id) throw new Error("غير مسجل دخول");
+      if (!projectId) throw new Error("اختر مشروعاً أولاً");
       const level = parentId ? 1 : 0;
-      const isEn = language === "en";
       const { error } = await supabase.from("boq_items").insert({
         user_id,
         project_id: projectId,
         parent_id: parentId || null,
         item_no: itemNo,
         description_ar: desc,
-        description_en: isEn ? desc : null,
         unit: isGroup ? null : unit,
         quantity: isGroup ? 0 : Number(qty) || 0,
         material_cost: Number(mc) || 0,
@@ -492,7 +492,7 @@ function NewBoqDialog({
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success(isGroup ? t("boq.groupAdded") : t("boq.itemAdded"));
+      toast.success(isGroup ? "تمت إضافة المجموعة" : "تمت إضافة البند");
       qc.invalidateQueries({ queryKey: ["boq_items"] });
       setOpen(false);
       setItemNo(""); setDesc(""); setUnit(""); setQty(""); setMc(""); setLc(""); setEc("");
@@ -505,29 +505,29 @@ function NewBoqDialog({
       <DialogTrigger asChild>
         <Button size="sm" variant={isGroup ? "outline" : "default"} className="gap-1.5">
           {isGroup ? <FolderPlus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-          {isGroup ? t("boq.newGroup") : t("boq.newItem")}
+          {isGroup ? "مجموعة جديدة" : "بند جديد"}
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg">
+      <DialogContent dir="rtl" className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>{isGroup ? t("boq.addGroupTitle") : t("boq.addItemTitle")}</DialogTitle>
+          <DialogTitle>{isGroup ? "إضافة مجموعة" : "إضافة بند"}</DialogTitle>
         </DialogHeader>
         <div className="grid gap-3 py-2">
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1.5">
-              <Label>{t("boq.itemNo")}</Label>
+              <Label>رقم البند</Label>
               <Input value={itemNo} onChange={(e) => setItemNo(e.target.value)} placeholder="01.05" />
             </div>
             <div className="col-span-2 space-y-1.5">
-              <Label>{t("boq.parentGroup")}</Label>
+              <Label>المجموعة الأم</Label>
               <Select value={parentId} onValueChange={setParentId}>
                 <SelectTrigger>
-                  <SelectValue placeholder={isGroup ? t("boq.noParent") : t("boq.selectGroup")} />
+                  <SelectValue placeholder={isGroup ? "بدون (مستوى أعلى)" : "اختر مجموعة"} />
                 </SelectTrigger>
                 <SelectContent>
                   {parentOptions.map((g) => (
                     <SelectItem key={g.id} value={g.id}>
-                      {g.item_no} — {language === "en" && g.description_en ? g.description_en : g.description_ar}
+                      {g.item_no} — {g.description_ar}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -535,32 +535,32 @@ function NewBoqDialog({
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label>{t("boq.descLabel")}</Label>
+            <Label>الوصف</Label>
             <Input value={desc} onChange={(e) => setDesc(e.target.value)} required />
           </div>
           {!isGroup && (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label>{t("common.unit")}</Label>
-                  <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="m²" />
+                  <Label>الوحدة</Label>
+                  <Input value={unit} onChange={(e) => setUnit(e.target.value)} placeholder="م³" />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>{t("common.quantity")}</Label>
+                  <Label>الكمية</Label>
                   <Input type="number" step="0.001" value={qty} onChange={(e) => setQty(e.target.value)} />
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
-                  <Label>{t("boq.matCostLabel")}</Label>
+                  <Label>تكلفة المواد</Label>
                   <Input type="number" step="0.01" value={mc} onChange={(e) => setMc(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>{t("boq.labCostLabel")}</Label>
+                  <Label>تكلفة العمالة</Label>
                   <Input type="number" step="0.01" value={lc} onChange={(e) => setLc(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>{t("boq.eqCostLabel")}</Label>
+                  <Label>تكلفة المعدات</Label>
                   <Input type="number" step="0.01" value={ec} onChange={(e) => setEc(e.target.value)} />
                 </div>
               </div>
@@ -568,9 +568,9 @@ function NewBoqDialog({
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
+          <Button variant="outline" onClick={() => setOpen(false)}>إلغاء</Button>
           <Button onClick={() => mut.mutate()} disabled={mut.isPending || !itemNo || !desc}>
-            {mut.isPending ? t("common.saving") : t("common.save")}
+            {mut.isPending ? "جاري الحفظ…" : "حفظ"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -15,8 +15,6 @@ import {
 import { Download, Printer, FileSpreadsheet, FolderKanban, Calculator, Database as DatabaseIcon, FileBarChart } from "lucide-react";
 import { fmtSAR } from "@/lib/format";
 import * as XLSX from "xlsx";
-import { useLanguage } from "@/lib/i18n";
-import { STATUS_CONFIGS, ALL_STATUSES, type ProjectStatus } from "@/lib/status";
 import type { Database } from "@/integrations/supabase/types";
 
 type Project = Database["public"]["Tables"]["projects"]["Row"];
@@ -24,30 +22,46 @@ type Status = Database["public"]["Enums"]["project_status"];
 type BoqItem = Database["public"]["Tables"]["boq_items"]["Row"];
 type Resource = Database["public"]["Tables"]["resources"]["Row"];
 
+const STATUS_META: Record<Status, { label: string; cls: string }> = {
+  studying: { label: "قيد الدراسة", cls: "bg-muted/60 text-muted-foreground border-border/60" },
+  submitted_to_medial_man: { label: "مُرسل للوسيط (GM)", cls: "bg-amber-500/15 text-amber-500 border-amber-500/30" },
+  submitted_to_client: { label: "مُرسل للعميل", cls: "bg-primary/15 text-primary border-primary/30" },
+  waiting_for_reply: { label: "بانتظار الرد", cls: "bg-yellow-500/15 text-yellow-600 border-yellow-500/30" },
+  inquiries_sent: { label: "استفسارات للعميل", cls: "bg-cyan-500/15 text-cyan-500 border-cyan-500/30" },
+  answers_received: { label: "ردود مستلمة - دراسة", cls: "bg-indigo-500/15 text-indigo-500 border-indigo-500/30" },
+  on_hold: { label: "مُعلّق", cls: "bg-orange-500/15 text-orange-500 border-orange-500/30" },
+  client_rejected: { label: "رفض العميل", cls: "bg-red-500/15 text-red-500 border-red-500/30" },
+  construction_ongoing: { label: "تنفيذ جاري", cls: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30" },
+  construction_complete: { label: "تنفيذ مكتمل", cls: "bg-teal-500/15 text-teal-500 border-teal-500/30" },
+  finished: { label: "منتهي", cls: "bg-blue-500/15 text-blue-500 border-blue-500/30" },
+  closed: { label: "مغلق", cls: "bg-muted/60 text-muted-foreground border-border/60" },
+};
+
+const RES_LABEL: Record<string, string> = { material: "مواد", labor: "عمالة", equipment: "معدات" };
+
 export const Route = createFileRoute("/_authenticated/reports")({
+  head: () => ({ meta: [{ title: 'التقارير — تقديري' }, { name: "description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:title", content: 'التقارير — تقديري' }, { property: "og:description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
   component: ReportsPage,
 });
 
 function ReportsPage() {
-  const { t } = useLanguage();
-
   return (
     <div className="p-6 print:p-0">
       <div className="flex flex-wrap items-start justify-between gap-3 print:hidden">
         <div>
-          <h1 className="text-2xl font-bold">{t("reports.title")}</h1>
+          <h1 className="text-2xl font-bold">التقارير</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("reports.subtitle")}
+            تقارير المشاريع، جداول الكميات، الموارد، والملخص التنفيذي — مع تصدير Excel وطباعة PDF.
           </p>
         </div>
       </div>
 
       <Tabs defaultValue="projects" className="mt-6">
         <TabsList className="print:hidden">
-          <TabsTrigger value="projects" className="gap-1.5"><FolderKanban className="h-4 w-4" /> {t("reports.tabProjects")}</TabsTrigger>
-          <TabsTrigger value="boq" className="gap-1.5"><Calculator className="h-4 w-4" /> {t("reports.tabDetailedBoq")}</TabsTrigger>
-          <TabsTrigger value="resources" className="gap-1.5"><DatabaseIcon className="h-4 w-4" /> {t("reports.tabResources")}</TabsTrigger>
-          <TabsTrigger value="summary" className="gap-1.5"><FileBarChart className="h-4 w-4" /> {t("reports.tabExecutiveSummary")}</TabsTrigger>
+          <TabsTrigger value="projects" className="gap-1.5"><FolderKanban className="h-4 w-4" /> المشاريع</TabsTrigger>
+          <TabsTrigger value="boq" className="gap-1.5"><Calculator className="h-4 w-4" /> BOQ التفصيلي</TabsTrigger>
+          <TabsTrigger value="resources" className="gap-1.5"><DatabaseIcon className="h-4 w-4" /> الموارد</TabsTrigger>
+          <TabsTrigger value="summary" className="gap-1.5"><FileBarChart className="h-4 w-4" /> الملخص التنفيذي</TabsTrigger>
         </TabsList>
 
         <TabsContent value="projects" className="mt-4"><ProjectsReport /></TabsContent>
@@ -60,7 +74,6 @@ function ReportsPage() {
 }
 
 function Toolbar({ title, onExcel }: { title: string; onExcel: () => void }) {
-  const { t } = useLanguage();
   return (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2 print:hidden">
       <h2 className="text-lg font-semibold">{title}</h2>
@@ -69,7 +82,7 @@ function Toolbar({ title, onExcel }: { title: string; onExcel: () => void }) {
           <FileSpreadsheet className="h-4 w-4" /> Excel
         </Button>
         <Button variant="outline" size="sm" onClick={() => window.print()} className="gap-1.5">
-          <Printer className="h-4 w-4" /> {t("reports.printPdf")}
+          <Printer className="h-4 w-4" /> طباعة / PDF
         </Button>
       </div>
     </div>
@@ -78,7 +91,6 @@ function Toolbar({ title, onExcel }: { title: string; onExcel: () => void }) {
 
 /* ============== 1) PROJECTS REPORT ============== */
 function ProjectsReport() {
-  const { t, language } = useLanguage();
   const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
 
   const { data: projects = [], isLoading } = useQuery({
@@ -103,72 +115,74 @@ function ProjectsReport() {
   }, [filtered]);
 
   const exportExcel = () => {
-    const isEn = language === "en";
     const rows = filtered.map((p) => ({
-      [isEn ? "No" : "No"]: p.project_no ?? "",
-      [isEn ? "Code" : "Code"]: p.code ?? "",
-      [isEn ? "Project Name" : "اسم المشروع"]: p.name,
-      [isEn ? "Client" : "العميل"]: p.client_name ?? "",
-      [isEn ? "Location" : "الموقع"]: p.location ?? "",
-      [isEn ? "Status" : "الحالة"]: STATUS_CONFIGS[p.status] ? t(STATUS_CONFIGS[p.status].translationKey) : p.status,
-      [isEn ? "Duration" : "مدة المشروع"]: (p as any).duration ?? "",
-      [isEn ? "Estimated Value" : "القيمة التقديرية"]: Number(p.estimated_value ?? 0),
-      [isEn ? "Budget" : "الميزانية"]: Number(p.budget ?? 0),
-      [isEn ? "Notes" : "ملاحظات"]: (p as any).note ?? "",
+      "No": p.project_no ?? "",
+      "Code": p.code ?? "",
+      "اسم المشروع": p.name,
+      "العميل": p.client_name ?? "",
+      "الموقع": p.location ?? "",
+      "المنطقة": (p as any).area ?? "",
+      "نطاق العمل": (p as any).scope_of_work ?? "",
+      "نوع التعاقد": (p as any).contract_type ?? "",
+      "الحالة": STATUS_META[p.status]?.label ?? p.status,
+      "دخول المناقصة": (p as any).tender_entry_date ?? "",
+      "آخر تقديم": (p as any).last_submit_date ?? "",
+      "آخر استفسارات": (p as any).last_rfi_date ?? "",
+      "مدة المشروع": (p as any).duration ?? "",
+      "القيمة التقديرية": Number(p.estimated_value ?? 0),
+      "الميزانية": Number(p.budget ?? 0),
+      "ملاحظات": (p as any).note ?? "",
     }));
-    downloadXlsx(rows, "projects-report", isEn ? "Projects" : "المشاريع");
+    downloadXlsx(rows, "projects-report", "المشاريع");
   };
 
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <Toolbar title={t("reports.projectReportTitle")} onExcel={exportExcel} />
+      <Toolbar title="تقرير المشاريع" onExcel={exportExcel} />
 
       <div className="mb-3 flex flex-wrap items-center gap-3 print:hidden">
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as Status | "all")}>
           <SelectTrigger className="h-9 w-48"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">{t("reports.allStatuses")}</SelectItem>
-            {ALL_STATUSES.map((s) => (
-              <SelectItem key={s} value={s}>{t(STATUS_CONFIGS[s].translationKey)}</SelectItem>
+            <SelectItem value="all">كل الحالات</SelectItem>
+            {(Object.keys(STATUS_META) as Status[]).map((s) => (
+              <SelectItem key={s} value={s}>{STATUS_META[s].label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <div className="text-xs text-muted-foreground">{filtered.length} {t("projects.countOf")}</div>
+        <div className="text-xs text-muted-foreground">{filtered.length} مشروع</div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3 mb-4">
-        <Stat label={t("dashboard.totalProjects")} value={String(totals.count)} />
-        <Stat label={t("dashboard.totalValue")} value={fmtSAR(totals.est, language)} hl />
-        <Stat label={t("dashboard.budget")} value={fmtSAR(totals.bud, language)} />
+        <Stat label="عدد المشاريع" value={String(totals.count)} />
+        <Stat label="إجمالي القيمة التقديرية" value={fmtSAR(totals.est)} hl />
+        <Stat label="إجمالي الميزانية" value={fmtSAR(totals.bud)} />
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full min-w-[1100px] text-start text-xs">
+        <table className="w-full min-w-[1100px] text-right text-xs">
           <thead className="bg-muted/40 text-[11px] text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 text-start font-medium">{t("projects.colNo")}</th>
-              <th className="px-3 py-2 text-start font-medium">{t("projects.colCode")}</th>
-              <th className="px-3 py-2 text-start font-medium">{t("projects.colName")}</th>
-              <th className="px-3 py-2 text-start font-medium">{t("projects.colClient")}</th>
-              <th className="px-3 py-2 text-start font-medium">{t("projects.colLocation")}</th>
-              <th className="px-3 py-2 text-start font-medium">{t("projects.colStatus")}</th>
-              <th className="px-3 py-2 text-start font-medium">{t("projects.colDuration")}</th>
-              <th className="px-3 py-2 text-start font-medium">{t("projects.colValue")}</th>
-              <th className="px-3 py-2 text-start font-medium">{t("projects.statBudget")}</th>
+              <th className="px-3 py-2 font-medium">No</th>
+              <th className="px-3 py-2 font-medium">Code</th>
+              <th className="px-3 py-2 font-medium">اسم المشروع</th>
+              <th className="px-3 py-2 font-medium">العميل</th>
+              <th className="px-3 py-2 font-medium">الموقع</th>
+              <th className="px-3 py-2 font-medium">الحالة</th>
+              <th className="px-3 py-2 font-medium">مدة المشروع</th>
+              <th className="px-3 py-2 font-medium">القيمة (ر.س)</th>
+              <th className="px-3 py-2 font-medium">الميزانية (ر.س)</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading && (
-              <tr><td colSpan={9} className="px-4 py-6 text-center text-muted-foreground">{t("common.loading")}</td></tr>
+              <tr><td colSpan={9} className="px-4 py-6 text-center text-muted-foreground">جاري التحميل…</td></tr>
             )}
             {!isLoading && filtered.length === 0 && (
-              <tr><td colSpan={9} className="px-4 py-6 text-center text-muted-foreground">{t("projects.emptyProjects")}</td></tr>
+              <tr><td colSpan={9} className="px-4 py-6 text-center text-muted-foreground">لا توجد مشاريع</td></tr>
             )}
             {filtered.map((p) => {
-              const cfg = STATUS_CONFIGS[p.status];
-              const statusLabel = cfg ? t(cfg.translationKey) : p.status;
-              const badgeCls = cfg ? cfg.badgeClass : "bg-muted/60 text-muted-foreground border-border/60";
-
+              const m = STATUS_META[p.status];
               return (
                 <tr key={p.id} className="hover:bg-muted/30">
                   <td className="px-3 py-2 tabular-nums">{p.project_no ?? "—"}</td>
@@ -176,10 +190,10 @@ function ProjectsReport() {
                   <td className="px-3 py-2 font-medium">{p.name}</td>
                   <td className="px-3 py-2 text-muted-foreground">{p.client_name || "—"}</td>
                   <td className="px-3 py-2 text-muted-foreground">{p.location || "—"}</td>
-                  <td className="px-3 py-2"><Badge variant="outline" className={badgeCls}>{statusLabel}</Badge></td>
+                  <td className="px-3 py-2"><Badge variant="outline" className={m.cls}>{m.label}</Badge></td>
                   <td className="px-3 py-2 text-muted-foreground">{(p as any).duration || "—"}</td>
-                  <td className="px-3 py-2 tabular-nums">{fmtSAR(Number(p.estimated_value ?? 0), language)}</td>
-                  <td className="px-3 py-2 tabular-nums">{fmtSAR(Number(p.budget ?? 0), language)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtSAR(Number(p.estimated_value ?? 0))}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtSAR(Number(p.budget ?? 0))}</td>
                 </tr>
               );
             })}
@@ -187,9 +201,9 @@ function ProjectsReport() {
           {filtered.length > 0 && (
             <tfoot className="bg-muted/40 font-medium">
               <tr>
-                <td colSpan={7} className="px-3 py-2 text-start">{t("common.grandTotal")}</td>
-                <td className="px-3 py-2 tabular-nums">{fmtSAR(totals.est, language)}</td>
-                <td className="px-3 py-2 tabular-nums">{fmtSAR(totals.bud, language)}</td>
+                <td colSpan={7} className="px-3 py-2 text-left">الإجمالي</td>
+                <td className="px-3 py-2 tabular-nums">{fmtSAR(totals.est)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtSAR(totals.bud)}</td>
               </tr>
             </tfoot>
           )}
@@ -201,7 +215,6 @@ function ProjectsReport() {
 
 /* ============== 2) BOQ REPORT ============== */
 function BoqReport() {
-  const { t, language } = useLanguage();
   const [projectId, setProjectId] = useState<string>("");
 
   const { data: projects = [] } = useQuery({
@@ -216,7 +229,7 @@ function BoqReport() {
   });
 
   useEffect(() => {
-    if (!projectId && projects.length > 0) setProjectId(projects[0].id);
+    if (!projectId && projects.length > 0) setProjectId(projects[0]?.id ?? "");
   }, [projectId, projects]);
 
   const { data: items = [], isLoading } = useQuery({
@@ -244,32 +257,28 @@ function BoqReport() {
 
   const exportExcel = () => {
     if (!project) return;
-    const isEn = language === "en";
-    const data = rows.map(({ b, unitCost, total }) => {
-      const desc = isEn && b.description_en ? b.description_en : b.description_ar;
-      return {
-        [isEn ? "Item No" : "البند"]: b.item_no,
-        [isEn ? "Description" : "الوصف"]: desc,
-        [isEn ? "Unit" : "الوحدة"]: b.unit ?? "",
-        [isEn ? "Quantity" : "الكمية"]: b.is_group ? "" : Number(b.quantity ?? 0),
-        [isEn ? "Material" : "مواد"]: Number(b.material_cost ?? 0),
-        [isEn ? "Labour" : "عمالة"]: Number(b.labor_cost ?? 0),
-        [isEn ? "Equipment" : "معدات"]: Number(b.equipment_cost ?? 0),
-        [isEn ? "Subcontractor" : "مقاولين باطن"]: Number(b.subcontractor_cost ?? 0),
-        [isEn ? "Unit Rate" : "سعر الوحدة"]: unitCost,
-        [isEn ? "Total" : "الإجمالي"]: b.is_group ? "" : total,
-      };
-    });
+    const data = rows.map(({ b, unitCost, total }) => ({
+      "البند": b.item_no,
+      "الوصف": b.description_ar,
+      "الوحدة": b.unit ?? "",
+      "الكمية": b.is_group ? "" : Number(b.quantity ?? 0),
+      "مواد": Number(b.material_cost ?? 0),
+      "عمالة": Number(b.labor_cost ?? 0),
+      "معدات": Number(b.equipment_cost ?? 0),
+      "مقاولين باطن": Number(b.subcontractor_cost ?? 0),
+      "سعر الوحدة": unitCost,
+      "الإجمالي": b.is_group ? "" : total,
+    }));
     downloadXlsx(data, `boq-${project.name}`, "BOQ");
   };
 
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <Toolbar title={t("reports.boqReportTitle")} onExcel={exportExcel} />
+      <Toolbar title="تقرير BOQ التفصيلي" onExcel={exportExcel} />
 
       <div className="mb-3 flex flex-wrap items-center gap-3 print:hidden">
         <Select value={projectId} onValueChange={setProjectId}>
-          <SelectTrigger className="h-9 w-80"><SelectValue placeholder={t("projects.selectPlaceholder")} /></SelectTrigger>
+          <SelectTrigger className="h-9 w-80"><SelectValue placeholder="اختر مشروعاً…" /></SelectTrigger>
           <SelectContent>
             {projects.map((p) => (
               <SelectItem key={p.id} value={p.id}>
@@ -282,7 +291,7 @@ function BoqReport() {
 
       {!projectId && (
         <div className="rounded-md border border-dashed border-border p-8 text-center text-muted-foreground">
-          {t("pa.selectProjectPrompt")}
+          اختر مشروعاً لعرض تقرير BOQ التفصيلي.
         </div>
       )}
 
@@ -290,46 +299,43 @@ function BoqReport() {
         <>
           <div className="mb-3 text-sm text-muted-foreground print:mb-4">
             <span className="font-semibold text-foreground">{project.name}</span>
-            {project.client_name && <> · {t("projects.colClient")}: {project.client_name}</>}
+            {project.client_name && <> · العميل: {project.client_name}</>}
           </div>
           <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full min-w-[900px] text-start text-xs">
+            <table className="w-full min-w-[900px] text-right text-xs">
               <thead className="bg-muted/40 text-[11px] text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 text-start font-medium">{t("boq.itemNo")}</th>
-                  <th className="px-3 py-2 text-start font-medium">{t("common.description")}</th>
-                  <th className="px-3 py-2 text-start font-medium">{t("common.unit")}</th>
-                  <th className="px-3 py-2 text-start font-medium">{t("common.quantity")}</th>
-                  <th className="px-3 py-2 text-start font-medium">{t("common.unitRate")}</th>
-                  <th className="px-3 py-2 text-start font-medium">{t("common.total")}</th>
+                  <th className="px-3 py-2 font-medium">البند</th>
+                  <th className="px-3 py-2 font-medium">الوصف</th>
+                  <th className="px-3 py-2 font-medium">الوحدة</th>
+                  <th className="px-3 py-2 font-medium">الكمية</th>
+                  <th className="px-3 py-2 font-medium">سعر الوحدة</th>
+                  <th className="px-3 py-2 font-medium">الإجمالي</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {isLoading && (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">{t("common.loading")}</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">جاري التحميل…</td></tr>
                 )}
                 {!isLoading && rows.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">{t("boq.emptyState")}</td></tr>
+                  <tr><td colSpan={6} className="px-4 py-6 text-center text-muted-foreground">لا توجد بنود</td></tr>
                 )}
-                {rows.map(({ b, unitCost, total }) => {
-                  const desc = language === "en" && b.description_en ? b.description_en : b.description_ar;
-                  return (
-                    <tr key={b.id} className={b.is_group ? "bg-muted/30 font-semibold" : "hover:bg-muted/20"}>
-                      <td className="px-3 py-2 font-mono text-[11px]">{b.item_no}</td>
-                      <td className="px-3 py-2">{desc}</td>
-                      <td className="px-3 py-2 text-muted-foreground">{b.unit ?? "—"}</td>
-                      <td className="px-3 py-2 tabular-nums">{b.is_group ? "" : Number(b.quantity ?? 0)}</td>
-                      <td className="px-3 py-2 tabular-nums">{b.is_group ? "" : fmtSAR(unitCost, language)}</td>
-                      <td className="px-3 py-2 tabular-nums">{b.is_group ? "" : fmtSAR(total, language)}</td>
-                    </tr>
-                  );
-                })}
+                {rows.map(({ b, unitCost, total }) => (
+                  <tr key={b.id} className={b.is_group ? "bg-muted/30 font-semibold" : "hover:bg-muted/20"}>
+                    <td className="px-3 py-2 font-mono text-[11px]">{b.item_no}</td>
+                    <td className="px-3 py-2">{b.description_ar}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{b.unit ?? "—"}</td>
+                    <td className="px-3 py-2 tabular-nums">{b.is_group ? "" : Number(b.quantity ?? 0)}</td>
+                    <td className="px-3 py-2 tabular-nums">{b.is_group ? "" : fmtSAR(unitCost)}</td>
+                    <td className="px-3 py-2 tabular-nums">{b.is_group ? "" : fmtSAR(total)}</td>
+                  </tr>
+                ))}
               </tbody>
               {rows.length > 0 && (
                 <tfoot className="bg-muted/40 font-medium">
                   <tr>
-                    <td colSpan={5} className="px-3 py-2 text-start">{t("common.grandTotal")}</td>
-                    <td className="px-3 py-2 tabular-nums">{fmtSAR(grandTotal, language)}</td>
+                    <td colSpan={5} className="px-3 py-2 text-left">الإجمالي العام</td>
+                    <td className="px-3 py-2 tabular-nums">{fmtSAR(grandTotal)}</td>
                   </tr>
                 </tfoot>
               )}
@@ -343,7 +349,6 @@ function BoqReport() {
 
 /* ============== 3) RESOURCES REPORT ============== */
 function ResourcesReport() {
-  const { t, language } = useLanguage();
   const [type, setType] = useState<"all" | "material" | "labor" | "equipment">("all");
 
   const { data: resources = [], isLoading } = useQuery({
@@ -367,72 +372,65 @@ function ResourcesReport() {
     return out;
   }, [resources]);
 
-  const typeLabels: Record<string, string> = {
-    material: t("resources.tabMaterials"),
-    labor: t("resources.tabLabour"),
-    equipment: t("resources.tabEquipment"),
-  };
-
   const exportExcel = () => {
-    const isEn = language === "en";
-    const rows = filtered.map((r: any) => ({
-      [isEn ? "Code" : "الكود"]: r.code ?? "",
-      [isEn ? "Type" : "النوع"]: typeLabels[r.type] ?? r.type,
-      [isEn ? "Name" : "الاسم"]: isEn && r.name_en ? r.name_en : r.name_ar,
-      [isEn ? "Unit" : "الوحدة"]: r.unit,
-      [isEn ? "Unit Rate" : "سعر الوحدة"]: Number(r.unit_price ?? 0),
-      [isEn ? "Notes" : "ملاحظات"]: r.notes ?? "",
+    const rows = filtered.map((r) => ({
+      "الكود": r.code ?? "",
+      "النوع": RES_LABEL[r.type] ?? r.type,
+      "الاسم": r.name_ar,
+      "الوحدة": r.unit,
+      "سعر الوحدة": Number(r.unit_price ?? 0),
+      "ملاحظات": r.notes ?? "",
     }));
-    downloadXlsx(rows, "resources-report", isEn ? "Resources" : "الموارد");
+    downloadXlsx(rows, "resources-report", "الموارد");
   };
 
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <Toolbar title={t("reports.resourcesReportTitle")} onExcel={exportExcel} />
+      <Toolbar title="تقرير الموارد" onExcel={exportExcel} />
 
       <div className="mb-3 flex flex-wrap items-center gap-3 print:hidden">
         <Select value={type} onValueChange={(v) => setType(v as typeof type)}>
           <SelectTrigger className="h-9 w-48"><SelectValue /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">{t("common.all")}</SelectItem>
-            <SelectItem value="material">{t("resources.tabMaterials")}</SelectItem>
-            <SelectItem value="labor">{t("resources.tabLabour")}</SelectItem>
-            <SelectItem value="equipment">{t("resources.tabEquipment")}</SelectItem>
+            <SelectItem value="all">كل الأنواع</SelectItem>
+            <SelectItem value="material">مواد</SelectItem>
+            <SelectItem value="labor">عمالة</SelectItem>
+            <SelectItem value="equipment">معدات</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3 mb-4">
-        <Stat label={t("resources.tabMaterials")} value={String(byType.material ?? 0)} />
-        <Stat label={t("resources.tabLabour")} value={String(byType.labor ?? 0)} />
-        <Stat label={t("resources.tabEquipment")} value={String(byType.equipment ?? 0)} />
+        <Stat label="مواد" value={String(byType["material"] ?? 0)} />
+        <Stat label="عمالة" value={String(byType["labor"] ?? 0)} />
+        <Stat label="معدات" value={String(byType["equipment"] ?? 0)} />
       </div>
 
       <div className="overflow-x-auto rounded-lg border border-border">
-        <table className="w-full min-w-[800px] text-start text-xs">
+        <table className="w-full min-w-[800px] text-right text-xs">
           <thead className="bg-muted/40 text-[11px] text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 text-start font-medium">{t("resources.colCode")}</th>
-              <th className="px-3 py-2 text-start font-medium">{t("common.type")}</th>
-              <th className="px-3 py-2 text-start font-medium">{t("resources.colName")}</th>
-              <th className="px-3 py-2 text-start font-medium">{t("resources.colUnit")}</th>
-              <th className="px-3 py-2 text-start font-medium">{t("resources.colRate")}</th>
+              <th className="px-3 py-2 font-medium">الكود</th>
+              <th className="px-3 py-2 font-medium">النوع</th>
+              <th className="px-3 py-2 font-medium">الاسم</th>
+              <th className="px-3 py-2 font-medium">الوحدة</th>
+              <th className="px-3 py-2 font-medium">سعر الوحدة</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading && (
-              <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">{t("common.loading")}</td></tr>
+              <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">جاري التحميل…</td></tr>
             )}
             {!isLoading && filtered.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">{t("resources.emptySection")}</td></tr>
+              <tr><td colSpan={5} className="px-4 py-6 text-center text-muted-foreground">لا توجد موارد</td></tr>
             )}
-            {filtered.map((r: any) => (
+            {filtered.map((r) => (
               <tr key={r.id} className="hover:bg-muted/30">
                 <td className="px-3 py-2 font-mono text-[11px]">{r.code || "—"}</td>
-                <td className="px-3 py-2">{typeLabels[r.type] ?? r.type}</td>
-                <td className="px-3 py-2">{language === "en" && r.name_en ? r.name_en : r.name_ar}</td>
+                <td className="px-3 py-2">{RES_LABEL[r.type] ?? r.type}</td>
+                <td className="px-3 py-2">{r.name_ar}</td>
                 <td className="px-3 py-2 text-muted-foreground">{r.unit}</td>
-                <td className="px-3 py-2 tabular-nums">{fmtSAR(Number(r.unit_price ?? 0), language)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtSAR(Number(r.unit_price ?? 0))}</td>
               </tr>
             ))}
           </tbody>
@@ -444,7 +442,6 @@ function ResourcesReport() {
 
 /* ============== 4) EXECUTIVE SUMMARY ============== */
 function ExecutiveSummary() {
-  const { t, language } = useLanguage();
   const [projectId, setProjectId] = useState<string>("");
 
   const { data: projects = [] } = useQuery({
@@ -459,7 +456,7 @@ function ExecutiveSummary() {
   });
 
   useEffect(() => {
-    if (!projectId && projects.length > 0) setProjectId(projects[0].id);
+    if (!projectId && projects.length > 0) setProjectId(projects[0]?.id ?? "");
   }, [projectId, projects]);
 
   const project = projects.find((p) => p.id === projectId);
@@ -490,31 +487,30 @@ function ExecutiveSummary() {
 
   const exportExcel = () => {
     if (!project) return;
-    const isEn = language === "en";
     const rows = [
-      { [isEn ? "Field" : "البند"]: isEn ? "Project Name" : "اسم المشروع", [isEn ? "Value" : "القيمة"]: project.name },
-      { [isEn ? "Field" : "البند"]: isEn ? "Client" : "العميل", [isEn ? "Value" : "القيمة"]: project.client_name ?? "—" },
-      { [isEn ? "Field" : "البند"]: isEn ? "Location" : "الموقع", [isEn ? "Value" : "القيمة"]: project.location ?? "—" },
-      { [isEn ? "Field" : "البند"]: isEn ? "Status" : "الحالة", [isEn ? "Value" : "القيمة"]: STATUS_CONFIGS[project.status] ? t(STATUS_CONFIGS[project.status].translationKey) : project.status },
-      { [isEn ? "Field" : "البند"]: isEn ? "Estimated Value" : "القيمة التقديرية", [isEn ? "Value" : "القيمة"]: Number(project.estimated_value ?? 0) },
-      { [isEn ? "Field" : "البند"]: isEn ? "Budget" : "الميزانية", [isEn ? "Value" : "القيمة"]: Number(project.budget ?? 0) },
-      { [isEn ? "Field" : "البند"]: isEn ? "BOQ Total Cost" : "إجمالي تكلفة BOQ", [isEn ? "Value" : "القيمة"]: stats?.boqTotal ?? 0 },
-      { [isEn ? "Field" : "البند"]: isEn ? "BOQ Items Count" : "عدد بنود BOQ", [isEn ? "Value" : "القيمة"]: stats?.boqCount ?? 0 },
-      { [isEn ? "Field" : "البند"]: isEn ? "Resources Count" : "عدد الموارد", [isEn ? "Value" : "القيمة"]: stats?.resourcesCount ?? 0 },
-      { [isEn ? "Field" : "البند"]: isEn ? "Materials" : "مواد", [isEn ? "Value" : "القيمة"]: stats?.resByType.material ?? 0 },
-      { [isEn ? "Field" : "البند"]: isEn ? "Labour" : "عمالة", [isEn ? "Value" : "القيمة"]: stats?.resByType.labor ?? 0 },
-      { [isEn ? "Field" : "البند"]: isEn ? "Equipment" : "معدات", [isEn ? "Value" : "القيمة"]: stats?.resByType.equipment ?? 0 },
+      { "البند": "اسم المشروع", "القيمة": project.name },
+      { "البند": "العميل", "القيمة": project.client_name ?? "—" },
+      { "البند": "الموقع", "القيمة": project.location ?? "—" },
+      { "البند": "الحالة", "القيمة": STATUS_META[project.status]?.label ?? project.status },
+      { "البند": "القيمة التقديرية", "القيمة": Number(project.estimated_value ?? 0) },
+      { "البند": "الميزانية", "القيمة": Number(project.budget ?? 0) },
+      { "البند": "إجمالي تكلفة BOQ", "القيمة": stats?.boqTotal ?? 0 },
+      { "البند": "عدد بنود BOQ", "القيمة": stats?.boqCount ?? 0 },
+      { "البند": "عدد الموارد", "القيمة": stats?.resourcesCount ?? 0 },
+      { "البند": "مواد", "القيمة": stats?.resByType["material"] ?? 0 },
+      { "البند": "عمالة", "القيمة": stats?.resByType["labor"] ?? 0 },
+      { "البند": "معدات", "القيمة": stats?.resByType["equipment"] ?? 0 },
     ];
-    downloadXlsx(rows, `summary-${project.name}`, isEn ? "Summary" : "ملخص");
+    downloadXlsx(rows, `summary-${project.name}`, "ملخص");
   };
 
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <Toolbar title={t("reports.summaryReportTitle")} onExcel={exportExcel} />
+      <Toolbar title="الملخص التنفيذي للمشروع" onExcel={exportExcel} />
 
       <div className="mb-4 flex flex-wrap items-center gap-3 print:hidden">
         <Select value={projectId} onValueChange={setProjectId}>
-          <SelectTrigger className="h-9 w-80"><SelectValue placeholder={t("projects.selectPlaceholder")} /></SelectTrigger>
+          <SelectTrigger className="h-9 w-80"><SelectValue placeholder="اختر مشروعاً…" /></SelectTrigger>
           <SelectContent>
             {projects.map((p) => (
               <SelectItem key={p.id} value={p.id}>
@@ -527,7 +523,7 @@ function ExecutiveSummary() {
 
       {!project && (
         <div className="rounded-md border border-dashed border-border p-8 text-center text-muted-foreground">
-          {t("pa.selectProjectPrompt")}
+          اختر مشروعاً لعرض الملخص التنفيذي.
         </div>
       )}
 
@@ -537,30 +533,30 @@ function ExecutiveSummary() {
             <h3 className="text-xl font-bold">{project.name}</h3>
             <div className="mt-1 text-sm text-muted-foreground">
               {project.client_name || "—"} · {project.location || "—"} ·{" "}
-              <Badge variant="outline" className={STATUS_CONFIGS[project.status]?.badgeClass}>
-                {STATUS_CONFIGS[project.status] ? t(STATUS_CONFIGS[project.status].translationKey) : project.status}
+              <Badge variant="outline" className={STATUS_META[project.status].cls}>
+                {STATUS_META[project.status].label}
               </Badge>
             </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label={t("dashboard.totalValue")} value={fmtSAR(Number(project.estimated_value ?? 0), language)} />
-            <Stat label={t("dashboard.budget")} value={fmtSAR(Number(project.budget ?? 0), language)} />
-            <Stat label={t("projects.statBoqTotal")} value={fmtSAR(stats?.boqTotal ?? 0, language)} hl />
-            <Stat label={t("projects.statBoqItems")} value={String(stats?.boqCount ?? 0)} sub={`${stats?.resourcesCount ?? 0} ${t("projects.resourceCountSub")}`} />
+            <Stat label="القيمة التقديرية" value={fmtSAR(Number(project.estimated_value ?? 0))} />
+            <Stat label="الميزانية" value={fmtSAR(Number(project.budget ?? 0))} />
+            <Stat label="إجمالي تكلفة BOQ" value={fmtSAR(stats?.boqTotal ?? 0)} hl />
+            <Stat label="بنود BOQ" value={String(stats?.boqCount ?? 0)} sub={`${stats?.resourcesCount ?? 0} مورد`} />
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <Stat label={t("resources.tabMaterials")} value={String(stats?.resByType.material ?? 0)} />
-            <Stat label={t("resources.tabLabour")} value={String(stats?.resByType.labor ?? 0)} />
-            <Stat label={t("resources.tabEquipment")} value={String(stats?.resByType.equipment ?? 0)} />
+            <Stat label="مواد" value={String(stats?.resByType["material"] ?? 0)} />
+            <Stat label="عمالة" value={String(stats?.resByType["labor"] ?? 0)} />
+            <Stat label="معدات" value={String(stats?.resByType["equipment"] ?? 0)} />
           </div>
 
           {project.estimated_value && stats?.boqTotal ? (
             <div className="mt-4 rounded-md border border-border bg-muted/30 p-4 text-sm">
-              <div className="font-medium">{language === "en" ? "Estimated Margin" : "الهامش التقديري"}</div>
+              <div className="font-medium">الهامش التقديري</div>
               <div className="mt-1 text-muted-foreground">
-                {fmtSAR(Number(project.estimated_value) - stats.boqTotal, language)} ({((1 - stats.boqTotal / Number(project.estimated_value)) * 100).toFixed(1)}%)
+                {fmtSAR(Number(project.estimated_value) - stats.boqTotal)} ({((1 - stats.boqTotal / Number(project.estimated_value)) * 100).toFixed(1)}%)
               </div>
             </div>
           ) : null}
@@ -583,7 +579,7 @@ function Stat({ label, value, sub, hl }: { label: string; value: string; sub?: s
 
 function downloadXlsx(rows: Array<Record<string, any>>, filename: string, sheetName: string) {
   if (rows.length === 0) {
-    rows = [{ "—": "No Data" }];
+    rows = [{ "—": "لا توجد بيانات" }];
   }
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();

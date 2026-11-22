@@ -19,7 +19,9 @@ function getInitialLanguage(): Language {
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(getInitialLanguage);
+  const [language, setLanguageState] = useState<Language>("ar");
+
+  useEffect(() => { setLanguageState(getInitialLanguage()); }, []);
 
   const direction: Direction = useMemo(() => (language === "ar" ? "rtl" : "ltr"), [language]);
 

@@ -1,1 +1,0 @@
-import{t as e}from"./jsx-runtime-n5LQ9ujS.js";import{t}from"./coming-soon-kVxtHMV5.js";var n=e(),r=()=>(0,n.jsx)(t,{title:`المراجعة المالية`,description:`ملخص شامل قبل تسليم العطاء: التكلفة المباشرة وغير المباشرة، المخاطر، الربح، وضريبة القيمة المضافة 15%.`});export{r as component};

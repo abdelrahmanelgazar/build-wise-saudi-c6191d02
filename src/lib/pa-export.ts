@@ -99,6 +99,8 @@ export function exportPriceAnalysis(
   aoa.push([isEn ? `Profit % (${profit}%)` : `الربح % (${profit}%)`, "", "", "", "", profitVal]);
   aoa.push([isEn ? "Unit Selling Price" : "سعر البيع للوحدة", "", "", "", "", selling]);
 
+  aoa.push([isEn ? "Total for Quantity" : "الإجمالي للكمية", "", "", "", "", selling * Number(boqItem.quantity ?? 0)]);
+
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   ws["!cols"] = [
     { wch: 18 },

@@ -1,1 +1,0 @@
-import{t as e}from"./jsx-runtime-n5LQ9ujS.js";import{t}from"./coming-soon-kVxtHMV5.js";var n=e(),r=()=>(0,n.jsx)(t,{title:`الإعدادات والصلاحيات`,description:`إدارة المستخدمين والأدوار: مدير عام، مدير تسعير، مُسعّر، مُشاهد فقط (RBAC).`});export{r as component};

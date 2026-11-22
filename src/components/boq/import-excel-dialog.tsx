@@ -17,14 +17,11 @@ import { FileSpreadsheet, Upload, X, AlertCircle, CheckCircle2 } from "lucide-re
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useActiveProjectId } from "@/lib/active-project";
-import { containsArabic } from "@/lib/text-direction";
-import { useLanguage } from "@/lib/i18n";
 
 // Field keys (broader than ParsedRow — includes computed columns)
 type FieldKey =
   | "item_no"
   | "description_ar"
-  | "description_en"
   | "unit"
   | "quantity"
   | "material_cost"
@@ -52,14 +49,6 @@ const HEADER_MAP: Record<string, FieldKey> = {
   "بيان": "description_ar",
   "description": "description_ar",
   "desc": "description_ar",
-  "الوصف (إنجليزي)": "description_en",
-  "الوصف الانجليزي": "description_en",
-  "وصف انجليزي": "description_en",
-  "description (en)": "description_en",
-  "description_en": "description_en",
-  "description en": "description_en",
-  "english description": "description_en",
-  "en description": "description_en",
 
   "الوحدة": "unit",
   "وحدة": "unit",
@@ -114,7 +103,6 @@ const HEADER_MAP: Record<string, FieldKey> = {
 type ParsedRow = {
   item_no: string;
   description_ar: string;
-  description_en?: string | null;
   unit: string;
   quantity: number;
   material_cost: number;
@@ -219,12 +207,8 @@ function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; preHeaders: un
     };
 
     const item_no = String(get("item_no") ?? "").trim();
-    const rawDescAr = String(get("description_ar") ?? "").trim();
-    const rawDescEn = String(get("description_en") ?? "").trim();
-    if (!rawDescAr && !rawDescEn && !item_no) continue;
-
-    const description_ar = rawDescAr || rawDescEn;
-    const description_en = rawDescEn || (!containsArabic(rawDescAr) ? rawDescAr : null);
+    const description_ar = String(get("description_ar") ?? "").trim();
+    if (!description_ar && !item_no) continue;
 
     const unit = String(get("unit") ?? "").trim();
     const quantity = toNum(get("quantity"));
@@ -250,7 +234,6 @@ function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; preHeaders: un
     data.push({
       item_no: final_item_no,
       description_ar,
-      description_en,
       unit,
       quantity,
       material_cost,
@@ -317,7 +300,6 @@ function linkParents(rows: ParsedRow[]) {
 }
 
 export function ImportExcelDialog() {
-  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [fileName, setFileName] = useState<string>("");
   const [sheetNames, setSheetNames] = useState<string[]>([]);
@@ -354,6 +336,7 @@ export function ImportExcelDialog() {
       setFileName(file.name);
       setSheetNames(wb.SheetNames);
       const first = wb.SheetNames[0];
+      if (!first) throw new Error("الملف لا يحتوي على صفحات");
       setActiveSheet(first);
       loadSheet(wb, first);
     } catch (err) {
@@ -418,7 +401,8 @@ export function ImportExcelDialog() {
         const levels = Array.from(byLevel.keys()).sort((a, b) => a - b);
 
         for (const lvl of levels) {
-          const batch = byLevel.get(lvl)!;
+          const batch = byLevel.get(lvl);
+          if (!batch) continue;
           const payload = batch.map((r) => ({
             user_id,
             project_id: projectId,
@@ -426,7 +410,6 @@ export function ImportExcelDialog() {
             parent_id: r._parentTmpId ? tmpToDbId.get(r._parentTmpId) ?? null : null,
             item_no: r.item_no,
             description_ar: r.description_ar,
-            description_en: r.description_en || null,
             unit: r.is_group ? null : r.unit || null,
             quantity: r.is_group ? 0 : r.quantity,
             material_cost: r.material_cost,
@@ -440,7 +423,7 @@ export function ImportExcelDialog() {
           }));
           const { data, error } = await supabase.from("boq_items").upsert(payload, { onConflict: "user_id,project_id,sheet_name,item_no" }).select("id");
           if (error) throw error;
-          (data ?? []).forEach((row, i) => tmpToDbId.set(batch[i]._tmpId, row.id));
+          (data ?? []).forEach((row, i) => { const source = batch[i]; if (source) tmpToDbId.set(source._tmpId, row.id); });
         }
         totalImported += sheetParsed.data.length;
       }
@@ -477,14 +460,16 @@ export function ImportExcelDialog() {
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" className="gap-1.5">
           <FileSpreadsheet className="h-4 w-4" />
-          {t("boq.importExcelBtn")}
+          استيراد من Excel
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-5xl">
+      <DialogContent dir="rtl" className="max-w-5xl">
         <DialogHeader>
-          <DialogTitle>{t("boq.importExcelTitle")}</DialogTitle>
+          <DialogTitle>استيراد جدول كميات من Excel</DialogTitle>
           <DialogDescription className="leading-relaxed">
-            {t("boq.importExcelDesc")}
+            ارفع ملف .xlsx أو .xls — سيتم التعرّف تلقائياً على الأعمدة (رقم البند، الوصف، الوحدة،
+            الكمية، تكاليف المواد/العمالة/المعدات/مقاول الباطن) وتوليد البنية الهرمية حسب ترقيم
+            البنود (01، 01.01، …).
           </DialogDescription>
         </DialogHeader>
 
@@ -495,8 +480,8 @@ export function ImportExcelDialog() {
             )}
           >
             <Upload className="h-8 w-8 text-muted-foreground" />
-            <div className="text-sm font-medium">{t("boq.dragDropExcel")}</div>
-            <div className="text-xs text-muted-foreground">{t("boq.excelLimit")}</div>
+            <div className="text-sm font-medium">اسحب الملف هنا أو اضغط للاختيار</div>
+            <div className="text-xs text-muted-foreground">.xlsx, .xls — حتى 15 ميجابايت</div>
             <input
               ref={fileRef}
               type="file"
@@ -517,12 +502,12 @@ export function ImportExcelDialog() {
                 <FileSpreadsheet className="h-4 w-4 text-primary" />
                 <span className="font-medium">{fileName}</span>
                 <Badge variant="outline">
-                  {groupsCount} · {itemsCount}
+                  {groupsCount} مجموعة · {itemsCount} بند
                 </Badge>
               </div>
               <Button variant="ghost" size="sm" onClick={reset} className="gap-1">
                 <X className="h-3.5 w-3.5" />
-                {t("boq.changeFile")}
+                تغيير الملف
               </Button>
             </div>
 
@@ -559,15 +544,15 @@ export function ImportExcelDialog() {
               <>
                 <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-300">
                   <CheckCircle2 className="h-3.5 w-3.5" />
-                  {parsed.data.length}
+                  تم التعرّف على {parsed.data.length} صفاً. معاينة (نفس تنسيق الملف):
                 </div>
                 <div className="max-h-[420px] overflow-auto rounded-lg border border-border">
                   <table className="w-full min-w-[900px] text-xs tabular-nums">
                     <thead className="sticky top-0 z-10 bg-muted/60 text-[11px] text-muted-foreground backdrop-blur">
                       <tr className="border-b border-border">
                         {parsed.headers.map((h, i) => (
-                          <th key={i} className="px-2 py-2 text-start font-medium whitespace-nowrap">
-                            {h.label || `Col ${i + 1}`}
+                          <th key={i} className="px-2 py-2 text-right font-medium whitespace-nowrap">
+                            {h.label || `عمود ${i + 1}`}
                           </th>
                         ))}
                       </tr>
@@ -586,7 +571,7 @@ export function ImportExcelDialog() {
                           {r._raw.map((cell, j) => (
                             <td
                               key={j}
-                              className="px-2 py-1.5 text-start align-top whitespace-pre-wrap"
+                              className="px-2 py-1.5 text-right align-top whitespace-pre-wrap"
                             >
                               {cell === null || cell === undefined ? "" : String(cell)}
                             </td>
@@ -597,7 +582,7 @@ export function ImportExcelDialog() {
                   </table>
                   {parsed.data.length > 200 && (
                     <div className="border-t border-border bg-muted/30 px-3 py-2 text-center text-[11px] text-muted-foreground">
-                      {parsed.data.length}
+                      عرض أول 200 صف فقط — سيتم استيراد {parsed.data.length} صفاً كاملةً.
                     </div>
                   )}
                 </div>
@@ -614,13 +599,13 @@ export function ImportExcelDialog() {
               setOpen(false);
             }}
           >
-            {t("common.cancel")}
+            إلغاء
           </Button>
           <Button
             onClick={() => importMut.mutate()}
             disabled={!parsed.data.length || importMut.isPending || !projectId}
           >
-            {importMut.isPending ? t("boq.importing") : t("boq.importToBoq")}
+            {importMut.isPending ? "جاري الاستيراد…" : `استيراد ${parsed.data.length || ""} بنداً`}
           </Button>
         </DialogFooter>
       </DialogContent>
