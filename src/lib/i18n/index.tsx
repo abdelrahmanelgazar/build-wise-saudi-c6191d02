@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from "react";
 import type { Language, Direction, I18nContextValue } from "./types";
-import { arTranslations, type TranslationKey } from "./locales/ar";
+import { arTranslations } from "./locales/ar";
 import { enTranslations } from "./locales/en";
 
 const STORAGE_KEY = "taqdiri:language";
@@ -19,7 +19,9 @@ function getInitialLanguage(): Language {
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(getInitialLanguage);
+  const [language, setLanguageState] = useState<Language>("ar");
+
+  useEffect(() => { setLanguageState(getInitialLanguage()); }, []);
 
   const direction: Direction = useMemo(() => (language === "ar" ? "rtl" : "ltr"), [language]);
 
@@ -47,11 +49,8 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   const t = useCallback(
     (key: string, defaultVal?: string): string => {
-      const dict = language === "ar" ? (arTranslations as Record<string, string>) : enTranslations;
-      if (key in dict) {
-        return dict[key];
-      }
-      return defaultVal || key;
+      const dict: Partial<Record<string, string>> = language === "ar" ? arTranslations : enTranslations;
+      return dict[key] ?? (defaultVal || key);
     },
     [language]
   );

@@ -22,16 +22,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, FolderPlus, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronLeft, FolderPlus, Plus, Search, Trash2 } from "lucide-react";
 import { fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
 import { setActiveProjectId } from "@/lib/active-project";
-import { useLanguage } from "@/lib/i18n";
-import { STATUS_CONFIGS, ALL_STATUSES, type ProjectStatus } from "@/lib/status";
 import type { Database } from "@/integrations/supabase/types";
 
 type Project = Database["public"]["Tables"]["projects"]["Row"];
 type Status = Database["public"]["Enums"]["project_status"];
+
+const STATUS_META: Record<Status, { label: string; cls: string }> = {
+  studying: { label: "قيد الدراسة", cls: "bg-muted/60 text-muted-foreground border-border/60" },
+  submitted_to_medial_man: { label: "مُرسل للوسيط (GM)", cls: "bg-amber-500/15 text-amber-500 border-amber-500/30" },
+  submitted_to_client: { label: "مُرسل للعميل", cls: "bg-primary/15 text-primary border-primary/30" },
+  waiting_for_reply: { label: "بانتظار الرد", cls: "bg-yellow-500/15 text-yellow-600 border-yellow-500/30" },
+  inquiries_sent: { label: "استفسارات للعميل", cls: "bg-cyan-500/15 text-cyan-500 border-cyan-500/30" },
+  answers_received: { label: "ردود مستلمة - دراسة", cls: "bg-indigo-500/15 text-indigo-500 border-indigo-500/30" },
+  on_hold: { label: "مُعلّق", cls: "bg-orange-500/15 text-orange-500 border-orange-500/30" },
+  client_rejected: { label: "رفض العميل", cls: "bg-red-500/15 text-red-500 border-red-500/30" },
+  construction_ongoing: { label: "تنفيذ جاري", cls: "bg-emerald-500/15 text-emerald-500 border-emerald-500/30" },
+  construction_complete: { label: "تنفيذ مكتمل", cls: "bg-teal-500/15 text-teal-500 border-teal-500/30" },
+  finished: { label: "منتهي", cls: "bg-blue-500/15 text-blue-500 border-blue-500/30" },
+  closed: { label: "مغلق", cls: "bg-muted/60 text-muted-foreground border-border/60" },
+};
 
 const SCOPE_OPTIONS = ["Turnkey", "Civil", "MEP", "Finishing", "Infrastructure", "Other"];
 const CONTRACT_OPTIONS: Array<{ value: string; label: string }> = [
@@ -40,12 +53,12 @@ const CONTRACT_OPTIONS: Array<{ value: string; label: string }> = [
 ];
 
 export const Route = createFileRoute("/_authenticated/projects/")({
+  head: () => ({ meta: [{ title: 'قائمة المشاريع — تقديري' }, { name: "description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:title", content: 'قائمة المشاريع — تقديري' }, { property: "og:description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
   component: ProjectsIndex,
 });
 
 function ProjectsIndex() {
   const qc = useQueryClient();
-  const { t, language, direction } = useLanguage();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
 
@@ -67,7 +80,7 @@ function ProjectsIndex() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success(t("projects.updateNoSuccess"));
+      toast.success("تم تحديث رقم المشروع");
       qc.invalidateQueries({ queryKey: ["projects"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -79,7 +92,7 @@ function ProjectsIndex() {
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success(t("projects.deleteSuccess"));
+      toast.success("تم حذف المشروع");
       qc.invalidateQueries({ queryKey: ["projects"] });
     },
     onError: (e: Error) => toast.error(e.message),
@@ -99,15 +112,13 @@ function ProjectsIndex() {
       );
     });
 
-  const ChevronIcon = direction === "rtl" ? ChevronLeft : ChevronRight;
-
   return (
     <div className="p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{t("projects.title")}</h1>
+          <h1 className="text-2xl font-bold">المشاريع</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("projects.subtitle")}
+            إدارة المشاريع والمناقصات — كل مشروع يحتوي على بنود الكميات وتحليل الأسعار والمتطلبات والملفات.
           </p>
         </div>
         <NewProjectDialog />
@@ -115,59 +126,59 @@ function ProjectsIndex() {
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <div className="relative w-full max-w-sm">
-          <Search className={`pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground ${direction === "rtl" ? "right-3" : "left-3"}`} />
+          <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder={t("projects.searchPlaceholder")}
-            className={`h-9 ${direction === "rtl" ? "pr-9" : "pl-9"}`}
+            placeholder="ابحث بالاسم أو الكود أو العميل أو الموقع…"
+            className="h-9 pr-9"
           />
         </div>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as Status | "all")}>
-          <SelectTrigger className="h-9 w-44">
+          <SelectTrigger className="h-9 w-40">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">{t("projects.allStatuses")}</SelectItem>
-            {ALL_STATUSES.map((s) => (
+            <SelectItem value="all">كل الحالات</SelectItem>
+            {(Object.keys(STATUS_META) as Status[]).map((s) => (
               <SelectItem key={s} value={s}>
-                {t(STATUS_CONFIGS[s].translationKey)}
+                {STATUS_META[s].label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
         <div className="text-xs text-muted-foreground">
-          {filtered.length} / {projects.length} {t("projects.countOf")}
+          {filtered.length} من {projects.length} مشروع
         </div>
       </div>
 
       <div className="mt-4 overflow-x-auto rounded-lg border border-border bg-card">
-        <table className="w-full min-w-[1400px] text-start text-xs">
+        <table className="w-full min-w-[1400px] text-right text-xs">
           <thead className="bg-muted/40 text-[11px] text-muted-foreground">
             <tr>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colNo")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colCode")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colClient")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colName")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colLocation")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colArea")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colScope")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colContract")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colTenderDate")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colLastSubmit")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colLastRfi")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colDuration")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colStatus")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colNotes")}</th>
-              <th className="px-3 py-3 font-medium text-start">{t("projects.colValue")}</th>
-              <th className="px-3 py-3 font-medium text-center">{t("common.actions")}</th>
+              <th className="px-3 py-3 font-medium">No</th>
+              <th className="px-3 py-3 font-medium">Code</th>
+              <th className="px-3 py-3 font-medium">العميل</th>
+              <th className="px-3 py-3 font-medium">اسم المشروع</th>
+              <th className="px-3 py-3 font-medium">الموقع</th>
+              <th className="px-3 py-3 font-medium">المنطقة</th>
+              <th className="px-3 py-3 font-medium">نطاق العمل</th>
+              <th className="px-3 py-3 font-medium">نوع التعاقد</th>
+              <th className="px-3 py-3 font-medium">دخول المناقصة</th>
+              <th className="px-3 py-3 font-medium">آخر تقديم</th>
+              <th className="px-3 py-3 font-medium">آخر استفسارات</th>
+              <th className="px-3 py-3 font-medium">مدة المشروع</th>
+              <th className="px-3 py-3 font-medium">الحالة</th>
+              <th className="px-3 py-3 font-medium">ملاحظات</th>
+              <th className="px-3 py-3 font-medium">القيمة (ر.س)</th>
+              <th className="px-3 py-3 font-medium"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {isLoading && (
               <tr>
                 <td colSpan={16} className="px-4 py-8 text-center text-muted-foreground">
-                  {t("common.loading")}
+                  جاري التحميل…
                 </td>
               </tr>
             )}
@@ -175,22 +186,18 @@ function ProjectsIndex() {
               <tr>
                 <td colSpan={16} className="px-4 py-12 text-center text-muted-foreground">
                   <FolderPlus className="mx-auto mb-2 h-8 w-8 opacity-40" />
-                  <div>{t("projects.emptyProjects")}</div>
+                  <div>لا توجد مشاريع — أضف مشروعك الأول للبدء</div>
                 </td>
               </tr>
             )}
             {filtered.map((p: any) => {
-              const cfg = STATUS_CONFIGS[p.status as ProjectStatus];
-              const statusLabel = cfg ? t(cfg.translationKey) : (p.status ?? "—");
-              const badgeCls = cfg ? cfg.badgeClass : "bg-muted/60 text-muted-foreground border-border/60";
-
+              const m = STATUS_META[p.status as Status] ?? { label: p.status ?? "—", cls: "bg-muted/60 text-muted-foreground border-border/60" };
               return (
                 <tr key={p.id} className="hover:bg-muted/30">
                   <td className="px-3 py-3">
                     <NoEditor
                       value={p.project_no}
                       onSave={(v) => updateNoMut.mutate({ id: p.id, project_no: v })}
-                      editHint={t("common.clickToEdit")}
                     />
                   </td>
                   <td className="px-3 py-3 font-mono text-[11px]">{p.code || "—"}</td>
@@ -214,10 +221,10 @@ function ProjectsIndex() {
                   <td className="px-3 py-3 text-muted-foreground">{p.last_rfi_date || "—"}</td>
                   <td className="px-3 py-3 text-muted-foreground">{p.duration || "—"}</td>
                   <td className="px-3 py-3">
-                    <Badge variant="outline" className={badgeCls}>{statusLabel}</Badge>
+                    <Badge variant="outline" className={m.cls}>{m.label}</Badge>
                   </td>
                   <td className="px-3 py-3 max-w-[200px] truncate text-muted-foreground" title={p.note || ""}>{p.note || "—"}</td>
-                  <td className="px-3 py-3 tabular-nums">{fmtSAR(Number(p.estimated_value ?? 0), language)}</td>
+                  <td className="px-3 py-3 tabular-nums">{fmtSAR(Number(p.estimated_value ?? 0))}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center justify-end gap-1">
                       <Link
@@ -226,15 +233,15 @@ function ProjectsIndex() {
                         onClick={() => setActiveProjectId(p.id)}
                       >
                         <Button size="sm" variant="ghost" className="gap-1">
-                          {t("common.open")}
-                          <ChevronIcon className="h-3.5 w-3.5" />
+                          فتح
+                          <ChevronLeft className="h-3.5 w-3.5" />
                         </Button>
                       </Link>
                       <Button
                         size="icon"
                         variant="ghost"
                         onClick={() => {
-                          if (confirm(`${t("projects.deleteConfirm")} ("${p.name}")`)) {
+                          if (confirm(`حذف المشروع "${p.name}" مع كل بياناته؟`)) {
                             delMut.mutate(p.id);
                           }
                         }}
@@ -254,15 +261,7 @@ function ProjectsIndex() {
   );
 }
 
-function NoEditor({
-  value,
-  onSave,
-  editHint,
-}: {
-  value: number | null | undefined;
-  onSave: (v: number | null) => void;
-  editHint: string;
-}) {
+function NoEditor({ value, onSave }: { value: number | null | undefined; onSave: (v: number | null) => void }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(value != null ? String(value) : "");
   if (!editing) {
@@ -270,7 +269,7 @@ function NoEditor({
       <button
         onClick={(e) => { e.stopPropagation(); setVal(value != null ? String(value) : ""); setEditing(true); }}
         className="tabular-nums text-muted-foreground hover:text-primary hover:underline"
-        title={editHint}
+        title="انقر للتعديل"
       >
         {value ?? "—"}
       </button>
@@ -297,7 +296,6 @@ function NoEditor({
 }
 
 function NewProjectDialog() {
-  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({
     project_no: "",
@@ -324,8 +322,8 @@ function NewProjectDialog() {
     mutationFn: async () => {
       const { data: u } = await supabase.auth.getUser();
       const user_id = u.user?.id;
-      if (!user_id) throw new Error("Not logged in");
-      if (!form.name.trim()) throw new Error("Project name is required");
+      if (!user_id) throw new Error("غير مسجل دخول");
+      if (!form.name.trim()) throw new Error("اسم المشروع مطلوب");
       const { data, error } = await supabase
         .from("projects")
         .insert({
@@ -352,7 +350,7 @@ function NewProjectDialog() {
       return data as Project;
     },
     onSuccess: (p) => {
-      toast.success(t("projects.createSuccess"));
+      toast.success("تم إنشاء المشروع");
       qc.invalidateQueries({ queryKey: ["projects"] });
       setActiveProjectId(p.id);
       setOpen(false);
@@ -373,56 +371,56 @@ function NewProjectDialog() {
       <DialogTrigger asChild>
         <Button className="gap-2">
           <Plus className="h-4 w-4" />
-          {t("projects.newProject")}
+          مشروع جديد
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{t("projects.dialogTitle")}</DialogTitle>
+          <DialogTitle>مشروع جديد</DialogTitle>
         </DialogHeader>
         <div className="grid gap-3">
           <div className="grid grid-cols-3 gap-3">
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldProjectNo")}</Label>
+              <Label>رقم المشروع (No)</Label>
               <Input type="number" value={form.project_no} onChange={(e) => set("project_no", e.target.value)} placeholder="675" />
             </div>
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldCode")}</Label>
+              <Label>Code</Label>
               <Input value={form.code} onChange={(e) => set("code", e.target.value)} placeholder="AFC-MAS-26-01" />
             </div>
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldClient")}</Label>
-              <Input value={form.client} onChange={(e) => set("client", e.target.value)} placeholder={t("projects.selectPlaceholder")} />
+              <Label>العميل (Owner)</Label>
+              <Input value={form.client} onChange={(e) => set("client", e.target.value)} placeholder="اسم العميل" />
             </div>
           </div>
           <div className="grid gap-1.5">
-            <Label>{t("projects.fieldName")}</Label>
-            <Input value={form.name} onChange={(e) => set("name", e.target.value)} />
+            <Label>اسم المشروع *</Label>
+            <Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="مثال: مبنى إداري - الرياض" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldLocation")}</Label>
-              <Input value={form.location} onChange={(e) => set("location", e.target.value)} />
+              <Label>الموقع (Project Location)</Label>
+              <Input value={form.location} onChange={(e) => set("location", e.target.value)} placeholder="الرياض" />
             </div>
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldArea")}</Label>
-              <Input value={form.area} onChange={(e) => set("area", e.target.value)} />
+              <Label>المنطقة (Area)</Label>
+              <Input value={form.area} onChange={(e) => set("area", e.target.value)} placeholder="مدينة الملك عبد العزيز" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldScope")}</Label>
+              <Label>نطاق العمل (Scope of Work)</Label>
               <Select value={form.scope_of_work} onValueChange={(v) => set("scope_of_work", v)}>
-                <SelectTrigger><SelectValue placeholder={t("projects.selectPlaceholder")} /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="اختر…" /></SelectTrigger>
                 <SelectContent>
                   {SCOPE_OPTIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldContract")}</Label>
+              <Label>نوع التعاقد (Re-Measured / Lump sum)</Label>
               <Select value={form.contract_type} onValueChange={(v) => set("contract_type", v)}>
-                <SelectTrigger><SelectValue placeholder={t("projects.selectPlaceholder")} /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="اختر…" /></SelectTrigger>
                 <SelectContent>
                   {CONTRACT_OPTIONS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
                 </SelectContent>
@@ -431,50 +429,50 @@ function NewProjectDialog() {
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldTenderDate")}</Label>
+              <Label>تاريخ دخول المناقصة</Label>
               <Input type="date" value={form.tender_entry_date} onChange={(e) => set("tender_entry_date", e.target.value)} />
             </div>
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldLastSubmit")}</Label>
+              <Label>آخر تاريخ للتقديم</Label>
               <Input type="date" value={form.last_submit_date} onChange={(e) => set("last_submit_date", e.target.value)} />
             </div>
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldLastRfi")}</Label>
+              <Label>آخر تاريخ للاستفسارات</Label>
               <Input type="date" value={form.last_rfi_date} onChange={(e) => set("last_rfi_date", e.target.value)} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldDuration")}</Label>
-              <Input value={form.duration} onChange={(e) => set("duration", e.target.value)} />
+              <Label>مدة المشروع</Label>
+              <Input value={form.duration} onChange={(e) => set("duration", e.target.value)} placeholder="مثال: 12 شهر" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldStatus")}</Label>
+              <Label>الحالة</Label>
               <Select value={form.status} onValueChange={(v) => set("status", v as Status)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {ALL_STATUSES.map((s) => (
-                    <SelectItem key={s} value={s}>{t(STATUS_CONFIGS[s].translationKey)}</SelectItem>
+                  {(Object.keys(STATUS_META) as Status[]).map((s) => (
+                    <SelectItem key={s} value={s}>{STATUS_META[s].label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-1.5">
-              <Label>{t("projects.fieldEstValue")}</Label>
+              <Label>قيمة المشروع (ر.س)</Label>
               <Input type="number" value={form.estValue} onChange={(e) => set("estValue", e.target.value)} placeholder="0" />
             </div>
           </div>
           <div className="grid gap-1.5">
-            <Label>{t("projects.fieldNote")}</Label>
-            <Textarea rows={2} value={form.note} onChange={(e) => set("note", e.target.value)} />
+            <Label>ملاحظة (Note)</Label>
+            <Textarea rows={2} value={form.note} onChange={(e) => set("note", e.target.value)} placeholder="ملاحظات…" />
           </div>
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
+          <Button variant="ghost" onClick={() => setOpen(false)}>إلغاء</Button>
           <Button onClick={() => mut.mutate()} disabled={mut.isPending}>
-            {mut.isPending ? t("common.creating") : t("common.create")}
+            {mut.isPending ? "جاري الإنشاء…" : "إنشاء"}
           </Button>
         </DialogFooter>
       </DialogContent>

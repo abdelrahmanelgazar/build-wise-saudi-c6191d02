@@ -68,7 +68,8 @@ function ProjectSwitcher() {
 
   // Auto-pick first project on first load
   useEffect(() => {
-    if (!activeId && projects.length > 0) setActiveProjectId(projects[0].id);
+    const firstProject = projects[0];
+    if (!activeId && firstProject) setActiveProjectId(firstProject.id);
   }, [activeId, projects]);
 
   const active = projects.find((p) => p.id === activeId);
