@@ -17,6 +17,7 @@ import { Route as AuthenticatedResourcesRouteImport } from './routes/_authentica
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticated/projects'
 import { Route as AuthenticatedPriceAnalysisRouteImport } from './routes/_authenticated/price-analysis'
+import { Route as AuthenticatedItemBreakdownLibraryRouteImport } from './routes/_authenticated/item-breakdown-library'
 import { Route as AuthenticatedFinancialRouteImport } from './routes/_authenticated/financial'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedBoqRouteImport } from './routes/_authenticated/boq'
@@ -64,6 +65,12 @@ const AuthenticatedPriceAnalysisRoute =
     path: '/price-analysis',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedItemBreakdownLibraryRoute =
+  AuthenticatedItemBreakdownLibraryRouteImport.update({
+    id: '/item-breakdown-library',
+    path: '/item-breakdown-library',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedFinancialRoute = AuthenticatedFinancialRouteImport.update({
   id: '/financial',
   path: '/financial',
@@ -105,6 +112,7 @@ export interface FileRoutesByFullPath {
   '/boq': typeof AuthenticatedBoqRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/financial': typeof AuthenticatedFinancialRoute
+  '/item-breakdown-library': typeof AuthenticatedItemBreakdownLibraryRoute
   '/price-analysis': typeof AuthenticatedPriceAnalysisRoute
   '/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/reports': typeof AuthenticatedReportsRoute
@@ -120,6 +128,7 @@ export interface FileRoutesByTo {
   '/boq': typeof AuthenticatedBoqRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/financial': typeof AuthenticatedFinancialRoute
+  '/item-breakdown-library': typeof AuthenticatedItemBreakdownLibraryRoute
   '/price-analysis': typeof AuthenticatedPriceAnalysisRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/resources': typeof AuthenticatedResourcesRoute
@@ -136,6 +145,7 @@ export interface FileRoutesById {
   '/_authenticated/boq': typeof AuthenticatedBoqRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/financial': typeof AuthenticatedFinancialRoute
+  '/_authenticated/item-breakdown-library': typeof AuthenticatedItemBreakdownLibraryRoute
   '/_authenticated/price-analysis': typeof AuthenticatedPriceAnalysisRoute
   '/_authenticated/projects': typeof AuthenticatedProjectsRouteWithChildren
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
@@ -153,6 +163,7 @@ export interface FileRouteTypes {
     | '/boq'
     | '/dashboard'
     | '/financial'
+    | '/item-breakdown-library'
     | '/price-analysis'
     | '/projects'
     | '/reports'
@@ -168,6 +179,7 @@ export interface FileRouteTypes {
     | '/boq'
     | '/dashboard'
     | '/financial'
+    | '/item-breakdown-library'
     | '/price-analysis'
     | '/reports'
     | '/resources'
@@ -183,6 +195,7 @@ export interface FileRouteTypes {
     | '/_authenticated/boq'
     | '/_authenticated/dashboard'
     | '/_authenticated/financial'
+    | '/_authenticated/item-breakdown-library'
     | '/_authenticated/price-analysis'
     | '/_authenticated/projects'
     | '/_authenticated/reports'
@@ -256,6 +269,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedPriceAnalysisRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/item-breakdown-library': {
+      id: '/_authenticated/item-breakdown-library'
+      path: '/item-breakdown-library'
+      fullPath: '/item-breakdown-library'
+      preLoaderRoute: typeof AuthenticatedItemBreakdownLibraryRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/financial': {
       id: '/_authenticated/financial'
       path: '/financial'
@@ -321,6 +341,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedBoqRoute: typeof AuthenticatedBoqRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedFinancialRoute: typeof AuthenticatedFinancialRoute
+  AuthenticatedItemBreakdownLibraryRoute: typeof AuthenticatedItemBreakdownLibraryRoute
   AuthenticatedPriceAnalysisRoute: typeof AuthenticatedPriceAnalysisRoute
   AuthenticatedProjectsRoute: typeof AuthenticatedProjectsRouteWithChildren
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
@@ -333,6 +354,8 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedBoqRoute: AuthenticatedBoqRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedFinancialRoute: AuthenticatedFinancialRoute,
+  AuthenticatedItemBreakdownLibraryRoute:
+    AuthenticatedItemBreakdownLibraryRoute,
   AuthenticatedPriceAnalysisRoute: AuthenticatedPriceAnalysisRoute,
   AuthenticatedProjectsRoute: AuthenticatedProjectsRouteWithChildren,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,

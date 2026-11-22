@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { FolderPlus } from "lucide-react";
+import { FolderPlus, Layers } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -113,6 +113,13 @@ function PriceAnalysisPage() {
             ))}
           </SelectContent>
         </Select>
+
+        <Link to="/item-breakdown-library" className="ms-auto">
+          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+            <Layers className="h-3.5 w-3.5 text-primary" />
+            {t("breakdown.title", "مكتبة التحليل التفصيلي للبنود")}
+          </Button>
+        </Link>
       </div>
 
       <div className="mt-3 flex-1 overflow-hidden rounded-lg border border-border bg-card">
