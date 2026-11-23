@@ -405,7 +405,20 @@ export const arTranslations = {
   "breakdown.templateSaved": "تم حفظ قالب التحليل في المكتبة",
   "breakdown.templateDeleted": "تم حذف القالب بنجاح",
   "breakdown.selectTargetPrompt": "يرجى اختيار البند المستهدف",
-  "common.allDivisions": "جميع الأقسام (All Divisions)",
+  "common.allDivisions": "جميع أقسام",
+  "breakdown.previewTemplate": "استعراض",
+  "breakdown.editTemplate": "تعديل النموذج",
+  "breakdown.duplicateTemplate": "نسخ النموذج",
+  "breakdown.restoreTemplate": "استعادة النموذج الافتراضي",
+  "breakdown.deleteTemplate": "حذف النموذج",
+  "breakdown.templateRestored": "تمت استعادة النموذج الافتراضي",
+  "breakdown.templateCodeInUse": "كود النموذج مستخدم بالفعل",
+  "breakdown.templateRequiredFields": "أدخل كود النموذج واسمه ووحدة القياس",
+  "breakdown.itemUnitPrice": "سعر المورد",
+  "breakdown.itemLineTotal": "الإجمالي",
+  "breakdown.descriptionEn": "وصف النموذج بالإنجليزية",
+  "breakdown.resourceDescriptionEn": "وصف المورد بالإنجليزية",
+  "common.unclassifiedDivision": "غير مصنف",
 } as const;
 
 export type TranslationKey = keyof typeof arTranslations;

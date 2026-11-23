@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -78,7 +78,7 @@ function PriceAnalysisPage() {
     enabled: !!projectId,
     queryFn: async () => {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("boq_items")
         .select("*")
         .eq("project_id", projectId)
@@ -119,11 +119,11 @@ function PriceAnalysisPage() {
     }
     setIsAddingDemo(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData } = await estimationClient.auth.getUser();
       const userId = userData.user?.id;
       if (!userId) throw new Error("يرجى تسجيل الدخول أولاً");
 
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("boq_items")
         .insert({
           project_id: projectId,

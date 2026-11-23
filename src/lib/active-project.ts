@@ -1,6 +1,9 @@
 import { useSyncExternalStore } from "react";
+import { isLocalDevelopment } from "./local-development";
 
-const KEY = "taqdiri:active_project_id";
+const KEY = isLocalDevelopment()
+  ? "taqdiri:local-development:active-project"
+  : "taqdiri:active_project_id";
 const listeners = new Set<() => void>();
 
 function getSnapshot(): string | null {

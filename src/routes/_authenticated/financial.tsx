@@ -1,13 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { useActiveProjectId } from "@/lib/active-project";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
 import {
   ShieldCheck,
   Wallet,
@@ -20,9 +21,14 @@ import {
   Receipt,
   PieChart as PieIcon,
   Calculator,
+  Lock,
+  AlertTriangle,
+  CheckCircle2,
+  ExternalLink,
 } from "lucide-react";
 import { fmtSAR, fmtNumber } from "@/lib/format";
 import { useLanguage } from "@/lib/i18n";
+import { computeProjectFinancials, type MarkupSettings } from "@/lib/estimation-calc";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/financial")({
@@ -38,13 +44,40 @@ export const Route = createFileRoute("/_authenticated/financial")({
 function FinancialPage() {
   const { t, language } = useLanguage();
   const projectId = useActiveProjectId();
+  const qc = useQueryClient();
   const [vatRate, setVatRate] = useState<number>(15);
+  const [isIssuing, setIsIssuing] = useState(false);
+
+  const handleIssueTender = async () => {
+    if (!financials.canIssueTender) {
+      toast.error("لا يمكن إصدار العرض لوجود بنود غير مسعرة في المقايسة");
+      return;
+    }
+    setIsIssuing(true);
+    try {
+      await estimationClient
+        .from("projects")
+        .update({
+          status: "submitted_to_client",
+          estimated_value: financials.netSellingPrice,
+          budget: financials.totalDirect,
+        })
+        .eq("id", projectId!);
+
+      toast.success("تم اعتماد وإصدار العرض المالي للمشروع بنجاح!");
+      await qc.invalidateQueries({ queryKey: ["project_financial", projectId] });
+    } catch (e: any) {
+      toast.error(e.message || "حدث خطأ أثناء اعتماد العرض");
+    } finally {
+      setIsIssuing(false);
+    }
+  };
 
   const { data: project } = useQuery({
     queryKey: ["project_financial", projectId],
     enabled: !!projectId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("projects")
         .select("*")
         .eq("id", projectId!)
@@ -58,7 +91,7 @@ function FinancialPage() {
     queryKey: ["financial_boq", projectId],
     enabled: !!projectId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("boq_items")
         .select("*")
         .eq("project_id", projectId!);
@@ -71,7 +104,7 @@ function FinancialPage() {
     queryKey: ["financial_pa_items", projectId],
     enabled: !!projectId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("price_analysis_items")
         .select("*")
         .eq("project_id", projectId!);
@@ -84,7 +117,7 @@ function FinancialPage() {
     queryKey: ["financial_markups", projectId],
     enabled: !!projectId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("price_analysis_markup")
         .select("*")
         .eq("project_id", projectId!);
@@ -93,45 +126,46 @@ function FinancialPage() {
     },
   });
 
-  // Calculate detailed financial totals
-  const financials = useMemo(() => {
-    let materialCost = 0;
-    let laborCost = 0;
-    let equipmentCost = 0;
-    let subcontractorCost = 0;
+  const markupsMap = useMemo(() => {
+    const map = new Map<string, MarkupSettings>();
+    for (const m of markups) {
+      if (m.boq_item_id) {
+        map.set(m.boq_item_id, {
+          indirect_pct: Number(m.indirect_pct ?? 0),
+          overhead_pct: Number(m.overhead_pct ?? 0),
+          risk_pct: Number(m.risk_pct ?? 0),
+          profit_pct: Number(m.profit_pct ?? 0),
+        });
+      }
+    }
+    return map;
+  }, [markups]);
 
-    paItems.forEach((item) => {
-      const amt = Number(item.quantity ?? 0) * Number(item.unit_price ?? 0);
-      if (item.resource_type === "material") materialCost += amt;
-      else if (item.resource_type === "labor") laborCost += amt;
-      else if (item.resource_type === "equipment") equipmentCost += amt;
-      else if (item.resource_type === "subcontractor") subcontractorCost += amt;
+  // Unified calculation using central estimation engine
+  const financials = useMemo(() => {
+    const summary = computeProjectFinancials({
+      boqItems: boqItems as any,
+      markupsByItemId: markupsMap,
+      vatRate,
     });
 
-    const totalDirect = materialCost + laborCost + equipmentCost + subcontractorCost;
-
-    // Average or aggregate markup percentages
     const count = markups.length || 1;
     const avgIndirectPct = markups.reduce((s, m) => s + Number(m.indirect_pct ?? 0), 0) / count;
     const avgOverheadPct = markups.reduce((s, m) => s + Number(m.overhead_pct ?? 0), 0) / count;
     const avgRiskPct = markups.reduce((s, m) => s + Number(m.risk_pct ?? 0), 0) / count;
     const avgProfitPct = markups.reduce((s, m) => s + Number(m.profit_pct ?? 0), 0) / count;
 
-    const indirectAmount = (totalDirect * avgIndirectPct) / 100;
-    const overheadAmount = (totalDirect * avgOverheadPct) / 100;
-    const riskAmount = (totalDirect * avgRiskPct) / 100;
-    const profitAmount = (totalDirect * avgProfitPct) / 100;
-
-    const netSellingPrice = totalDirect + indirectAmount + overheadAmount + riskAmount + profitAmount;
-    const vatAmount = (netSellingPrice * (vatRate || 0)) / 100;
-    const grandTotalWithVat = netSellingPrice + vatAmount;
+    const indirectAmount = (summary.totalDirectCost * avgIndirectPct) / 100;
+    const overheadAmount = (summary.totalDirectCost * avgOverheadPct) / 100;
+    const riskAmount = (summary.totalDirectCost * avgRiskPct) / 100;
+    const profitAmount = summary.totalMarkupAmount - (indirectAmount + overheadAmount + riskAmount);
 
     return {
-      materialCost,
-      laborCost,
-      equipmentCost,
-      subcontractorCost,
-      totalDirect,
+      materialCost: summary.materialTotal,
+      laborCost: summary.laborTotal,
+      equipmentCost: summary.equipmentTotal,
+      subcontractorCost: summary.subcontractorTotal,
+      totalDirect: summary.totalDirectCost,
       avgIndirectPct,
       avgOverheadPct,
       avgRiskPct,
@@ -139,12 +173,19 @@ function FinancialPage() {
       indirectAmount,
       overheadAmount,
       riskAmount,
-      profitAmount,
-      netSellingPrice,
-      vatAmount,
-      grandTotalWithVat,
+      profitAmount: profitAmount > 0 ? profitAmount : summary.totalMarkupAmount,
+      netSellingPrice: summary.netSellingPrice,
+      vatAmount: summary.vatAmount,
+      grandTotalWithVat: summary.grandTotalWithVat,
+      totalMarkupPercentage: summary.totalMarkupPercentage,
+      totalMarkupAmount: summary.totalMarkupAmount,
+      totalItemsCount: summary.totalItemsCount,
+      pricedItemsCount: summary.pricedItemsCount,
+      unpricedItemsCount: summary.unpricedItemsCount,
+      missingPriceItems: summary.missingPriceItems,
+      canIssueTender: summary.canIssueTender,
     };
-  }, [paItems, markups, vatRate]);
+  }, [boqItems, markupsMap, markups, vatRate]);
 
   const costDistribution = [
     { name: t("pa.materials", "المواد"), value: financials.materialCost || 1, color: "#10b981" },
@@ -182,6 +223,17 @@ function FinancialPage() {
             <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
               {project?.name ?? "—"}
             </Badge>
+            {financials.canIssueTender ? (
+              <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-xs gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                مكتمل التسعير وجاهز للإصدار
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="border-amber-500/40 text-amber-500 bg-amber-500/10 text-xs gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                {financials.unpricedItemsCount} بند غير مسعّر
+              </Badge>
+            )}
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {t("comingSoon.financialDesc", "ملخص شامل قبل تسليم العطاء: التكاليف المباشرة وغير المباشرة، المخاطر، الأرباح، وضريبة القيمة المضافة 15%.")}
@@ -189,16 +241,56 @@ function FinancialPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            onClick={handleIssueTender}
+            disabled={!financials.canIssueTender || isIssuing}
+            className="gap-1.5 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <Lock className="h-3.5 w-3.5" />
+            {isIssuing ? "جاري الاعتماد…" : "اعتماد وإصدار العرض النهائي"}
+          </Button>
+
           <Button variant="outline" size="sm" className="gap-1.5" onClick={() => window.print()}>
             <Printer className="h-4 w-4" />
             {t("reports.printPdf", "طباعة / PDF")}
           </Button>
-          <Button size="sm" className="gap-1.5">
-            <Download className="h-4 w-4" />
-            {t("common.exportExcel", "تصدير التقرير المالي")}
-          </Button>
+          <Link to="/reports">
+            <Button size="sm" variant="outline" className="gap-1.5 text-xs">
+              <Download className="h-3.5 w-3.5" />
+              {t("common.exportExcel", "التقارير وعرض العميل")}
+            </Button>
+          </Link>
         </div>
       </div>
+
+      {/* Unpriced Items Warning Banner */}
+      {!financials.canIssueTender && financials.unpricedItemsCount > 0 && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 space-y-2">
+          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-semibold text-sm">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>بوابة الاعتماد: يوجد ({financials.unpricedItemsCount}) بند غير مسعّر في المقايسة يمنع إصدار العرض النهائي</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            وفقاً لضوابط خطة التسعير المعتمدة، يجب تسعير كافة البنود أو تحديدها صراحة بأنها مشمولة في بند آخر:
+          </p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {financials.missingPriceItems.slice(0, 10).map((it) => (
+              <Link key={it.id} to="/price-analysis" search={{ item: it.id }}>
+                <Badge variant="outline" className="gap-1 text-xs hover:border-primary cursor-pointer">
+                  <span className="font-mono">{it.item_no}</span>
+                  <span className="truncate max-w-[150px]">{it.description_ar}</span>
+                  <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                </Badge>
+              </Link>
+            ))}
+            {financials.missingPriceItems.length > 10 && (
+              <Badge variant="secondary" className="text-xs">
+                +{financials.missingPriceItems.length - 10} بنود أخرى
+              </Badge>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

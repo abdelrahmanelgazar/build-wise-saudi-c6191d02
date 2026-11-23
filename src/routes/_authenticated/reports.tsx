@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Download, Printer, FileSpreadsheet, FolderKanban, Calculator, Database as DatabaseIcon, FileBarChart } from "lucide-react";
 import { fmtSAR } from "@/lib/format";
+import { roundTo } from "@/lib/estimation-calc";
 import * as XLSX from "xlsx";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -96,7 +97,7 @@ function ProjectsReport() {
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ["report-projects"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("projects").select("*").order("project_no", { ascending: false });
       if (error) throw error;
       return data as Project[];
@@ -220,7 +221,7 @@ function BoqReport() {
   const { data: projects = [] } = useQuery({
     queryKey: ["report-boq-projects-list"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("projects").select("id,name,project_no,code,client_name")
         .order("project_no", { ascending: false });
       if (error) throw error;
@@ -236,7 +237,7 @@ function BoqReport() {
     queryKey: ["report-boq", projectId],
     enabled: !!projectId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("boq_items").select("*").eq("project_id", projectId)
         .order("sort_order", { ascending: true });
       if (error) throw error;
@@ -247,13 +248,16 @@ function BoqReport() {
   const project = projects.find((p) => p.id === projectId);
 
   const rows = useMemo(() => items.map((b) => {
-    const unitCost = Number(b.material_cost ?? 0) + Number(b.labor_cost ?? 0)
-      + Number(b.equipment_cost ?? 0) + Number(b.subcontractor_cost ?? 0);
-    const total = b.is_group ? 0 : Number(b.quantity ?? 0) * unitCost;
+    const unitCost = roundTo(
+      Number(b.material_cost ?? 0) + Number(b.labor_cost ?? 0)
+      + Number(b.equipment_cost ?? 0) + Number(b.subcontractor_cost ?? 0),
+      2
+    );
+    const total = b.is_group ? 0 : roundTo(Number(b.quantity ?? 0) * unitCost, 2);
     return { b, unitCost, total };
   }), [items]);
 
-  const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+  const grandTotal = roundTo(rows.reduce((s, r) => s + r.total, 0), 2);
 
   const exportExcel = () => {
     if (!project) return;
@@ -354,7 +358,7 @@ function ResourcesReport() {
   const { data: resources = [], isLoading } = useQuery({
     queryKey: ["report-resources"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("resources").select("*").order("type").order("code", { ascending: true });
       if (error) throw error;
       return data as Resource[];
@@ -447,7 +451,7 @@ function ExecutiveSummary() {
   const { data: projects = [] } = useQuery({
     queryKey: ["report-summary-projects-list"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("projects").select("id,name,project_no,client_name,location,status,estimated_value,budget")
         .order("project_no", { ascending: false });
       if (error) throw error;
@@ -466,8 +470,8 @@ function ExecutiveSummary() {
     enabled: !!projectId,
     queryFn: async () => {
       const [boq, res] = await Promise.all([
-        supabase.from("boq_items").select("quantity,material_cost,labor_cost,equipment_cost,subcontractor_cost,is_group").eq("project_id", projectId),
-        supabase.from("resources").select("type").eq("project_id", projectId),
+        estimationClient.from("boq_items").select("quantity,material_cost,labor_cost,equipment_cost,subcontractor_cost,is_group").eq("project_id", projectId),
+        estimationClient.from("resources").select("type").eq("project_id", projectId),
       ]);
       const items = (boq.data ?? []).filter((b) => !b.is_group);
       const total = items.reduce(

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -60,14 +60,14 @@ export const Route = createFileRoute("/_authenticated/projects/")({
 
 function ProjectsIndex() {
   const qc = useQueryClient();
-  const { t, language, dir } = useLanguage();
+  const { t, language, direction: dir } = useLanguage();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
 
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ["projects"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("projects")
         .select("*")
         .order("project_no", { ascending: false });
@@ -78,7 +78,7 @@ function ProjectsIndex() {
 
   const updateNoMut = useMutation({
     mutationFn: async ({ id, project_no }: { id: string; project_no: number | null }) => {
-      const { error } = await supabase.from("projects").update({ project_no } as any).eq("id", id);
+      const { error } = await estimationClient.from("projects").update({ project_no } as any).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -90,7 +90,7 @@ function ProjectsIndex() {
 
   const delMut = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("projects").delete().eq("id", id);
+      const { error } = await estimationClient.from("projects").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -326,11 +326,11 @@ function NewProjectDialog() {
 
   const mut = useMutation({
     mutationFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await estimationClient.auth.getUser();
       const user_id = u.user?.id;
       if (!user_id) throw new Error(t("auth.notLoggedIn", "غير مسجل دخول"));
       if (!form.name.trim()) throw new Error(t("projects.nameRequired", "اسم المشروع مطلوب"));
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("projects")
         .insert({
           user_id,

@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,9 +19,17 @@ import {
   Percent,
   Coins,
   Globe,
+  Database,
+  Download,
+  Upload,
+  RefreshCw,
+  FolderArchive,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "@/lib/i18n";
+import { useActiveProjectId } from "@/lib/active-project";
+import { readWorkspaceSetting, writeWorkspaceSetting } from "@/lib/workspace-settings";
+import { exportProjectBackup, restoreProjectBackup, type ProjectBackupSnapshot } from "@/lib/project-backup";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -35,11 +44,65 @@ export const Route = createFileRoute("/_authenticated/settings")({
 function SettingsPage() {
   const { t, language, setLanguage } = useLanguage();
   const [activeTab, setActiveTab] = useState("company");
+  const activeProjectId = useActiveProjectId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const queryClient = useQueryClient();
+
+  async function handleExport() {
+    if (!activeProjectId) {
+      toast.error(t("settings.noActiveProject", "يرجى اختيار مشروع لتصدير نسخته الاحتياطية أولاً"));
+      return;
+    }
+    try {
+      setIsExporting(true);
+      const snapshot = await exportProjectBackup(activeProjectId);
+      const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `backup-${snapshot.project.name || "project"}-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success(t("settings.exportSuccess", "تم تصدير النسخة الاحتياطية بنجاح"));
+    } catch (err: any) {
+      toast.error(err.message || "فشل تصدير النسخة الاحتياطية");
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
+  async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsRestoring(true);
+      const text = await file.text();
+      const snapshot = JSON.parse(text) as ProjectBackupSnapshot;
+      if (!snapshot.version || !snapshot.project) {
+        throw new Error("ملف النسخة الاحتياطية غير صالح أو ناقص");
+      }
+      const res = await restoreProjectBackup(snapshot);
+      await queryClient.invalidateQueries();
+      toast.success(
+        t(
+          "settings.restoreSuccess",
+          `تم استعادة المشروع "${snapshot.project.name}" بنجاح (${res.boqItemsCount} بند، ${res.priceAnalysisCount} سطر تحليل)`
+        )
+      );
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } catch (err: any) {
+      toast.error(err.message || "فشل استعادة النسخة الاحتياطية");
+    } finally {
+      setIsRestoring(false);
+    }
+  }
 
   // Company Profile State
   const [company, setCompany] = useState(() => {
     try {
-      const saved = localStorage.getItem("taqdiri:company_settings");
+      const saved = readWorkspaceSetting("taqdiri:company_settings");
       if (saved) return JSON.parse(saved);
     } catch { /* empty */ }
     return {
@@ -55,7 +118,7 @@ function SettingsPage() {
   // System Preferences
   const [preferences, setPreferences] = useState(() => {
     try {
-      const saved = localStorage.getItem("taqdiri:system_preferences");
+      const saved = readWorkspaceSetting("taqdiri:system_preferences");
       if (saved) return JSON.parse(saved);
     } catch { /* empty */ }
     return {
@@ -66,15 +129,25 @@ function SettingsPage() {
     };
   });
 
-  function saveCompanySettings(e: React.FormEvent) {
+  async function saveCompanySettings(e: React.FormEvent) {
     e.preventDefault();
-    localStorage.setItem("taqdiri:company_settings", JSON.stringify(company));
+    try {
+      await writeWorkspaceSetting("taqdiri:company_settings", JSON.stringify(company));
+    } catch (error) {
+      toast.error(String(error));
+      return;
+    }
     toast.success(t("settings.savedSuccess", "تم حفظ إعدادات الشركة بنجاح"));
   }
 
-  function savePreferences(e: React.FormEvent) {
+  async function savePreferences(e: React.FormEvent) {
     e.preventDefault();
-    localStorage.setItem("taqdiri:system_preferences", JSON.stringify(preferences));
+    try {
+      await writeWorkspaceSetting("taqdiri:system_preferences", JSON.stringify(preferences));
+    } catch (error) {
+      toast.error(String(error));
+      return;
+    }
     toast.success(t("settings.prefSaved", "تم حفظ تفضيلات النظام"));
   }
 
@@ -124,7 +197,7 @@ function SettingsPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 max-w-md">
+        <TabsList className="grid w-full grid-cols-4 max-w-lg">
           <TabsTrigger value="company" className="gap-2">
             <Building2 className="h-4 w-4" />
             {t("settings.tabCompany", "الشركة")}
@@ -136,6 +209,10 @@ function SettingsPage() {
           <TabsTrigger value="preferences" className="gap-2">
             <Sliders className="h-4 w-4" />
             {t("settings.tabPreferences", "التفضيلات")}
+          </TabsTrigger>
+          <TabsTrigger value="backup" className="gap-2">
+            <FolderArchive className="h-4 w-4" />
+            {t("settings.tabBackup", "النسخ الاحتياطي")}
           </TabsTrigger>
         </TabsList>
 
@@ -339,6 +416,65 @@ function SettingsPage() {
               </CardFooter>
             </Card>
           </form>
+        </TabsContent>
+        {/* 4. Backup & Restore */}
+        <TabsContent value="backup">
+          <Card className="border-border/60">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <FolderArchive className="h-4 w-4 text-primary" />
+                {t("settings.backupTitle", "النسخ الاحتياطي واستعادة المشاريع")}
+              </CardTitle>
+              <CardDescription className="text-xs">
+                {t("settings.backupDesc", "تصدير لقطة بيانات كاملة للمشروع النشط (شاملة بنود BOQ، تفكيك تحليل الأسعار، الهوامش، وعروض الأسعار) أو استعادة مشروع من ملف JSON سابق.")}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="rounded-lg border border-border p-4 bg-muted/10 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h4 className="text-sm font-semibold">{t("settings.exportTitle", "تصدير نسخة احتياطية (JSON Snapshot)")}</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {t("settings.exportHelp", "يحفظ جميع البيانات الحالية للمشروع المختار بتنسيق JSON قياسي مستقل.")}
+                    </p>
+                  </div>
+                  <Button onClick={handleExport} disabled={isExporting || !activeProjectId} className="gap-2">
+                    <Download className="h-4 w-4" />
+                    {isExporting ? t("common.exporting", "جاري التصدير...") : t("settings.exportBtn", "تصدير لقطة المشروع")}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border p-4 bg-muted/10 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h4 className="text-sm font-semibold">{t("settings.restoreTitle", "استعادة مشروع من نسخة احتياطية")}</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {t("settings.restoreHelp", "اختر ملف JSON للنسخة الاحتياطية لاستعادة المشروع مع كامل تحليلاته وهياكل الأسعار.")}
+                    </p>
+                  </div>
+                  <div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".json,application/json"
+                      className="hidden"
+                      onChange={handleFileSelect}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isRestoring}
+                      className="gap-2"
+                    >
+                      <Upload className="h-4 w-4" />
+                      {isRestoring ? t("common.restoring", "جاري الاستعادة...") : t("settings.restoreBtn", "رفع واستعادة النسخة")}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

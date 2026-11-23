@@ -11,6 +11,9 @@ import {
   ExternalLink,
   Trash2,
   Edit,
+  Copy,
+  Eye,
+  RotateCcw,
   FolderKanban,
   Sparkles,
   Info,
@@ -36,11 +39,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { useActiveProjectId } from "@/lib/active-project";
 import { useLanguage } from "@/lib/i18n";
+import { CSI_DIVISIONS, csiDivisionCode, csiDivisionLabel } from "@/lib/csi-divisions";
 import {
   getAllBreakdownTemplates,
+  DEFAULT_BREAKDOWN_TEMPLATES,
   saveCustomTemplate,
   deleteCustomTemplate,
   calculateBreakdownCost,
@@ -52,6 +57,12 @@ import {
 import type { Database } from "@/integrations/supabase/types";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
+const resourceLabels = {
+  material: "pa.materials",
+  labor: "pa.labour",
+  equipment: "pa.equipment",
+  subcontractor: "pa.subcontractor",
+} as const;
 
 export const Route = createFileRoute("/_authenticated/item-breakdown-library")({
   head: () => ({
@@ -82,6 +93,9 @@ function ItemBreakdownLibraryPage() {
   // New template dialog state
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<BreakdownTemplate | null>(null);
+  const [editorMode, setEditorMode] = useState<"new" | "edit" | "duplicate">("new");
+  const [previewTemplate, setPreviewTemplate] = useState<BreakdownTemplate | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Fetch project BOQ items for apply modal
   const { data: boqItems = [] } = useQuery({
@@ -89,7 +103,7 @@ function ItemBreakdownLibraryPage() {
     enabled: !!projectId && applyModalOpen,
     queryFn: async () => {
       if (!projectId) return [];
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("boq_items")
         .select("*")
         .eq("project_id", projectId)
@@ -101,7 +115,7 @@ function ItemBreakdownLibraryPage() {
     },
   });
 
-  const divisions = Array.from(new Set(templates.map((t) => t.division)));
+  const hasUnclassified = templates.some((template) => !csiDivisionCode(template.division));
 
   const filteredTemplates = templates.filter((tmpl) => {
     const q = search.toLowerCase().trim();
@@ -113,13 +127,65 @@ function ItemBreakdownLibraryPage() {
       tmpl.description_ar.toLowerCase().includes(q) ||
       tmpl.description_en.toLowerCase().includes(q);
 
-    const matchDiv = selectedDivision === "all" || tmpl.division === selectedDivision;
+    const matchDiv = selectedDivision === "all" ||
+      (csiDivisionCode(tmpl.division) ?? "unclassified") === selectedDivision;
     return matchSearch && matchDiv;
   });
 
   const refreshTemplates = () => {
     setTemplates(getAllBreakdownTemplates());
   };
+
+  function openEditor(template: BreakdownTemplate, mode: "edit" | "duplicate") {
+    const draft = structuredClone(template);
+    if (mode === "duplicate") {
+      const prefix = `${template.code}-COPY`;
+      const usedCodes = new Set(templates.map(({ code }) => code.trim().toLowerCase()));
+      draft.code = prefix;
+      for (let suffix = 2; usedCodes.has(draft.code.toLowerCase()); suffix++) {
+        draft.code = `${prefix}-${suffix}`;
+      }
+      draft.id = crypto.randomUUID();
+      draft.items = draft.items.map((item) => ({ ...item, id: crypto.randomUUID() }));
+    }
+    setEditorMode(mode);
+    setEditingTemplate(draft);
+    setCreateModalOpen(true);
+  }
+
+  function updateResource(id: string, changes: Partial<BreakdownResourceItem>) {
+    setEditingTemplate((current) => current && ({
+      ...current,
+      items: current.items.map((item) => item.id === id ? { ...item, ...changes } : item),
+    }));
+  }
+
+  async function handleSaveTemplate() {
+    if (!editingTemplate || isSaving) return;
+    const code = editingTemplate.code.trim();
+    const unit = editingTemplate.unit.trim();
+    if (!code || !unit || !(editingTemplate.title_ar.trim() || editingTemplate.title_en.trim())) {
+      toast.error(t("breakdown.templateRequiredFields"));
+      return;
+    }
+    if (getAllBreakdownTemplates().some((template) =>
+      template.id !== editingTemplate.id && template.code.trim().toLowerCase() === code.toLowerCase(),
+    )) {
+      toast.error(t("breakdown.templateCodeInUse"));
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await saveCustomTemplate({ ...editingTemplate, code, unit });
+      refreshTemplates();
+      setCreateModalOpen(false);
+      toast.success(t("breakdown.templateSaved"));
+    } catch (error) {
+      toast.error(String(error));
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   const handleOpenApply = (tmpl: BreakdownTemplate) => {
     setTargetTemplate(tmpl);
@@ -134,7 +200,7 @@ function ItemBreakdownLibraryPage() {
     }
     setIsApplying(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await estimationClient.auth.getUser();
       if (!user) throw new Error(t("auth.notLoggedIn", "يجب تسجيل الدخول"));
 
       await applyTemplateToBoqItem({
@@ -160,14 +226,21 @@ function ItemBreakdownLibraryPage() {
     }
   };
 
-  const handleDeleteTemplate = (id: string) => {
-    deleteCustomTemplate(id);
+  const handleDeleteTemplate = async (id: string, restoreDefault: boolean) => {
+    if (!confirm(t(restoreDefault ? "breakdown.restoreTemplate" : "breakdown.deleteTemplate"))) return;
+    try {
+      await deleteCustomTemplate(id);
+    } catch (error) {
+      toast.error(String(error));
+      return;
+    }
     refreshTemplates();
-    toast.success(t("breakdown.templateDeleted", "تم حذف القالب"));
+    toast.success(t(restoreDefault ? "breakdown.templateRestored" : "breakdown.templateDeleted"));
   };
 
   const targetBoqItem = boqItems.find((b) => b.id === targetBoqItemId);
   const targetCalc = targetTemplate ? calculateBreakdownCost(targetTemplate) : null;
+  const previewCalc = previewTemplate ? calculateBreakdownCost(previewTemplate) : null;
   const targetQty = targetBoqItem?.quantity || 1;
   const totalDirectForQty = (targetCalc?.directUnitCost || 0) * targetQty;
   const totalSellingForQty = (targetCalc?.unitSellingPrice || 0) * targetQty;
@@ -199,10 +272,11 @@ function ItemBreakdownLibraryPage() {
         <div className="flex items-center gap-2">
           <Button
             onClick={() => {
+              setEditorMode("new");
               setEditingTemplate({
                 id: "tmpl-" + Date.now(),
                 code: "DIV-CUSTOM",
-                division: "Div. 01 - General Requirements",
+                division: "01",
                 title_ar: "بند تحليل تكلفة جديد",
                 title_en: "New Rate Breakdown Item",
                 description_ar: "توصيف البند ومكونات موارده ومصنعيته...",
@@ -251,13 +325,16 @@ function ItemBreakdownLibraryPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all" className="text-xs">
-              {t("common.allDivisions", "جميع الأقسام (All Divisions)")}
+              {t("common.allDivisions", "جميع أقسام CSI")}
             </SelectItem>
-            {divisions.map((div) => (
-              <SelectItem key={div} value={div} className="text-xs">
-                {div}
+            {CSI_DIVISIONS.map(({ code, name_ar, name_en }) => (
+              <SelectItem key={code} value={code} className="text-xs">
+                {code} — {language === "ar" ? name_ar : name_en}
               </SelectItem>
             ))}
+            {hasUnclassified && (
+              <SelectItem value="unclassified">{t("common.unclassifiedDivision")}</SelectItem>
+            )}
           </SelectContent>
         </Select>
       </div>
@@ -266,6 +343,8 @@ function ItemBreakdownLibraryPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredTemplates.map((template) => {
           const calc = calculateBreakdownCost(template);
+          const restoreDefault = DEFAULT_BREAKDOWN_TEMPLATES.some(({ id }) => id === template.id);
+          const removeLabel = t(restoreDefault ? "breakdown.restoreTemplate" : "breakdown.deleteTemplate");
           return (
             <Card
               key={template.id}
@@ -293,7 +372,7 @@ function ItemBreakdownLibraryPage() {
                     {isEn ? template.title_en || template.title_ar : template.title_ar}
                   </CardTitle>
                   <CardDescription className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
-                    {template.division}
+                    {csiDivisionLabel(template.division, language)}
                   </CardDescription>
                 </div>
 
@@ -345,7 +424,19 @@ function ItemBreakdownLibraryPage() {
                 </div>
 
                 {/* Card Actions */}
-                <div className="flex items-center gap-2 pt-1">
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <Button size="sm" variant="outline" onClick={() => setPreviewTemplate(template)}>
+                    <Eye className="h-3.5 w-3.5" />
+                    {t("breakdown.previewTemplate")}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => openEditor(template, "edit")}>
+                    <Edit className="h-3.5 w-3.5" />
+                    {t("common.edit")}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => openEditor(template, "duplicate")}>
+                    <Copy className="h-3.5 w-3.5" />
+                    {t("breakdown.duplicateTemplate")}
+                  </Button>
                   <Button
                     size="sm"
                     variant="default"
@@ -360,10 +451,11 @@ function ItemBreakdownLibraryPage() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDeleteTemplate(template.id)}
+                      className="col-span-2 justify-start text-muted-foreground hover:text-destructive"
+                      onClick={() => handleDeleteTemplate(template.id, restoreDefault)}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      {restoreDefault ? <RotateCcw className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      {removeLabel}
                     </Button>
                   )}
                 </div>
@@ -382,6 +474,57 @@ function ItemBreakdownLibraryPage() {
           </p>
         </div>
       )}
+
+      <Dialog open={!!previewTemplate} onOpenChange={(open) => { if (!open) setPreviewTemplate(null); }}>
+        {previewTemplate && previewCalc && (
+          <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{(isEn ? previewTemplate.title_en : previewTemplate.title_ar) || previewTemplate.title_ar || previewTemplate.title_en}</DialogTitle>
+              <DialogDescription>
+                {previewTemplate.code} · {csiDivisionLabel(previewTemplate.division, language)} · {previewTemplate.unit}
+              </DialogDescription>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              {(isEn ? previewTemplate.description_en : previewTemplate.description_ar) ||
+                previewTemplate.description_ar || previewTemplate.description_en}
+            </p>
+            <div className="overflow-x-auto rounded-md border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 text-xs">
+                  <tr>
+                    {[t("common.type"), t("common.description"), t("common.unit"), t("common.quantity"),
+                      t("breakdown.itemUnitPrice"), t("breakdown.itemLineTotal")].map((label) => (
+                      <th key={label} scope="col" className="p-2 text-start font-medium">{label}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewTemplate.items.map((item) => (
+                    <tr key={item.id} className="border-t">
+                      <td className="p-2">{t(resourceLabels[item.resource_type])}</td>
+                      <td className="p-2">
+                        {(isEn ? item.description_en : item.description_ar) || item.description_ar || item.description_en}
+                        {item.notes && <div className="text-xs text-muted-foreground">{item.notes}</div>}
+                      </td>
+                      <td className="p-2">{item.unit}</td>
+                      <td className="p-2 tabular-nums">{item.quantity}</td>
+                      <td className="p-2 tabular-nums">{item.unit_price.toFixed(2)}</td>
+                      <td className="p-2 tabular-nums">{(item.quantity * item.unit_price).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <dl className="grid gap-2 rounded-md bg-muted/40 p-3 text-sm sm:grid-cols-2">
+              <div><dt>{t("breakdown.directCostPerUnit")}</dt><dd className="font-semibold">{previewCalc.directUnitCost.toFixed(2)} {t("common.sar")}</dd></div>
+              <div><dt>{t("breakdown.sellingRatePerUnit")} ({previewCalc.totalMarkupPct}%)</dt><dd className="font-semibold">{previewCalc.unitSellingPrice.toFixed(2)} {t("common.sar")}</dd></div>
+            </dl>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPreviewTemplate(null)}>{t("common.close")}</Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
 
       {/* Apply Template Dialog */}
       <Dialog open={applyModalOpen} onOpenChange={setApplyModalOpen}>
@@ -409,7 +552,7 @@ function ItemBreakdownLibraryPage() {
                   {isEn ? targetTemplate.title_en : targetTemplate.title_ar}
                 </div>
                 <div className="text-[11px] text-muted-foreground">
-                  {targetTemplate.division}
+                  {csiDivisionLabel(targetTemplate.division, language)}
                 </div>
               </div>
 
@@ -495,11 +638,12 @@ function ItemBreakdownLibraryPage() {
       </Dialog>
 
       {/* Create / Edit Template Dialog */}
-      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
+      <Dialog open={createModalOpen} onOpenChange={(open) => { if (!isSaving) setCreateModalOpen(open); }}>
         <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-base font-bold">
-              {t("breakdown.createModalTitle", "إنشاء قالب تحليل تفصيلي جديد")}
+              {t(editorMode === "edit" ? "breakdown.editTemplate" :
+                editorMode === "duplicate" ? "breakdown.duplicateTemplate" : "breakdown.createModalTitle")}
             </DialogTitle>
             <DialogDescription className="text-xs">
               {t("breakdown.createModalDesc", "أدخل بيانات البند ومكونات موارده ومعدلات الاستهلاك لكل وحدة قياس.")}
@@ -510,8 +654,9 @@ function ItemBreakdownLibraryPage() {
             <div className="space-y-4 py-2 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-semibold block mb-1">{t("common.code", "الكود")}:</label>
+                  <label htmlFor="template-code" className="font-semibold block mb-1">{t("common.code", "الكود")}:</label>
                   <Input
+                    id="template-code"
                     value={editingTemplate.code}
                     onChange={(e) => setEditingTemplate({ ...editingTemplate, code: e.target.value })}
                     className="text-xs font-mono"
@@ -531,12 +676,24 @@ function ItemBreakdownLibraryPage() {
 
               <div>
                 <label className="font-semibold block mb-1">{t("breakdown.division", "القسم (Division)")}:</label>
-                <Input
-                  value={editingTemplate.division}
-                  onChange={(e) => setEditingTemplate({ ...editingTemplate, division: e.target.value })}
-                  className="text-xs"
-                  placeholder="e.g. Div. 04 - Masonry"
-                />
+                <Select
+                  value={csiDivisionCode(editingTemplate.division) ?? "legacy"}
+                  onValueChange={(division) => setEditingTemplate({ ...editingTemplate, division })}
+                >
+                  <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {!csiDivisionCode(editingTemplate.division) && (
+                      <SelectItem value="legacy" disabled>
+                        {editingTemplate.division || t("common.unclassifiedDivision")}
+                      </SelectItem>
+                    )}
+                    {CSI_DIVISIONS.map(({ code, name_ar, name_en }) => (
+                      <SelectItem key={code} value={code}>
+                        {code} — {language === "ar" ? name_ar : name_en}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>
@@ -565,6 +722,16 @@ function ItemBreakdownLibraryPage() {
                   className="text-xs"
                 />
               </div>
+              <div>
+                <label htmlFor="template-description-en" className="font-semibold block mb-1">{t("breakdown.descriptionEn")}</label>
+                <Input
+                  id="template-description-en"
+                  value={editingTemplate.description_en}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, description_en: e.target.value })}
+                  className="text-xs"
+                  dir="ltr"
+                />
+              </div>
 
               {/* Resource Items */}
               <div className="space-y-2 pt-2 border-t border-border">
@@ -581,7 +748,7 @@ function ItemBreakdownLibraryPage() {
                         items: [
                           ...editingTemplate.items,
                           {
-                            id: "res-" + Date.now(),
+                            id: crypto.randomUUID(),
                             resource_type: "material",
                             description_ar: "مورد جديد",
                             description_en: "New resource",
@@ -600,59 +767,52 @@ function ItemBreakdownLibraryPage() {
 
                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                   {editingTemplate.items.map((item, idx) => (
-                    <div key={item.id} className="flex items-center gap-2 rounded border border-border p-2 bg-muted/20">
+                    <div key={item.id} className="flex flex-wrap items-center gap-2 rounded border border-border p-2 bg-muted/20">
                       <Select
                         value={item.resource_type}
-                        onValueChange={(val: BreakdownResourceType) => {
-                          const updated = [...editingTemplate.items];
-                          updated[idx].resource_type = val;
-                          setEditingTemplate({ ...editingTemplate, items: updated });
-                        }}
+                        onValueChange={(resource_type: BreakdownResourceType) => updateResource(item.id, { resource_type })}
                       >
                         <SelectTrigger className="w-24 text-[10px] h-7">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="material" className="text-xs">مواد</SelectItem>
-                          <SelectItem value="labor" className="text-xs">عمالة</SelectItem>
-                          <SelectItem value="equipment" className="text-xs">معدات</SelectItem>
-                          <SelectItem value="subcontractor" className="text-xs">مقاول باطن</SelectItem>
+                          {Object.entries(resourceLabels).map(([type, label]) => (
+                            <SelectItem key={type} value={type} className="text-xs">{t(label)}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
 
                       <Input
                         value={item.description_ar}
-                        onChange={(e) => {
-                          const updated = [...editingTemplate.items];
-                          updated[idx].description_ar = e.target.value;
-                          setEditingTemplate({ ...editingTemplate, items: updated });
-                        }}
+                        aria-label={t("common.description")}
+                        onChange={(e) => updateResource(item.id, { description_ar: e.target.value })}
                         className="flex-1 text-xs h-7"
-                        placeholder="اسم المورد"
+                        placeholder={t("common.description")}
+                      />
+                      <Input
+                        value={item.unit}
+                        aria-label={t("common.unit")}
+                        placeholder={t("common.unit")}
+                        onChange={(e) => updateResource(item.id, { unit: e.target.value })}
+                        className="h-7 w-16 text-xs"
                       />
 
                       <Input
                         type="number"
                         value={item.quantity}
-                        onChange={(e) => {
-                          const updated = [...editingTemplate.items];
-                          updated[idx].quantity = parseFloat(e.target.value) || 0;
-                          setEditingTemplate({ ...editingTemplate, items: updated });
-                        }}
+                        aria-label={t("common.quantity")}
+                        onChange={(e) => updateResource(item.id, { quantity: Number(e.target.value) || 0 })}
                         className="w-16 text-xs h-7 font-mono"
-                        placeholder="الكمية"
+                        placeholder={t("common.quantity")}
                       />
 
                       <Input
                         type="number"
                         value={item.unit_price}
-                        onChange={(e) => {
-                          const updated = [...editingTemplate.items];
-                          updated[idx].unit_price = parseFloat(e.target.value) || 0;
-                          setEditingTemplate({ ...editingTemplate, items: updated });
-                        }}
+                        aria-label={t("breakdown.itemUnitPrice")}
+                        onChange={(e) => updateResource(item.id, { unit_price: Number(e.target.value) || 0 })}
                         className="w-20 text-xs h-7 font-mono"
-                        placeholder="السعر ر.س"
+                        placeholder={t("breakdown.itemUnitPrice")}
                       />
 
                       <Button
@@ -667,6 +827,23 @@ function ItemBreakdownLibraryPage() {
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
+                      <div className="grid w-full grid-cols-2 gap-2">
+                        <Input
+                          value={item.description_en}
+                          aria-label={t("breakdown.resourceDescriptionEn")}
+                          placeholder={t("breakdown.resourceDescriptionEn")}
+                          onChange={(e) => updateResource(item.id, { description_en: e.target.value })}
+                          className="h-7 text-xs"
+                          dir="ltr"
+                        />
+                        <Input
+                          value={item.notes ?? ""}
+                          aria-label={t("common.notes")}
+                          placeholder={t("common.notes")}
+                          onChange={(e) => updateResource(item.id, { notes: e.target.value })}
+                          className="h-7 text-xs"
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -706,20 +883,15 @@ function ItemBreakdownLibraryPage() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" size="sm" onClick={() => setCreateModalOpen(false)}>
+            <Button variant="outline" size="sm" disabled={isSaving} onClick={() => setCreateModalOpen(false)}>
               {t("common.cancel", "إلغاء")}
             </Button>
             <Button
               size="sm"
-              onClick={() => {
-                if (!editingTemplate) return;
-                saveCustomTemplate(editingTemplate);
-                refreshTemplates();
-                setCreateModalOpen(false);
-                toast.success(t("breakdown.templateSaved", "تم حفظ قالب التحليل في المكتبة"));
-              }}
+              disabled={isSaving}
+              onClick={handleSaveTemplate}
             >
-              {t("common.save", "حفظ القالب")}
+              {isSaving ? t("common.saving") : t("common.save")}
             </Button>
           </DialogFooter>
         </DialogContent>

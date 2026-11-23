@@ -21,7 +21,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { cn } from "@/lib/utils";
 import { fmtNumber, fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
@@ -135,7 +135,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   const { data: items = [] } = useQuery({
     queryKey: ["pa_items", boqItem.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("price_analysis_items")
         .select("*")
         .eq("boq_item_id", boqItem.id)
@@ -149,7 +149,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   const { data: markup } = useQuery({
     queryKey: ["pa_markup", boqItem.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("price_analysis_markup")
         .select("*")
         .eq("boq_item_id", boqItem.id)
@@ -197,7 +197,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   // ── Mutations ──────────────────────────────────────────────────────────────
   const updateMut = useMutation({
     mutationFn: async (vars: { id: string; patch: Partial<PaItem> }) => {
-      const { error } = await supabase
+      const { error } = await estimationClient
         .from("price_analysis_items").update(vars.patch).eq("id", vars.id);
       if (error) throw error;
     },
@@ -207,7 +207,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
 
   const deleteMut = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("price_analysis_items").delete().eq("id", id);
+      const { error } = await estimationClient.from("price_analysis_items").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] }),
@@ -215,11 +215,11 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
 
   const addMut = useMutation({
     mutationFn: async (type: ResourceType) => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await estimationClient.auth.getUser();
       const userId = u.user?.id;
       if (!userId) throw new Error("غير مسجل دخول");
       const maxSort = items.reduce((m, i) => Math.max(m, i.sort_order ?? 0), 0);
-      const { error } = await supabase.from("price_analysis_items").insert({
+      const { error } = await estimationClient.from("price_analysis_items").insert({
         boq_item_id:   boqItem.id,
         user_id:       userId,
         project_id:    projectId,
@@ -675,17 +675,17 @@ function MarkupLine({
   const qc  = useQueryClient();
   const mut = useMutation({
     mutationFn: async (newPct: number) => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await estimationClient.auth.getUser();
       const userId = u.user?.id;
       if (!userId) throw new Error("غير مسجل دخول");
       if (markup) {
-        const { error } = await supabase
+        const { error } = await estimationClient
           .from("price_analysis_markup")
           .update({ [field]: newPct } as Partial<Markup>)
           .eq("boq_item_id", boqItemId);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("price_analysis_markup").insert({
+        const { error } = await estimationClient.from("price_analysis_markup").insert({
           boq_item_id: boqItemId,
           user_id:     userId,
           project_id:  projectId,

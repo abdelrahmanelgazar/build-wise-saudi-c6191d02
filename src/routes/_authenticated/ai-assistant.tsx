@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useState, useRef, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { estimationClient } from "@/lib/estimation-client";
 import { useActiveProjectId } from "@/lib/active-project";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,7 @@ function AiAssistantPage() {
     queryKey: ["project_ai", projectId],
     enabled: !!projectId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("projects")
         .select("*")
         .eq("id", projectId!)
@@ -65,7 +65,7 @@ function AiAssistantPage() {
     queryKey: ["ai_boq_items", projectId],
     enabled: !!projectId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("boq_items")
         .select("*")
         .eq("project_id", projectId!);
@@ -78,7 +78,7 @@ function AiAssistantPage() {
     queryKey: ["ai_pa_items", projectId],
     enabled: !!projectId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("price_analysis_items")
         .select("*")
         .eq("project_id", projectId!);

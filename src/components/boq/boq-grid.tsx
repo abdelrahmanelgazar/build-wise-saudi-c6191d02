@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { fmtNumber } from "@/lib/format";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { Database } from "@/integrations/supabase/types";
@@ -184,7 +184,7 @@ export function BoqGrid({
 
   const updateMut = useMutation({
     mutationFn: async (vars: { id: string; patch: Partial<BoqRow> }) => {
-      const { error } = await supabase.from("boq_items").update(vars.patch).eq("id", vars.id);
+      const { error } = await estimationClient.from("boq_items").update(vars.patch).eq("id", vars.id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["boq_items"] }),

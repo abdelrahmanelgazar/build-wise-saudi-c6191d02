@@ -15,6 +15,7 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { LanguageProvider, useLanguage } from "@/lib/i18n";
 import { supabase } from "@/integrations/supabase/client";
+import { isLocalDevelopment } from "@/lib/local-development";
 
 function NotFoundComponent() {
   useEffect(() => {
@@ -144,6 +145,7 @@ function RootComponent() {
   const router = useRouter();
 
   useEffect(() => {
+    if (isLocalDevelopment()) return;
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
       router.invalidate();

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,9 +30,11 @@ import { useActiveProjectId } from "@/lib/active-project";
 import { Link } from "@tanstack/react-router";
 import { FolderPlus } from "lucide-react";
 import { useDivisions } from "@/lib/divisions";
+import { CSI_DIVISIONS, csiDivisionCode, csiDivisionLabel } from "@/lib/csi-divisions";
 import { useLanguage } from "@/lib/i18n";
 
 type ResourceRow = Database["public"]["Tables"]["resources"]["Row"] & {
+  name_en?: string | null;
   division?: string | null;
 };
 type ResourceType = Database["public"]["Enums"]["resource_type"];
@@ -65,7 +67,7 @@ function ResourcesPage() {
     enabled: !!projectId,
     queryFn: async () => {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("resources")
         .select("*")
         .eq("project_id", projectId)
@@ -78,7 +80,7 @@ function ResourcesPage() {
 
   const ofType = useMemo(() => {
     if (tab === "general_requirements") {
-      return resources.filter((r) => r.division === "01" || r.code?.startsWith("01-") || r.name_ar.includes("متطلبات عامة") || r.name_ar.includes("مكتب الموقع"));
+      return resources.filter((r) => csiDivisionCode(r.division) === "01" || r.code?.startsWith("01-") || r.name_ar.includes("متطلبات عامة") || r.name_ar.includes("مكتب الموقع"));
     }
     return resources.filter((r) => r.type === tab);
   }, [resources, tab]);
@@ -91,7 +93,8 @@ function ResourcesPage() {
         (r.name_en && r.name_en.toLowerCase().includes(search.toLowerCase())) ||
         (r.code ?? "").toLowerCase().includes(search.toLowerCase());
 
-      const matchDiv = selectedDivisionFilter === "all" || r.division === selectedDivisionFilter;
+      const matchDiv = selectedDivisionFilter === "all" ||
+        (csiDivisionCode(r.division) ?? r.division) === selectedDivisionFilter;
       return matchSearch && matchDiv;
     });
   }, [ofType, search, selectedDivisionFilter]);
@@ -105,7 +108,7 @@ function ResourcesPage() {
       }
     }
     for (const r of filtered) {
-      const k = r.division ?? "";
+      const k = csiDivisionCode(r.division) ?? r.division ?? "";
       if (!map.has(k)) map.set(k, []);
       map.get(k)?.push(r);
     }
@@ -118,7 +121,7 @@ function ResourcesPage() {
 
   const delMut = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("resources").delete().eq("id", id);
+      const { error } = await estimationClient.from("resources").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -195,9 +198,9 @@ function ResourcesPage() {
                 </SelectTrigger>
                 <SelectContent className="max-h-60 text-xs">
                   <SelectItem value="all">{t("common.allDivisions", "جميع أقسام CSI")}</SelectItem>
-                  {divisions.map((d) => (
+                  {CSI_DIVISIONS.map((d) => (
                     <SelectItem key={d.code} value={d.code}>
-                      Div {d.code} — {language === "en" && d.name_en ? d.name_en : d.name_ar}
+                      {d.code} — {language === "en" ? d.name_en : d.name_ar}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -353,11 +356,10 @@ function ResourceFormDialog({
   const [price, setPrice] = useState<string>(String(resource?.unit_price ?? ""));
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
-  const { divisions } = useDivisions(projectId);
 
   const mut = useMutation({
     mutationFn: async () => {
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData } = await estimationClient.auth.getUser();
       const user_id = userData.user?.id;
       if (!user_id) throw new Error("غير مسجل دخول");
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
@@ -370,10 +372,10 @@ function ResourceFormDialog({
         unit_price: Number(price) || 0,
       };
       if (mode === "edit" && resource) {
-        const { error } = await supabase.from("resources").update(payload).eq("id", resource.id);
+        const { error } = await estimationClient.from("resources").update(payload).eq("id", resource.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("resources").insert({ ...payload, user_id, project_id: projectId });
+        const { error } = await estimationClient.from("resources").insert({ ...payload, user_id, project_id: projectId });
         if (error) throw error;
       }
     },
@@ -431,7 +433,10 @@ function ResourceFormDialog({
               </SelectTrigger>
               <SelectContent className="max-h-[300px]">
                 <SelectItem value="none">— بدون قسم —</SelectItem>
-                {divisions.map((d) => (
+                {division && !CSI_DIVISIONS.some((d) => d.code === division) && (
+                  <SelectItem value={division}>{csiDivisionLabel(division, "ar")}</SelectItem>
+                )}
+                {CSI_DIVISIONS.map((d) => (
                   <SelectItem key={d.code} value={d.code}>
                     القسم {d.code}{d.name_ar ? ` - ${d.name_ar}` : ""}
                   </SelectItem>

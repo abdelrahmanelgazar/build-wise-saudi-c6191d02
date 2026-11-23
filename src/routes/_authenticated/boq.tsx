@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -111,7 +111,7 @@ function BoqPage() {
     enabled: !!projectId,
     queryFn: async () => {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("boq_items")
         .select("*")
         .eq("project_id", projectId);
@@ -125,7 +125,7 @@ function BoqPage() {
     enabled: !!projectId,
     queryFn: async () => {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("projects")
         .select("id, name, excel_headers, excel_pre_headers, excel_sheets_order")
         .eq("id", projectId)
@@ -186,7 +186,7 @@ function BoqPage() {
     enabled: !!projectId,
     queryFn: async () => {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("price_analysis_items")
         .select("boq_item_id, quantity, unit_price")
         .eq("project_id", projectId);
@@ -200,7 +200,7 @@ function BoqPage() {
     enabled: !!projectId,
     queryFn: async () => {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("price_analysis_markup")
         .select("boq_item_id, indirect_pct, overhead_pct, risk_pct, profit_pct")
         .eq("project_id", projectId);
@@ -281,7 +281,7 @@ function BoqPage() {
 
   const delMut = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("boq_items").delete().eq("id", id);
+      const { error } = await estimationClient.from("boq_items").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -471,12 +471,12 @@ function NewBoqDialog({
 
   const mut = useMutation({
     mutationFn: async () => {
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData } = await estimationClient.auth.getUser();
       const user_id = userData.user?.id;
       if (!user_id) throw new Error("غير مسجل دخول");
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
       const level = parentId ? 1 : 0;
-      const { error } = await supabase.from("boq_items").insert({
+      const { error } = await estimationClient.from("boq_items").insert({
         user_id,
         project_id: projectId,
         parent_id: parentId || null,

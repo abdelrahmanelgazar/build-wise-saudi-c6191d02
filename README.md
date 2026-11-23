@@ -21,6 +21,12 @@ npm i
 npm run dev
 ```
 
+Open **http://127.0.0.1:5173/**. Vite refreshes the app as you save changes. Use the same address and browser profile each time to keep your local projects available.
+
+On this loopback development server, the app opens without a sign-in screen. Use Node.js 22.13 or later for the built-in SQLite module. The server creates `data/taqdiri-local.sqlite` inside the repository. It contains local projects, BOQ items, prices, analyses, custom breakdown templates, and project attachments. The configured Cloud client and account access apply to production builds.
+
+For a GitHub code backup, commit the intended source files on a separate branch and push that branch to your backup repository. A push to the Lovable-connected branch syncs to Lovable. The SQLite file and `.env` are ignored by Git. To back up the local project data, stop Vite and copy the SQLite file. To restore it on another machine, place the file at the same path in that checkout before running `npm run dev`.
+
 ## Built with
 
 - TanStack Start

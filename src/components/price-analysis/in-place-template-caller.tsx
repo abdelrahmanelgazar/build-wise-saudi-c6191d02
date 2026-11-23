@@ -35,9 +35,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { fmtNumber, fmtSAR } from "@/lib/format";
 import { useLanguage } from "@/lib/i18n";
+import { CSI_DIVISIONS, csiDivisionCode, csiDivisionLabel } from "@/lib/csi-divisions";
 import {
   getAllBreakdownTemplates,
   calculateBreakdownCost,
@@ -74,19 +75,14 @@ export function InPlaceTemplateCaller({
   // All templates
   const templates = useMemo(() => getAllBreakdownTemplates(), [open]);
 
-  // Extract divisions
-  const divisions = useMemo(() => {
-    const set = new Set<string>();
-    templates.forEach((t) => set.add(t.division));
-    return Array.from(set).sort();
-  }, [templates]);
+  const hasUnclassified = templates.some((template) => !csiDivisionCode(template.division));
 
   // Check if item already has price analysis items
   const { data: existingItemsCount = 0 } = useQuery({
     queryKey: ["pa_items_count", boqItem.id],
     enabled: open,
     queryFn: async () => {
-      const { count, error } = await supabase
+      const { count, error } = await estimationClient
         .from("price_analysis_items")
         .select("*", { count: "exact", head: true })
         .eq("boq_item_id", boqItem.id);
@@ -112,7 +108,8 @@ export function InPlaceTemplateCaller({
         return { ...tmpl, isUnitMatch };
       })
       .filter((tmpl) => {
-        if (selectedDivision !== "all" && tmpl.division !== selectedDivision) {
+        if (selectedDivision !== "all" &&
+            (csiDivisionCode(tmpl.division) ?? "unclassified") !== selectedDivision) {
           return false;
         }
         if (!q) return true;
@@ -162,7 +159,7 @@ export function InPlaceTemplateCaller({
 
     setIsApplying(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData } = await estimationClient.auth.getUser();
       const userId = userData.user?.id;
       if (!userId) throw new Error("يجب تسجيل الدخول أولاً");
       if (!boqItem.project_id) throw new Error("المشروع غير محدد");
@@ -261,12 +258,15 @@ export function InPlaceTemplateCaller({
                   <SelectValue placeholder="تصفية حسب القسم" />
                 </SelectTrigger>
                 <SelectContent className="max-h-56 text-xs">
-                  <SelectItem value="all">جميع الأقسام ({templates.length})</SelectItem>
-                  {divisions.map((d) => (
-                    <SelectItem key={d} value={d}>
-                      {d}
+                  <SelectItem value="all">{t("common.allDivisions")} ({templates.length})</SelectItem>
+                  {CSI_DIVISIONS.map(({ code, name_ar, name_en }) => (
+                    <SelectItem key={code} value={code}>
+                      {code} — {language === "ar" ? name_ar : name_en}
                     </SelectItem>
                   ))}
+                  {hasUnclassified && (
+                    <SelectItem value="unclassified">{t("common.unclassifiedDivision")}</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -312,7 +312,7 @@ export function InPlaceTemplateCaller({
                     </p>
 
                     <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground border-t border-border/40 pt-1">
-                      <span>{tmpl.division}</span>
+                      <span>{csiDivisionLabel(tmpl.division, language)}</span>
                       <span>{tmpl.items.length} موارد</span>
                     </div>
                   </button>
@@ -338,7 +338,7 @@ export function InPlaceTemplateCaller({
                       {selectedTemplate.code}
                     </Badge>
                     <span className="text-xs text-muted-foreground">
-                      {selectedTemplate.division}
+                      {csiDivisionLabel(selectedTemplate.division, language)}
                     </span>
                   </div>
                   <h3 className="mt-1.5 text-sm font-bold text-foreground">

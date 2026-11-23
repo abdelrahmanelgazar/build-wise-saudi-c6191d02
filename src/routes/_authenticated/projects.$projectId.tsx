@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -66,7 +66,7 @@ function ProjectDetail() {
   const { data: project, isLoading } = useQuery({
     queryKey: ["project", projectId],
     queryFn: async () => {
-      const { data, error } = await supabase.from("projects").select("*").eq("id", projectId).maybeSingle();
+      const { data, error } = await estimationClient.from("projects").select("*").eq("id", projectId).maybeSingle();
       if (error) throw error;
       return data as Project | null;
     },
@@ -76,8 +76,8 @@ function ProjectDetail() {
     queryKey: ["project_stats", projectId],
     queryFn: async () => {
       const [boq, res] = await Promise.all([
-        supabase.from("boq_items").select("quantity, material_cost, labor_cost, equipment_cost, subcontractor_cost, is_group").eq("project_id", projectId),
-        supabase.from("resources").select("id", { count: "exact", head: true }).eq("project_id", projectId),
+        estimationClient.from("boq_items").select("quantity, material_cost, labor_cost, equipment_cost, subcontractor_cost, is_group").eq("project_id", projectId),
+        estimationClient.from("resources").select("id", { count: "exact", head: true }).eq("project_id", projectId),
       ]);
       const items = (boq.data ?? []).filter((b) => !b.is_group);
       const total = items.reduce(
@@ -230,7 +230,7 @@ function ProjectInfoForm({ project }: { project: Project }) {
 
   const mut = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
+      const { error } = await estimationClient
         .from("projects")
         .update({
           project_no: form.project_no === "" ? null : Number(form.project_no),
@@ -349,7 +349,7 @@ function RequirementsForm({ project }: { project: Project }) {
 
   const mut = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase
+      const { error } = await estimationClient
         .from("projects")
         .update({ technical_requirements: tech || null, financial_requirements: fin || null })
         .eq("id", project.id);
@@ -401,7 +401,7 @@ function ProjectFiles({ projectId, userId }: { projectId: string; userId: string
   const { data: files = [] } = useQuery({
     queryKey: ["project_files", projectId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("project_files")
         .select("*")
         .eq("project_id", projectId)
@@ -415,9 +415,9 @@ function ProjectFiles({ projectId, userId }: { projectId: string; userId: string
     setUploading(true);
     try {
       const path = `${userId}/${projectId}/${Date.now()}_${file.name}`;
-      const { error: upErr } = await supabase.storage.from("project-files").upload(path, file);
+      const { error: upErr } = await estimationClient.storage.from("project-files").upload(path, file);
       if (upErr) throw upErr;
-      const { error: insErr } = await supabase.from("project_files").insert({
+      const { error: insErr } = await estimationClient.from("project_files").insert({
         user_id: userId,
         project_id: projectId,
         file_name: file.name,
@@ -437,7 +437,7 @@ function ProjectFiles({ projectId, userId }: { projectId: string; userId: string
   }
 
   async function handleDownload(f: ProjectFile) {
-    const { data, error } = await supabase.storage.from("project-files").createSignedUrl(f.file_path, 60);
+    const { data, error } = await estimationClient.storage.from("project-files").createSignedUrl(f.file_path, 60);
     if (error) {
       toast.error(error.message);
       return;
@@ -447,8 +447,8 @@ function ProjectFiles({ projectId, userId }: { projectId: string; userId: string
 
   async function handleDelete(f: ProjectFile) {
     if (!confirm(`حذف الملف "${f.file_name}"؟`)) return;
-    await supabase.storage.from("project-files").remove([f.file_path]);
-    await supabase.from("project_files").delete().eq("id", f.id);
+    await estimationClient.storage.from("project-files").remove([f.file_path]);
+    await estimationClient.from("project_files").delete().eq("id", f.id);
     toast.success("تم الحذف");
     qc.invalidateQueries({ queryKey: ["project_files", projectId] });
   }

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -205,12 +205,12 @@ export function ImportPaDialog({ boqItemId }: { boqItemId: string }) {
   const importMut = useMutation({
     mutationFn: async () => {
       if (!parsed) return;
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await estimationClient.auth.getUser();
       const userId = u.user?.id;
       if (!userId) throw new Error("غير مسجل دخول");
 
       if (replace) {
-        const { error } = await supabase
+        const { error } = await estimationClient
           .from("price_analysis_items")
           .delete()
           .eq("boq_item_id", boqItemId);
@@ -229,21 +229,21 @@ export function ImportPaDialog({ boqItemId }: { boqItemId: string }) {
           unit_price: it.unit_price,
           sort_order: idx,
         }));
-        const { error } = await supabase.from("price_analysis_items").insert(rows);
+        const { error } = await estimationClient.from("price_analysis_items").insert(rows);
         if (error) throw error;
       }
 
       const hasMk = Object.keys(parsed.markup).length > 0;
       if (hasMk) {
-        const { data: existing } = await supabase
+        const { data: existing } = await estimationClient
           .from("price_analysis_markup")
           .select("boq_item_id")
           .eq("boq_item_id", boqItemId)
           .maybeSingle();
         if (existing) {
-          await supabase.from("price_analysis_markup").update(parsed.markup).eq("boq_item_id", boqItemId);
+          await estimationClient.from("price_analysis_markup").update(parsed.markup).eq("boq_item_id", boqItemId);
         } else {
-          await supabase.from("price_analysis_markup").insert({
+          await estimationClient.from("price_analysis_markup").insert({
             boq_item_id: boqItemId,
             user_id: userId,
             project_id: projectId,

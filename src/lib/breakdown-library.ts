@@ -1,4 +1,5 @@
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
+import { readWorkspaceSetting, writeWorkspaceSetting } from "./workspace-settings";
 import type { Database } from "@/integrations/supabase/types";
 
 export type BreakdownResourceType = "material" | "labor" | "equipment" | "subcontractor";
@@ -307,7 +308,7 @@ export const DEFAULT_BREAKDOWN_TEMPLATES: BreakdownTemplate[] = [
 export function getCustomTemplates(): BreakdownTemplate[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readWorkspaceSetting(STORAGE_KEY);
     if (!raw) return [];
     return JSON.parse(raw) as BreakdownTemplate[];
   } catch {
@@ -317,10 +318,11 @@ export function getCustomTemplates(): BreakdownTemplate[] {
 
 export function getAllBreakdownTemplates(): BreakdownTemplate[] {
   const custom = getCustomTemplates();
-  return [...custom, ...DEFAULT_BREAKDOWN_TEMPLATES];
+  const customIds = new Set(custom.map(({ id }) => id));
+  return [...custom, ...DEFAULT_BREAKDOWN_TEMPLATES.filter(({ id }) => !customIds.has(id))];
 }
 
-export function saveCustomTemplate(template: BreakdownTemplate): void {
+export async function saveCustomTemplate(template: BreakdownTemplate) {
   if (typeof window === "undefined") return;
   const list = getCustomTemplates();
   const idx = list.findIndex((t) => t.id === template.id);
@@ -329,13 +331,13 @@ export function saveCustomTemplate(template: BreakdownTemplate): void {
   } else {
     list.unshift({ ...template, is_custom: true, created_at: new Date().toISOString() });
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  await writeWorkspaceSetting(STORAGE_KEY, JSON.stringify(list));
 }
 
-export function deleteCustomTemplate(id: string): void {
+export async function deleteCustomTemplate(id: string) {
   if (typeof window === "undefined") return;
   const list = getCustomTemplates().filter((t) => t.id !== id);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+  await writeWorkspaceSetting(STORAGE_KEY, JSON.stringify(list));
 }
 
 export function calculateBreakdownCost(
@@ -388,6 +390,9 @@ export function calculateBreakdownCost(
   };
 }
 
+// In-flight guard to prevent duplicate concurrent applications (e.g. double-click)
+const inFlightApplications = new Set<string>();
+
 export async function applyTemplateToBoqItem({
   template,
   boqItemId,
@@ -401,75 +406,142 @@ export async function applyTemplateToBoqItem({
   userId: string;
   replaceExisting?: boolean;
 }): Promise<void> {
-  // If replacing existing, delete existing price analysis items for this boq item
-  if (replaceExisting) {
-    const { error: delErr } = await supabase
-      .from("price_analysis_items")
-      .delete()
-      .eq("boq_item_id", boqItemId);
-    if (delErr) throw delErr;
+  // Prevent double-click or concurrent duplicate requests for the same item
+  if (inFlightApplications.has(boqItemId)) {
+    throw new Error("جاري تطبيق النموذج بالفعل، يرجى الانتظار...");
   }
+  inFlightApplications.add(boqItemId);
 
-  // Insert all template items into price_analysis_items
-  const inserts = template.items.map((item, index) => ({
-    boq_item_id: boqItemId,
-    user_id: userId,
-    project_id: projectId,
-    resource_type: item.resource_type,
-    description_ar: item.description_ar,
-    description_en: item.description_en || null,
-    unit: item.unit,
-    quantity: item.quantity,
-    unit_price: item.unit_price,
-    sort_order: index + 1,
-  }));
+  // Backup previous state for atomic rollback in case of any failure
+  let previousItems: any[] = [];
+  let previousMarkup: any = null;
+  let previousBoqItem: any = null;
 
-  if (inserts.length > 0) {
-    const { error: insErr } = await supabase.from("price_analysis_items").insert(inserts);
-    if (insErr) throw insErr;
-  }
+  try {
+    const [prevItemsRes, prevMarkupRes, prevBoqRes] = await Promise.all([
+      estimationClient
+        .from("price_analysis_items")
+        .select("*")
+        .eq("boq_item_id", boqItemId),
+      estimationClient
+        .from("price_analysis_markup")
+        .select("*")
+        .eq("boq_item_id", boqItemId)
+        .maybeSingle(),
+      estimationClient
+        .from("boq_items")
+        .select("material_cost, labor_cost, equipment_cost, subcontractor_cost, updated_at")
+        .eq("id", boqItemId)
+        .maybeSingle(),
+    ]);
 
-  // Calculate totals
-  const calc = calculateBreakdownCost(template);
+    previousItems = (prevItemsRes.data as any[]) ?? [];
+    previousMarkup = prevMarkupRes.data;
+    previousBoqItem = prevBoqRes.data;
 
-  // Update boq_item cached cost values
-  const { error: boqUpdErr } = await supabase
-    .from("boq_items")
-    .update({
-      material_cost: calc.materialCost,
-      labor_cost: calc.laborCost,
-      equipment_cost: calc.equipmentCost,
-      subcontractor_cost: calc.subcontractorCost,
-    })
-    .eq("id", boqItemId);
+    // 1. If replacing existing, delete existing price analysis items
+    if (replaceExisting && previousItems.length > 0) {
+      const { error: delErr } = await estimationClient
+        .from("price_analysis_items")
+        .delete()
+        .eq("boq_item_id", boqItemId);
+      if (delErr) throw delErr;
+    }
 
-  if (boqUpdErr) throw boqUpdErr;
+    // 2. Insert all template items into price_analysis_items
+    const inserts = template.items.map((item, index) => ({
+      boq_item_id: boqItemId,
+      user_id: userId,
+      project_id: projectId,
+      resource_type: item.resource_type,
+      description_ar: item.description_ar,
+      description_en: item.description_en || null,
+      unit: item.unit,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      sort_order: index + 1,
+    }));
 
-  // Ensure markup row exists or update it
-  const { data: existingMarkup } = await supabase
-    .from("price_analysis_markup")
-    .select("id")
-    .eq("boq_item_id", boqItemId)
-    .maybeSingle();
+    if (inserts.length > 0) {
+      const { error: insErr } = await estimationClient.from("price_analysis_items").insert(inserts);
+      if (insErr) throw insErr;
+    }
 
-  if (existingMarkup) {
-    await supabase
-      .from("price_analysis_markup")
+    // 3. Calculate totals
+    const calc = calculateBreakdownCost(template);
+
+    // 4. Update boq_item cached cost values
+    const { error: boqUpdErr } = await estimationClient
+      .from("boq_items")
       .update({
+        material_cost: calc.materialCost,
+        labor_cost: calc.laborCost,
+        equipment_cost: calc.equipmentCost,
+        subcontractor_cost: calc.subcontractorCost,
+      })
+      .eq("id", boqItemId);
+
+    if (boqUpdErr) throw boqUpdErr;
+
+    // 5. Ensure markup row exists or update it
+    if (previousMarkup) {
+      const { error: markupErr } = await estimationClient
+        .from("price_analysis_markup")
+        .update({
+          overhead_pct: calc.overheadPct,
+          profit_pct: calc.profitPct,
+          risk_pct: calc.riskPct,
+          project_id: projectId,
+        })
+        .eq("boq_item_id", boqItemId);
+      if (markupErr) throw markupErr;
+    } else {
+      const { error: markupInsErr } = await estimationClient.from("price_analysis_markup").insert({
+        boq_item_id: boqItemId,
+        project_id: projectId,
+        user_id: userId,
         overhead_pct: calc.overheadPct,
         profit_pct: calc.profitPct,
         risk_pct: calc.riskPct,
-        project_id: projectId,
-      })
-      .eq("boq_item_id", boqItemId);
-  } else {
-    await supabase.from("price_analysis_markup").insert({
-      boq_item_id: boqItemId,
-      project_id: projectId,
-      user_id: userId,
-      overhead_pct: calc.overheadPct,
-      profit_pct: calc.profitPct,
-      risk_pct: calc.riskPct,
-    });
+      });
+      if (markupInsErr) throw markupInsErr;
+    }
+  } catch (error) {
+    // ATOMIC ROLLBACK: Restore previous state if an error occurred during the operation
+    console.error("Apply template failed, executing atomic rollback...", error);
+    try {
+      // Clean up whatever partial inserts may have happened
+      await estimationClient.from("price_analysis_items").delete().eq("boq_item_id", boqItemId);
+
+      // Restore previous items
+      if (previousItems.length > 0) {
+        await estimationClient.from("price_analysis_items").insert(previousItems);
+      }
+
+      // Restore previous boq item cost columns
+      if (previousBoqItem) {
+        await estimationClient
+          .from("boq_items")
+          .update({
+            material_cost: previousBoqItem.material_cost,
+            labor_cost: previousBoqItem.labor_cost,
+            equipment_cost: previousBoqItem.equipment_cost,
+            subcontractor_cost: previousBoqItem.subcontractor_cost,
+          })
+          .eq("id", boqItemId);
+      }
+
+      // Restore previous markup
+      if (previousMarkup) {
+        await estimationClient
+          .from("price_analysis_markup")
+          .upsert(previousMarkup, { onConflict: "boq_item_id" });
+      }
+    } catch (rollbackErr) {
+      console.error("Atomic rollback error:", rollbackErr);
+    }
+    throw error;
+  } finally {
+    inFlightApplications.delete(boqItemId);
   }
 }

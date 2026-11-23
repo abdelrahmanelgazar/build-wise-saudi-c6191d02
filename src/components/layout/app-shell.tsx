@@ -19,6 +19,8 @@ import {
   FolderKanban,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
+import { isLocalDevelopment } from "@/lib/local-development";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -59,7 +61,7 @@ function ProjectSwitcher() {
   const { data: projects = [] } = useQuery({
     queryKey: ["project-switcher-projects"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("projects")
         .select("id, name, client_name")
         .order("created_at", { ascending: false });
@@ -140,10 +142,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [email, setEmail] = useState<string>("");
   const { t, direction } = useLanguage();
+  const localDevelopment = isLocalDevelopment();
 
   useEffect(() => {
+    if (localDevelopment) return;
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ""));
-  }, []);
+  }, [localDevelopment]);
 
   async function handleSignOut() {
     await queryClient.cancelQueries();
@@ -203,7 +207,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </ul>
         </nav>
 
-        <div className="border-t border-sidebar-border p-3">
+        {!localDevelopment && <div className="border-t border-sidebar-border p-3">
           <div className="mb-2 flex items-center gap-2 rounded-md bg-card/50 px-2.5 py-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/20 text-xs font-semibold text-primary">
               {email.charAt(0).toUpperCase() || "U"}
@@ -224,7 +228,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <LogOut className="h-4 w-4" />
             {t("nav.signOut", "تسجيل الخروج")}
           </Button>
-        </div>
+        </div>}
       </aside>
 
       {/* Main area */}

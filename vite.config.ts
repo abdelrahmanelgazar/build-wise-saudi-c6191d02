@@ -8,6 +8,7 @@
 // hosting already compresses at the edge.
 // You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { localEstimationDb } from "./scripts/local-estimation-db";
 
 export default defineConfig({
   tanstackStart: {
@@ -17,5 +18,14 @@ export default defineConfig({
   },
   vite: {
     base: "./",
+    plugins: [localEstimationDb()],
+    server: {
+      host: "127.0.0.1",
+      port: 5173,
+      strictPort: true,
+      // Avoid reloading on database writes or route-generator output.
+      watch: { ignored: ["**/data/*.sqlite*", "**/src/routeTree.gen.ts"] },
+      fs: { deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "**/*.sqlite*"] },
+    },
   },
 });

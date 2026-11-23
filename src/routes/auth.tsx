@@ -1,4 +1,5 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
+import { isLocalDevelopment } from "@/lib/local-development";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
@@ -13,6 +14,10 @@ import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
 
 export const Route = createFileRoute("/auth")({
+  ssr: import.meta.env.DEV ? false : undefined,
+  beforeLoad: () => {
+    if (isLocalDevelopment()) throw redirect({ to: "/boq" });
+  },
   head: () => ({
     meta: [
       { title: "تسجيل الدخول — تقديري | Taqdiri Sign In" },

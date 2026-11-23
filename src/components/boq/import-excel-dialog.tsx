@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -367,7 +367,7 @@ export function ImportExcelDialog() {
   const importMut = useMutation({
     mutationFn: async () => {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
-      const { data: userData } = await supabase.auth.getUser();
+      const { data: userData } = await estimationClient.auth.getUser();
       const user_id = userData.user?.id;
       if (!user_id) throw new Error("غير مسجل دخول");
       if (!workbook) throw new Error("لم يتم تحميل الملف");
@@ -421,14 +421,14 @@ export function ImportExcelDialog() {
             sort_order: (indexOf.get(r._tmpId) ?? 0) + 1,
             raw_row: r._raw as unknown as never,
           }));
-          const { data, error } = await supabase.from("boq_items").upsert(payload, { onConflict: "user_id,project_id,sheet_name,item_no" }).select("id");
+          const { data, error } = await estimationClient.from("boq_items").upsert(payload, { onConflict: "user_id,project_id,sheet_name,item_no" }).select("id");
           if (error) throw error;
           (data ?? []).forEach((row, i) => { const source = batch[i]; if (source) tmpToDbId.set(source._tmpId, row.id); });
         }
         totalImported += sheetParsed.data.length;
       }
 
-      await supabase
+      await estimationClient
         .from("projects")
         .update({ 
           excel_headers: allHeaders as unknown as never,

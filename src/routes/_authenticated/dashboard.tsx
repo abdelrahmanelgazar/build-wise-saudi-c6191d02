@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { estimationClient } from "@/lib/estimation-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -59,11 +59,11 @@ const WON_STATUSES: Status[] = ["construction_ongoing", "construction_complete",
 const LOST_STATUSES: Status[] = ["client_rejected"];
 
 function DashboardPage() {
-  const { t, language, dir } = useLanguage();
+  const { t, language, direction: dir } = useLanguage();
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ["dashboard-projects"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await estimationClient
         .from("projects")
         .select("*")
         .order("created_at", { ascending: false });
@@ -75,7 +75,7 @@ function DashboardPage() {
   const { data: resourcesCount = 0 } = useQuery({
     queryKey: ["dashboard-resources-count"],
     queryFn: async () => {
-      const { count, error } = await supabase
+      const { count, error } = await estimationClient
         .from("resources")
         .select("*", { count: "exact", head: true });
       if (error) throw error;
@@ -86,7 +86,7 @@ function DashboardPage() {
   const { data: boqCount = 0 } = useQuery({
     queryKey: ["dashboard-boq-count"],
     queryFn: async () => {
-      const { count, error } = await supabase
+      const { count, error } = await estimationClient
         .from("boq_items")
         .select("*", { count: "exact", head: true });
       if (error) throw error;

@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import type { Database } from "@/integrations/supabase/types";
+import { roundTo } from "./estimation-calc";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 export type TreeNode = BoqRow & { children: TreeNode[]; rolledTotal: number; unitRate: number };
@@ -45,17 +46,18 @@ export function exportBoq(
     const computeTotal = (n: TreeNode): number => {
       if (n.is_group) {
         n.unitRate = 0;
-        n.rolledTotal = n.children.reduce((s, c) => s + computeTotal(c), 0);
+        n.rolledTotal = roundTo(n.children.reduce((s, c) => s + computeTotal(c), 0), 2);
       } else {
         const fromPa = paSellingRates.get(n.id);
-        n.unitRate =
+        const rawRate =
           typeof fromPa === "number" && fromPa > 0
             ? fromPa
             : Number(n.material_cost ?? 0) +
               Number(n.labor_cost ?? 0) +
               Number(n.equipment_cost ?? 0) +
               Number(n.subcontractor_cost ?? 0);
-        n.rolledTotal = n.unitRate * Number(n.quantity ?? 0);
+        n.unitRate = roundTo(rawRate, 2);
+        n.rolledTotal = roundTo(n.unitRate * Number(n.quantity ?? 0), 2);
       }
       return n.rolledTotal;
     };
