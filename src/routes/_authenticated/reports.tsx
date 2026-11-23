@@ -60,7 +60,7 @@ function ReportsPage() {
         <TabsList className="print:hidden">
           <TabsTrigger value="projects" className="gap-1.5"><FolderKanban className="h-4 w-4" /> المشاريع</TabsTrigger>
           <TabsTrigger value="boq" className="gap-1.5"><Calculator className="h-4 w-4" /> BOQ التفصيلي</TabsTrigger>
-          <TabsTrigger value="resources" className="gap-1.5"><DatabaseIcon className="h-4 w-4" /> الموارد</TabsTrigger>
+          <TabsTrigger value="resources" className="gap-1.5"><DatabaseIcon className="h-4 w-4" /> عروض الأسعار</TabsTrigger>
           <TabsTrigger value="summary" className="gap-1.5"><FileBarChart className="h-4 w-4" /> الملخص التنفيذي</TabsTrigger>
         </TabsList>
 
@@ -386,7 +386,7 @@ function ResourcesReport() {
 
   return (
     <div className="rounded-lg border border-border bg-card p-5">
-      <Toolbar title="تقرير الموارد" onExcel={exportExcel} />
+      <Toolbar title="تقرير عروض الأسعار والموارد" onExcel={exportExcel} />
 
       <div className="mb-3 flex flex-wrap items-center gap-3 print:hidden">
         <Select value={type} onValueChange={(v) => setType(v as typeof type)}>

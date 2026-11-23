@@ -291,7 +291,7 @@ function DashboardPage() {
           <CardContent className="space-y-2">
             <QuickAction to="/projects" icon={Building2} label={t("dashboard.newProjectAction", "إضافة مشروع جديد")} />
             <QuickAction to="/boq" icon={Calculator} label={t("sidebar.boq", "جدول الكميات")} />
-            <QuickAction to="/resources" icon={Database} label={t("sidebar.resources", "مكتبة الموارد")} />
+            <QuickAction to="/resources" icon={Database} label={t("nav.resources", "عروض الأسعار")} />
             <QuickAction to="/reports" icon={TrendingUp} label={t("dashboard.viewReports", "عرض التقارير")} />
           </CardContent>
         </Card>

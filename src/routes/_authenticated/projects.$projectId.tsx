@@ -155,7 +155,7 @@ function ProjectDetail() {
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             <QuickLink to="/boq" icon={Calculator} title="جدول الكميات" desc="بنود الـ BOQ الخاصة بالمشروع" />
             <QuickLink to="/price-analysis" icon={TrendingUp} title="تحليل الأسعار" desc="موارد وتكاليف كل بند" />
-            <QuickLink to="/resources" icon={DatabaseIcon} title="مكتبة البيانات" desc="مواد وعمالة ومعدات" />
+            <QuickLink to="/resources" icon={DatabaseIcon} title="عروض الأسعار" desc="الموردين ومقاولي الباطن وتصنيف CSI" />
           </div>
         </TabsContent>
 

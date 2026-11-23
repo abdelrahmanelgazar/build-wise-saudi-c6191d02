@@ -56,7 +56,7 @@ type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 export const Route = createFileRoute("/_authenticated/item-breakdown-library")({
   head: () => ({
     meta: [
-      { title: "مكتبة التحليل التفصيلي للبنود — تقديري" },
+      { title: "مكتبة نماذج البنود — تقديري" },
       { name: "description", content: "قوالب التحليل التفصيلي لأسعار بنود المقاولات والإنشاءات وفق الكود والممارسات السعودية." },
     ],
   }),
@@ -182,7 +182,7 @@ function ItemBreakdownLibraryPage() {
               <Layers className="h-5 w-5" />
             </div>
             <h1 className="text-xl md:text-2xl font-bold tracking-tight">
-              {t("nav.itemBreakdownLibrary", "مكتبة التحليل التفصيلي للبنود")}
+              {t("nav.itemBreakdownLibrary", "مكتبة نماذج البنود")}
             </h1>
             <Badge variant="outline" className="border-primary/30 text-primary font-mono text-xs">
               Item Rate Breakdown Library

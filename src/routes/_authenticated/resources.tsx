@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Check, Pencil, Plus, Search, Trash2, X, Boxes, Hammer, Truck } from "lucide-react";
+import { Check, Pencil, Plus, Search, Trash2, X, Boxes, Hammer, Truck, FileText, Filter } from "lucide-react";
 import { fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
@@ -36,33 +36,29 @@ type ResourceRow = Database["public"]["Tables"]["resources"]["Row"] & {
   division?: string | null;
 };
 type ResourceType = Database["public"]["Enums"]["resource_type"];
+type QuotationTab = "subcontractor" | "equipment" | "labor" | "material" | "general_requirements";
 
 export const Route = createFileRoute("/_authenticated/resources")({
-  head: () => ({ meta: [{ title: 'مكتبة البيانات — تقديري' }, { name: "description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:title", content: 'مكتبة البيانات — تقديري' }, { property: "og:description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
+  head: () => ({ meta: [{ title: 'عروض الأسعار — تقديري' }, { name: "description", content: 'منصة تقديري لإدارة عروض أسعار الموردين ومقاولي الباطن وتصنيف CSI MasterFormat في السوق السعودي.' }, { property: "og:title", content: 'عروض الأسعار — تقديري' }, { property: "og:description", content: 'منصة تقديري لإدارة عروض أسعار الموردين ومقاولي الباطن وتصنيف CSI MasterFormat في السوق السعودي.' }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
   component: ResourcesPage,
 });
 
-const TYPE_META: Record<ResourceType, { label: string; icon: typeof Boxes; color: string }> = {
-  material: { label: "المواد", icon: Boxes, color: "text-chart-2" },
-  labor: { label: "العمالة", icon: Hammer, color: "text-chart-3" },
-  equipment: { label: "المعدات", icon: Truck, color: "text-primary" },
-  subcontractor: { label: "مقاول الباطن", icon: Truck, color: "text-chart-4" },
+const TAB_CONFIG: Record<QuotationTab, { labelKey: string; defaultLabel: string; icon: typeof Boxes; color: string; resourceType: ResourceType }> = {
+  subcontractor: { labelKey: "resources.tabSubcontractor", defaultLabel: "مقاولو الباطن", icon: Truck, color: "text-chart-4", resourceType: "subcontractor" },
+  equipment: { labelKey: "resources.tabEquipment", defaultLabel: "المعدات", icon: Truck, color: "text-primary", resourceType: "equipment" },
+  labor: { labelKey: "resources.tabLabour", defaultLabel: "العمالة", icon: Hammer, color: "text-chart-3", resourceType: "labor" },
+  material: { labelKey: "resources.tabMaterials", defaultLabel: "المواد", icon: Boxes, color: "text-chart-2", resourceType: "material" },
+  general_requirements: { labelKey: "resources.tabGeneralRequirements", defaultLabel: "المتطلبات العامة للمشروع", icon: FileText, color: "text-amber-500", resourceType: "material" },
 };
 
 function ResourcesPage() {
   const { t, language } = useLanguage();
-  const [tab, setTab] = useState<ResourceType>("material");
+  const [tab, setTab] = useState<QuotationTab>("subcontractor");
   const [search, setSearch] = useState("");
+  const [selectedDivisionFilter, setSelectedDivisionFilter] = useState<string>("all");
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
   const { divisions, rename, remove, labelFor } = useDivisions(projectId);
-
-  const typeLabels: Record<ResourceType, string> = {
-    material: t("resources.tabMaterials", "المواد"),
-    labor: t("resources.tabLabour", "العمالة"),
-    equipment: t("resources.tabEquipment", "المعدات"),
-    subcontractor: t("resources.tabSubcontractor", "مقاول الباطن"),
-  };
 
   const { data: resources = [], isLoading } = useQuery({
     queryKey: ["resources", projectId],
@@ -80,19 +76,34 @@ function ResourcesPage() {
     },
   });
 
-  const ofType = resources.filter((r) => r.type === tab);
-  const filtered = ofType.filter(
-    (r) =>
-      !search ||
-      r.name_ar.includes(search) ||
-      (r.name_en && r.name_en.toLowerCase().includes(search.toLowerCase())) ||
-      (r.code ?? "").toLowerCase().includes(search.toLowerCase()),
-  );
+  const ofType = useMemo(() => {
+    if (tab === "general_requirements") {
+      return resources.filter((r) => r.division === "01" || r.code?.startsWith("01-") || r.name_ar.includes("متطلبات عامة") || r.name_ar.includes("مكتب الموقع"));
+    }
+    return resources.filter((r) => r.type === tab);
+  }, [resources, tab]);
+
+  const filtered = useMemo(() => {
+    return ofType.filter((r) => {
+      const matchSearch =
+        !search ||
+        r.name_ar.includes(search) ||
+        (r.name_en && r.name_en.toLowerCase().includes(search.toLowerCase())) ||
+        (r.code ?? "").toLowerCase().includes(search.toLowerCase());
+
+      const matchDiv = selectedDivisionFilter === "all" || r.division === selectedDivisionFilter;
+      return matchSearch && matchDiv;
+    });
+  }, [ofType, search, selectedDivisionFilter]);
 
   // Group filtered by division, include every catalog division even when empty
   const grouped = useMemo(() => {
     const map = new Map<string, ResourceRow[]>();
-    for (const d of divisions) map.set(d.code, []);
+    for (const d of divisions) {
+      if (selectedDivisionFilter === "all" || d.code === selectedDivisionFilter) {
+        map.set(d.code, []);
+      }
+    }
     for (const r of filtered) {
       const k = r.division ?? "";
       if (!map.has(k)) map.set(k, []);
@@ -103,7 +114,7 @@ function ResourcesPage() {
       if (b === "") return -1;
       return a.localeCompare(b);
     });
-  }, [filtered, divisions]);
+  }, [filtered, divisions, selectedDivisionFilter]);
 
   const delMut = useMutation({
     mutationFn: async (id: string) => {
@@ -124,7 +135,7 @@ function ResourcesPage() {
           <FolderPlus className="mx-auto h-10 w-10 text-muted-foreground opacity-50" />
           <h2 className="mt-3 text-lg font-semibold">{t("resources.selectProjectPrompt", "اختر مشروعاً")}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("resources.selectProjectDesc", "مكتبة الموارد خاصة بكل مشروع. اختر مشروعاً من القائمة الجانبية للبدء.")}
+            {t("resources.selectProjectDesc", "عروض الأسعار خاصة بكل مشروع. اختر مشروعاً من القائمة الجانبية للبدء.")}
           </p>
           <Link to="/projects" className="mt-4 inline-block">
             <Button>{t("boq.goToProjects", "الذهاب للمشاريع")}</Button>
@@ -134,27 +145,38 @@ function ResourcesPage() {
     );
   }
 
+  const currentTabConfig = TAB_CONFIG[tab];
+
   return (
-    <div className="p-6">
+    <div className="p-6 space-y-6">
       <PageHeader
-        title={t("resources.title", "مكتبة البيانات")}
-        subtitle={t("resources.subtitle", "مكتبة المواد والعمالة والمعدات مقسّمة حسب أقسام MasterFormat — تستخدم في تحليل الأسعار.")}
-        action={<NewResourceDialog defaultType={tab} />}
+        title={t("resources.title", "عروض الأسعار")}
+        subtitle={t("resources.subtitle", "إدارة عروض أسعار الموردين ومقاولي الباطن وتصنيف CSI MasterFormat — تستخدم في تسعير البنود.")}
+        action={
+          <NewResourceDialog
+            defaultType={currentTabConfig.resourceType}
+            defaultDivision={tab === "general_requirements" ? "01" : undefined}
+          />
+        }
       />
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as ResourceType)} className="mt-6">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as QuotationTab)} className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <TabsList>
-            {(Object.keys(TYPE_META) as ResourceType[]).map((tKey) => {
-              const Icon = TYPE_META[tKey].icon;
-              const count = resources.filter((r) => r.type === tKey).length;
+          <TabsList className="bg-muted/50 p-1">
+            {(Object.keys(TAB_CONFIG) as QuotationTab[]).map((tKey) => {
+              const cfg = TAB_CONFIG[tKey];
+              const Icon = cfg.icon;
+              const count = tKey === "general_requirements"
+                ? resources.filter((r) => r.division === "01" || r.code?.startsWith("01-")).length
+                : resources.filter((r) => r.type === tKey).length;
+
               return (
-                <TabsTrigger key={tKey} value={tKey} className="gap-2">
-                  <Icon className="h-3.5 w-3.5" />
-                  {typeLabels[tKey]}
+                <TabsTrigger key={tKey} value={tKey} className="gap-2 text-xs font-medium">
+                  <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />
+                  {t(cfg.labelKey as any, cfg.defaultLabel)}
                   <Badge
                     variant="secondary"
-                    className="h-5 bg-muted/60 px-1.5 text-[10px] font-normal"
+                    className="h-4 bg-background/80 px-1 text-[10px] font-mono"
                   >
                     {count}
                   </Badge>
@@ -163,89 +185,117 @@ function ResourcesPage() {
             })}
           </TabsList>
 
-          <div className="relative w-full max-w-xs">
-            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("resources.searchPlaceholder", "ابحث بالاسم أو الكود…")}
-              className="h-9 ps-9"
-            />
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 bg-card border border-border rounded-md px-2 py-1">
+              <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground whitespace-nowrap font-medium">CSI:</span>
+              <Select value={selectedDivisionFilter} onValueChange={setSelectedDivisionFilter}>
+                <SelectTrigger className="h-7 border-0 bg-transparent text-xs p-1 focus:ring-0">
+                  <SelectValue placeholder={t("common.allDivisions", "جميع الأقسام")} />
+                </SelectTrigger>
+                <SelectContent className="max-h-60 text-xs">
+                  <SelectItem value="all">{t("common.allDivisions", "جميع أقسام CSI")}</SelectItem>
+                  {divisions.map((d) => (
+                    <SelectItem key={d.code} value={d.code}>
+                      Div {d.code} — {language === "en" && d.name_en ? d.name_en : d.name_ar}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Search className="pointer-events-none absolute start-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t("resources.searchPlaceholder", "ابحث بالاسم، المورد، أو الكود…")}
+                className="h-8 ps-8 text-xs"
+              />
+            </div>
           </div>
         </div>
 
-        {(Object.keys(TYPE_META) as ResourceType[]).map((tKey) => (
-          <TabsContent key={tKey} value={tKey} className="mt-4 space-y-6">
+        {(Object.keys(TAB_CONFIG) as QuotationTab[]).map((tKey) => (
+          <TabsContent key={tKey} value={tKey} className="space-y-4">
             {isLoading && (
               <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">
                 {t("common.loading", "جاري التحميل…")}
               </div>
             )}
-            {!isLoading && grouped.length === 0 && (
+            {!isLoading && filtered.length === 0 && (
               <div className="rounded-lg border border-dashed border-border bg-card p-12 text-center text-muted-foreground">
                 {t("resources.emptySection", "لا توجد عناصر في هذا القسم بعد. أضف أول عنصر باستخدام زر «إضافة مورد».")}
               </div>
             )}
             {!isLoading &&
-              grouped.map(([divCode, rows]) => (
-                <div key={divCode || "none"} className="overflow-hidden rounded-lg border border-border bg-card">
-                  <DivisionHeader
-                    code={divCode}
-                    count={rows.length}
-                    labelFor={labelFor}
-                    onRename={rename}
-                    onRemove={(c: string) => {
-                      if (rows.length > 0) {
-                        toast.error(t("resources.cannotDeleteDiv", "لا يمكن حذف قسم يحتوي على عناصر"));
-                        return;
-                      }
-                      if (confirm(t("resources.deleteDivConfirm", `حذف القسم ${c}؟`))) remove(c);
-                    }}
-                  />
-                  <table className="w-full text-sm tabular-nums">
-                    <thead className="bg-muted/20 text-xs uppercase text-muted-foreground">
-                      <tr>
-                        <th className="px-4 py-2 text-start font-medium">{t("resources.colCode", "الكود")}</th>
-                        <th className="px-4 py-2 text-start font-medium">{t("resources.colName", "الاسم")}</th>
-                        <th className="px-4 py-2 text-start font-medium">{t("common.unit", "الوحدة")}</th>
-                        <th className="px-4 py-2 text-start font-medium">{t("resources.colRate", "سعر الوحدة")}</th>
-                        <th className="px-4 py-2 text-center font-medium">{t("resources.colActions", "إجراءات")}</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {rows.map((r) => (
-                        <tr key={r.id} className="hover:bg-muted/20">
-                          <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
-                            {r.code ?? "—"}
-                          </td>
-                          <td className="px-4 py-2.5 font-medium text-foreground">
-                            {language === "en" && r.name_en ? r.name_en : r.name_ar}
-                          </td>
-                          <td className="px-4 py-2.5 text-muted-foreground">{r.unit}</td>
-                          <td className="px-4 py-2.5 font-semibold text-primary">
-                            {fmtSAR(r.unit_price, language)}
-                          </td>
-                          <td className="px-4 py-2.5">
-                            <div className="flex items-center justify-center gap-1">
-                              <EditResourceDialog resource={r} />
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                                onClick={() => {
-                                  if (confirm(t("resources.deleteResourceConfirm", `حذف المورد «${r.name_ar}»؟`))) delMut.mutate(r.id);
-                                }}
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
+              grouped
+                .filter(([_, rows]) => rows.length > 0 || selectedDivisionFilter !== "all")
+                .map(([divCode, rows]) => (
+                  <div key={divCode || "none"} className="overflow-hidden rounded-lg border border-border bg-card">
+                    <DivisionHeader
+                      code={divCode}
+                      count={rows.length}
+                      labelFor={labelFor}
+                      onRename={rename}
+                      onRemove={(c: string) => {
+                        if (rows.length > 0) {
+                          toast.error(t("resources.cannotDeleteDiv", "لا يمكن حذف قسم يحتوي على عناصر"));
+                          return;
+                        }
+                        if (confirm(t("resources.deleteDivConfirm", `حذف القسم ${c}؟`))) remove(c);
+                      }}
+                    />
+                    {rows.length > 0 ? (
+                      <table className="w-full text-sm tabular-nums">
+                        <thead className="bg-muted/20 text-xs uppercase text-muted-foreground">
+                          <tr>
+                            <th className="px-4 py-2 text-start font-medium">{t("resources.colCode", "الكود")}</th>
+                            <th className="px-4 py-2 text-start font-medium">{t("resources.colName", "الاسم / التوصيف")}</th>
+                            <th className="px-4 py-2 text-start font-medium">{t("common.unit", "الوحدة")}</th>
+                            <th className="px-4 py-2 text-start font-medium">{t("resources.colRate", "سعر الوحدة")}</th>
+                            <th className="px-4 py-2 text-center font-medium">{t("resources.colActions", "إجراءات")}</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {rows.map((r) => (
+                            <tr key={r.id} className="hover:bg-muted/20">
+                              <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
+                                {r.code ?? "—"}
+                              </td>
+                              <td className="px-4 py-2.5 font-medium text-foreground">
+                                {language === "en" && r.name_en ? r.name_en : r.name_ar}
+                              </td>
+                              <td className="px-4 py-2.5 text-muted-foreground">{r.unit}</td>
+                              <td className="px-4 py-2.5 font-semibold text-primary">
+                                {fmtSAR(r.unit_price, language)}
+                              </td>
+                              <td className="px-4 py-2.5">
+                                <div className="flex items-center justify-center gap-1">
+                                  <EditResourceDialog resource={r} />
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                                    onClick={() => {
+                                      if (confirm(t("resources.deleteResourceConfirm", `حذف المورد «${r.name_ar}»؟`))) delMut.mutate(r.id);
+                                    }}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div className="p-3 text-center text-xs text-muted-foreground">
+                        لا توجد عناصر في هذا القسم
+                      </div>
+                    )}
+                  </div>
+                ))}
           </TabsContent>
         ))}
       </Tabs>

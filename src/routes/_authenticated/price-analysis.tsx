@@ -4,38 +4,72 @@ import { useEffect, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { FolderPlus, Layers } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { PageHeader } from "./resources";
+  FolderPlus,
+  Layers,
+  Sparkles,
+  Calculator,
+  ChevronRight,
+  Menu,
+  ArrowRight,
+  ExternalLink,
+} from "lucide-react";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { useActiveProjectId } from "@/lib/active-project";
 import { PaGrid } from "@/components/price-analysis/pa-grid";
+import { BoqSidebar } from "@/components/price-analysis/boq-sidebar";
+import { InPlaceTemplateCaller } from "@/components/price-analysis/in-place-template-caller";
 import type { Database } from "@/integrations/supabase/types";
 import { useLanguage } from "@/lib/i18n";
+import { fmtNumber, fmtSAR } from "@/lib/format";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
 const searchSchema = z.object({ item: z.string().optional() });
 
 export const Route = createFileRoute("/_authenticated/price-analysis")({
-  head: () => ({ meta: [{ title: 'تحليل الأسعار — تقديري' }, { name: "description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:title", content: 'تحليل الأسعار — تقديري' }, { property: "og:description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
+  head: () => ({
+    meta: [
+      { title: "تحليل الأسعار — تقديري" },
+      {
+        name: "description",
+        content:
+          "منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.",
+      },
+      { property: "og:title", content: "تحليل الأسعار — تقديري" },
+      {
+        property: "og:description",
+        content:
+          "منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.",
+      },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
+    ],
+  }),
   validateSearch: searchSchema,
   component: PriceAnalysisPage,
 });
 
 function PriceAnalysisPage() {
   const { t, language } = useLanguage();
+  const isEn = language === "en";
   const { item } = Route.useSearch();
   const navigate = Route.useNavigate();
   const projectId = useActiveProjectId();
-  const [selectedId, setSelectedId] = useState<string | null>(item ?? null);
 
-  const { data: boqItems = [] } = useQuery({
+  const [selectedId, setSelectedId] = useState<string | null>(item ?? null);
+  const [templateCallerOpen, setTemplateCallerOpen] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Fetch BOQ items for active project
+  const { data: boqItems = [], isLoading } = useQuery({
     queryKey: ["boq_items", projectId],
     enabled: !!projectId,
     queryFn: async () => {
@@ -52,24 +86,38 @@ function PriceAnalysisPage() {
     },
   });
 
+  // Auto-pick first item if none selected and items exist
   useEffect(() => {
-    if (!selectedId && boqItems.length > 0) setSelectedId(boqItems[0]?.id ?? null);
+    if (!selectedId && boqItems.length > 0) {
+      setSelectedId(boqItems[0]?.id ?? null);
+    }
   }, [boqItems, selectedId]);
 
+  // Synchronize search param
   useEffect(() => {
-    if (item && item !== selectedId) setSelectedId(item);
+    if (item && item !== selectedId) {
+      setSelectedId(item);
+    }
   }, [item, selectedId]);
 
   const selected = boqItems.find((b) => b.id === selectedId) ?? null;
+
+  const handleSelectItem = (itemRow: BoqRow) => {
+    setSelectedId(itemRow.id);
+    navigate({ search: { item: itemRow.id }, replace: true });
+    setMobileSidebarOpen(false);
+  };
 
   if (!projectId) {
     return (
       <div className="p-6">
         <div className="rounded-lg border border-dashed border-border bg-card p-10 text-center">
           <FolderPlus className="mx-auto h-10 w-10 text-muted-foreground opacity-50" />
-          <h2 className="mt-3 text-lg font-semibold">{t("pa.selectProjectPrompt", "اختر مشروعاً")}</h2>
+          <h2 className="mt-3 text-lg font-semibold">
+            {t("pa.selectProjectPrompt", "اختر مشروعاً للبدء")}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {t("pa.selectProjectDesc", "تحليل الأسعار يعتمد على بنود مشروع.")}
+            {t("pa.selectProjectDesc", "تحليل الأسعار يعتمد على بنود مشروع محدد.")}
           </p>
           <Link to="/projects" className="mt-4 inline-block">
             <Button>{t("boq.goToProjects", "الذهاب للمشاريع")}</Button>
@@ -79,57 +127,178 @@ function PriceAnalysisPage() {
     );
   }
 
+  // Calculate quick stats for selected item
+  const directUnitCost = selected
+    ? (selected.material_cost ?? 0) +
+      (selected.labor_cost ?? 0) +
+      (selected.equipment_cost ?? 0) +
+      (selected.subcontractor_cost ?? 0)
+    : 0;
+
   return (
-    <div className="flex h-[calc(100vh-3.5rem)] flex-col p-4">
-      <PageHeader
-        title={t("sidebar.priceAnalysis", "تحليل الأسعار (Price Build-up)")}
-        subtitle={t("pa.subtitle", "شيت Excel كامل — تحرير مباشر، تنسيق خلايا، استيراد وتصدير.")}
-      />
+    <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden bg-background">
+      {/* Master-Detail Container */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Desktop Sidebar (Master List): in RTL displays on the right, in LTR on the left */}
+        <div className="hidden lg:flex shrink-0">
+          <BoqSidebar
+            items={boqItems}
+            selectedId={selectedId}
+            onSelect={handleSelectItem}
+            isLoading={isLoading}
+          />
+        </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-card px-3 py-2">
-        <span className="text-xs font-semibold text-muted-foreground">{t("pa.itemLabel", "البند:")}</span>
-        <Select
-          value={selectedId ?? ""}
-          onValueChange={(v) => {
-            setSelectedId(v);
-            navigate({ search: { item: v }, replace: true });
-          }}
-        >
-          <SelectTrigger className="h-8 w-[420px] max-w-full text-xs">
-            <SelectValue placeholder={t("pa.selectItemPlaceholder", "اختر بنداً من جدول الكميات…")} />
-          </SelectTrigger>
-          <SelectContent>
-            {boqItems.length === 0 && (
-              <div className="px-3 py-2 text-xs text-muted-foreground">
-                {t("pa.noItemsInBoq", "لا توجد بنود — أضف بنوداً في جدول الكميات أولاً.")}
+        {/* Main Work Area (Detail Editor) */}
+        <main className="flex flex-1 flex-col overflow-hidden min-w-0">
+          {selected ? (
+            <>
+              {/* Active Item Top Banner & Actions Header */}
+              <div className="border-b border-border bg-card/70 px-4 py-2.5 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  {/* Left (or Right in RTL): Mobile Sidebar Trigger + Item Info */}
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
+                      <SheetTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-8 w-8 lg:hidden shrink-0"
+                        >
+                          <Menu className="h-4 w-4" />
+                        </Button>
+                      </SheetTrigger>
+                      <SheetContent side={isEn ? "left" : "right"} className="p-0 w-80">
+                        <BoqSidebar
+                          items={boqItems}
+                          selectedId={selectedId}
+                          onSelect={handleSelectItem}
+                          isLoading={isLoading}
+                        />
+                      </SheetContent>
+                    </Sheet>
+
+                    <Badge variant="outline" className="font-mono text-xs px-2 py-0.5 shrink-0">
+                      {selected.item_no}
+                    </Badge>
+
+                    <h1 className="text-sm font-bold text-foreground truncate max-w-xl">
+                      {isEn && selected.description_en ? selected.description_en : selected.description_ar}
+                    </h1>
+
+                    {selected.sheet_name && (
+                      <Badge variant="secondary" className="text-[10px] hidden sm:inline-flex">
+                        {selected.sheet_name}
+                      </Badge>
+                    )}
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      size="sm"
+                      onClick={() => setTemplateCallerOpen(true)}
+                      className="h-8 gap-1.5 text-xs font-semibold bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {t("pa.callBreakdownFromLibrary", "استدعاء تحليل من المكتبة")}
+                    </Button>
+
+                    <Link to="/item-breakdown-library">
+                      <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+                        <Layers className="h-3.5 w-3.5 text-primary" />
+                        <span className="hidden sm:inline">
+                          {t("breakdown.title", "مكتبة نماذج البنود")}
+                        </span>
+                      </Button>
+                    </Link>
+
+                    <Link to="/boq">
+                      <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground">
+                        <Calculator className="h-3.5 w-3.5" />
+                        <span className="hidden md:inline">جدول الكميات</span>
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+
+                {/* Sub-bar: Quantity, Unit, and Quick Rates */}
+                <div className="flex flex-wrap items-center gap-4 text-xs pt-1 border-t border-border/40 text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    <span>{t("common.quantity", "الكمية")}:</span>
+                    <span className="font-mono font-bold text-foreground">
+                      {fmtNumber(selected.quantity, 2)} {selected.unit || "وحدة"}
+                    </span>
+                  </div>
+
+                  <div className="h-3 w-px bg-border" />
+
+                  <div className="flex items-center gap-1.5">
+                    <span>{t("common.directCost", "التكلفة المباشرة")}:</span>
+                    <span className="font-mono font-bold text-foreground">
+                      {fmtSAR(directUnitCost, language)}/{selected.unit || "وحدة"}
+                    </span>
+                  </div>
+
+                  {selected.quantity && directUnitCost > 0 && (
+                    <>
+                      <div className="h-3 w-px bg-border" />
+                      <div className="flex items-center gap-1.5">
+                        <span>إجمالي التكلفة المباشرة للكمية:</span>
+                        <span className="font-mono font-bold text-primary">
+                          {fmtSAR(directUnitCost * Number(selected.quantity), language)}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
-            )}
-            {boqItems.map((b) => (
-              <SelectItem key={b.id} value={b.id}>
-                <span className="font-mono text-[10px] text-muted-foreground">{b.item_no}</span>
-                {" — "}
-                {language === "en" && b.description_en ? b.description_en : b.description_ar}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
 
-        <Link to="/item-breakdown-library" className="ms-auto">
-          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-            <Layers className="h-3.5 w-3.5 text-primary" />
-            {t("breakdown.title", "مكتبة التحليل التفصيلي للبنود")}
-          </Button>
-        </Link>
-      </div>
+              {/* Grid Work area */}
+              <div className="flex-1 overflow-hidden p-2">
+                <PaGrid boqItem={selected} key={selected.id} />
+              </div>
 
-      <div className="mt-3 flex-1 overflow-hidden rounded-lg border border-border bg-card">
-        {selected ? (
-          <PaGrid boqItem={selected} key={selected.id} />
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            {t("pa.selectItemPromptEmpty", "اختر بنداً لعرض تحليله السعري.")}
-          </div>
-        )}
+              {/* In-Place Template Caller Modal */}
+              <InPlaceTemplateCaller
+                boqItem={selected}
+                open={templateCallerOpen}
+                onOpenChange={setTemplateCallerOpen}
+              />
+            </>
+          ) : (
+            /* Empty State */
+            <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+              {boqItems.length === 0 ? (
+                <div className="max-w-md space-y-3">
+                  <Layers className="mx-auto h-12 w-12 text-muted-foreground opacity-40" />
+                  <h3 className="text-base font-semibold text-foreground">
+                    لا توجد بنود في جدول كميات هذا المشروع
+                  </h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    يرجى استيراد ملف المقايسة (Excel) أو إضافة بنود في جدول الكميات لبدء تحليل الأسعار.
+                  </p>
+                  <Link to="/boq">
+                    <Button size="sm" className="mt-2 gap-2 text-xs">
+                      <Calculator className="h-3.5 w-3.5" />
+                      الذهاب لجدول الكميات
+                    </Button>
+                  </Link>
+                </div>
+              ) : (
+                <div className="max-w-md space-y-3">
+                  <Sparkles className="mx-auto h-12 w-12 text-primary opacity-60" />
+                  <h3 className="text-base font-semibold text-foreground">
+                    {t("pa.selectItemToAnalyze", "اختر بنداً لعرض تحليله السعري")}
+                  </h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    اختر بنداً من قائمة بنود جدول الكميات على الجانب لبدء تعديل الموارد واستدعاء النماذج المعتمدة من المكتبة.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+        </main>
       </div>
     </div>
   );
