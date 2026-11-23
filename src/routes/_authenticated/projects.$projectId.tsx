@@ -53,6 +53,18 @@ const STATUS_META: Record<Status, { label: string; cls: string }> = {
 export const Route = createFileRoute("/_authenticated/projects/$projectId")({
   head: () => ({ meta: [{ title: 'تفاصيل المشروع — تقديري' }, { name: "description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:title", content: 'تفاصيل المشروع — تقديري' }, { property: "og:description", content: 'منصة تقديري لتسعير المقاولات وإدارة المشاريع والمناقصات وتحليل الأسعار في السوق السعودي.' }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
   component: ProjectDetail,
+  errorComponent: ({ error, reset }) => (
+    <div className="p-8 max-w-lg mx-auto text-center space-y-4">
+      <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive">
+        <h2 className="font-semibold text-lg">تعذّر تحميل بيانات المشروع</h2>
+        <p className="text-xs mt-2 text-muted-foreground">{String(error?.message || error)}</p>
+      </div>
+      <div className="flex justify-center gap-3">
+        <Button onClick={() => reset()}>إعادة المحاولة</Button>
+        <Link to="/projects"><Button variant="outline">العودة لقائمة المشاريع</Button></Link>
+      </div>
+    </div>
+  ),
 });
 
 function ProjectDetail() {
@@ -113,6 +125,11 @@ function ProjectDetail() {
     );
   }
 
+  const statusMeta = (project.status && STATUS_META[project.status]) || {
+    label: project.status || "قيد الدراسة",
+    cls: "bg-muted/60 text-muted-foreground border-border/60",
+  };
+
   return (
     <div className="p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -125,8 +142,8 @@ function ProjectDetail() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold">{project.name}</h1>
-              <Badge variant="outline" className={STATUS_META[project.status].cls}>
-                {STATUS_META[project.status].label}
+              <Badge variant="outline" className={statusMeta.cls}>
+                {statusMeta.label}
               </Badge>
             </div>
             <div className="mt-1 text-sm text-muted-foreground">
@@ -216,7 +233,7 @@ function ProjectInfoForm({ project }: { project: Project }) {
     area: project.area ?? "",
     scope_of_work: project.scope_of_work ?? "",
     contract_type: project.contract_type ?? "",
-    status: project.status,
+    status: (project.status && STATUS_META[project.status]) ? project.status : "studying",
     estimated_value: String(project.estimated_value ?? ""),
     budget: String(project.budget ?? ""),
     tender_entry_date: project.tender_entry_date ?? "",
@@ -393,7 +410,7 @@ function RequirementsForm({ project }: { project: Project }) {
 }
 
 
-function ProjectFiles({ projectId, userId }: { projectId: string; userId: string }) {
+function ProjectFiles({ projectId, userId }: { projectId: string; userId?: string | null }) {
   const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -414,11 +431,12 @@ function ProjectFiles({ projectId, userId }: { projectId: string; userId: string
   async function handleUpload(file: File) {
     setUploading(true);
     try {
-      const path = `${userId}/${projectId}/${Date.now()}_${file.name}`;
+      const effectiveUserId = userId || "default-user";
+      const path = `${effectiveUserId}/${projectId}/${Date.now()}_${file.name}`;
       const { error: upErr } = await estimationClient.storage.from("project-files").upload(path, file);
       if (upErr) throw upErr;
       const { error: insErr } = await estimationClient.from("project_files").insert({
-        user_id: userId,
+        user_id: effectiveUserId,
         project_id: projectId,
         file_name: file.name,
         file_path: path,
@@ -490,7 +508,7 @@ function ProjectFiles({ projectId, userId }: { projectId: string; userId: string
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">{f.file_name}</div>
                 <div className="text-[11px] text-muted-foreground">
-                  {f.file_size ? `${(f.file_size / 1024).toFixed(1)} KB` : ""} · {new Date(f.created_at).toLocaleDateString("ar-SA")}
+                  {f.file_size ? `${(f.file_size / 1024).toFixed(1)} KB` : ""} · {f.created_at ? new Date(f.created_at).toLocaleDateString("ar-SA") : "—"}
                 </div>
               </div>
             </div>

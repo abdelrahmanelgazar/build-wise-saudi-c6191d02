@@ -20,7 +20,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FolderPlus, Plus, Download } from "lucide-react";
+import { FolderPlus, Plus, Download, Layers } from "lucide-react";
+import { CSI_DIVISIONS } from "@/lib/csi-divisions";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -313,6 +314,75 @@ function BoqPage() {
     return out.filter((r) => r.visible).map(({ node, depth }) => ({ node, depth }));
   }, [tree, expanded]);
 
+  const [isInitializingCsi, setIsInitializingCsi] = useState(false);
+
+  async function handleInitCsiDivisions() {
+    if (!projectId) {
+      toast.error(t("boq.selectProjectFirst", "اختر مشروعاً أولاً"));
+      return;
+    }
+    const standardMainDivisions = [
+      { code: "01", name_ar: "القسم الأول — المتطلبات العامة للمشروع", name_en: "General Requirements" },
+      { code: "02", name_ar: "القسم الثاني — أعمال الموقع والظروف القائمة", name_en: "Existing Conditions" },
+      { code: "03", name_ar: "القسم الثالث — الأعمال الخرسانية", name_en: "Concrete Works" },
+      { code: "04", name_ar: "القسم الرابع — أعمال المباني والبلوك", name_en: "Masonry Works" },
+      { code: "05", name_ar: "القسم الخامس — الأعمال المعدنية والإنشائية", name_en: "Metals" },
+      { code: "06", name_ar: "القسم السادس — أعمال الخشب والبلاستيك", name_en: "Wood & Plastics" },
+      { code: "07", name_ar: "القسم السابع — العزل وحماية الحرارة والرطوبة", name_en: "Thermal & Moisture" },
+      { code: "08", name_ar: "القسم الثامن — الأبواب والنوافذ والواجهات", name_en: "Openings & Windows" },
+      { code: "09", name_ar: "القسم التاسع — أعمال التشطيبات والدهانات", name_en: "Finishes" },
+      { code: "10", name_ar: "القسم العاشر — الأعمال التخصصية", name_en: "Specialties" },
+      { code: "11", name_ar: "القسم الحادي عشر — المعدات والأجهزة", name_en: "Equipment" },
+      { code: "12", name_ar: "القسم الثاني عشر — التأثيث والمفروشات", name_en: "Furnishings" },
+      { code: "14", name_ar: "القسم الرابع عشر — أنظمة النقل والمصاعد", name_en: "Conveying Systems" },
+      { code: "21", name_ar: "القسم الحادي والعشرون — أنظمة مكافحة الحريق", name_en: "Fire Suppression" },
+      { code: "22", name_ar: "القسم الثاني والعشرون — الأعمال الصحية والسباكة", name_en: "Plumbing" },
+      { code: "23", name_ar: "القسم الثالث والعشرون — التكييف والتهوية (HVAC)", name_en: "HVAC" },
+      { code: "26", name_ar: "القسم السادس والعشرون — الأعمال الكهربائية والإنارة", name_en: "Electrical" },
+    ];
+
+    try {
+      setIsInitializingCsi(true);
+      const { data: userData } = await estimationClient.auth.getUser();
+      const user_id = userData.user?.id || "00000000-0000-0000-0000-000000000000";
+
+      const { data: existing } = await estimationClient
+        .from("boq_items")
+        .select("item_no")
+        .eq("project_id", projectId)
+        .eq("is_group", true);
+
+      const existingCodes = new Set((existing || []).map((e) => e.item_no));
+      const toInsert = standardMainDivisions
+        .filter((d) => !existingCodes.has(d.code))
+        .map((d, idx) => ({
+          user_id,
+          project_id: projectId,
+          item_no: d.code,
+          description_ar: d.name_ar,
+          description_en: d.name_en,
+          is_group: true,
+          level: 0,
+          sort_order: Number(d.code) * 10 || (idx + 1) * 10,
+        }));
+
+      if (toInsert.length === 0) {
+        toast.info("جميع أقسام CSI الرئيسية موجودة بالفعل في هذا المشروع.");
+        return;
+      }
+
+      const { error } = await estimationClient.from("boq_items").insert(toInsert);
+      if (error) throw error;
+
+      await qc.invalidateQueries({ queryKey: ["boq_items"] });
+      toast.success(`تمت إضافة ${toInsert.length} قسم من أقسام CSI بنجاح!`);
+    } catch (err: any) {
+      toast.error(err.message || "فشل تهيئة أقسام CSI");
+    } finally {
+      setIsInitializingCsi(false);
+    }
+  }
+
   if (!projectId) {
     return (
       <div className="p-6">
@@ -354,6 +424,17 @@ function BoqPage() {
               </DropdownMenuContent>
             </DropdownMenu>
 
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleInitCsiDivisions}
+              disabled={isInitializingCsi || !projectId}
+              className="gap-1.5"
+              title="إنشاء كافة مجموعات أقسام CSI القياسية دفعة واحدة في جدول الكميات"
+            >
+              <Layers className="h-4 w-4 text-primary" />
+              {isInitializingCsi ? "جاري التهيئة..." : "تهيئة أقسام CSI"}
+            </Button>
             <ImportExcelDialog />
             <NewBoqDialog isGroup parentOptions={tree} />
             <NewBoqDialog parentOptions={tree} />
@@ -459,7 +540,7 @@ function NewBoqDialog({
   const [open, setOpen] = useState(false);
   const [itemNo, setItemNo] = useState("");
   const [desc, setDesc] = useState("");
-  const [unit, setUnit] = useState("");
+  const [unit, setUnit] = useState("م³");
   const [qty, setQty] = useState("");
   const [mc, setMc] = useState("");
   const [lc, setLc] = useState("");
@@ -469,38 +550,100 @@ function NewBoqDialog({
 
   const projectId = useActiveProjectId();
 
+  const handleParentSelect = (val: string) => {
+    setParentId(val);
+    if (!itemNo || itemNo === "1" || /^\d{2}\.\d{2}$/.test(itemNo)) {
+      if (val.startsWith("csi_")) {
+        const code = val.replace("csi_", "");
+        setItemNo(`${code}.01`);
+      } else if (val && val !== "none") {
+        const found = parentOptions.find((p) => p.id === val);
+        if (found?.item_no) {
+          setItemNo(`${found.item_no}.01`);
+        }
+      }
+    }
+  };
+
   const mut = useMutation({
     mutationFn: async () => {
-      const { data: userData } = await estimationClient.auth.getUser();
-      const user_id = userData.user?.id;
-      if (!user_id) throw new Error("غير مسجل دخول");
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
-      const level = parentId ? 1 : 0;
+      const { data: userData } = await estimationClient.auth.getUser();
+      const user_id = userData.user?.id || "00000000-0000-0000-0000-000000000000";
+
+      let finalParentId: string | null = null;
+      let level = 0;
+
+      if (parentId && parentId !== "none") {
+        if (parentId.startsWith("csi_")) {
+          const code = parentId.replace("csi_", "");
+          const div = CSI_DIVISIONS.find((d) => d.code === code);
+
+          // Check if this CSI group already exists in the project
+          const { data: existingGroup } = await estimationClient
+            .from("boq_items")
+            .select("id")
+            .eq("project_id", projectId)
+            .eq("is_group", true)
+            .or(`item_no.eq.${code},item_no.like.${code} %`)
+            .maybeSingle();
+
+          if (existingGroup) {
+            finalParentId = existingGroup.id;
+          } else {
+            // Auto-create the CSI division group
+            const { data: createdGroup, error: grpErr } = await estimationClient
+              .from("boq_items")
+              .insert({
+                user_id,
+                project_id: projectId,
+                item_no: code,
+                description_ar: `القسم ${code} — ${div?.name_ar || "أعمال المشروع"}`,
+                description_en: div?.name_en || null,
+                is_group: true,
+                level: 0,
+                sort_order: Number(code) * 10 || 100,
+              })
+              .select("id")
+              .single();
+            if (grpErr) throw grpErr;
+            finalParentId = createdGroup.id;
+          }
+          level = 1;
+        } else {
+          finalParentId = parentId;
+          level = 1;
+        }
+      }
+
       const { error } = await estimationClient.from("boq_items").insert({
         user_id,
         project_id: projectId,
-        parent_id: parentId || null,
+        parent_id: finalParentId,
         item_no: itemNo,
         description_ar: desc,
-        unit: isGroup ? null : unit,
+        unit: isGroup ? null : unit || null,
         quantity: isGroup ? 0 : Number(qty) || 0,
         material_cost: Number(mc) || 0,
         labor_cost: Number(lc) || 0,
         equipment_cost: Number(ec) || 0,
         is_group: isGroup,
-        level,
+        level: isGroup ? 0 : level,
         sort_order: 999,
       });
       if (error) throw error;
     },
     onSuccess: () => {
-      toast.success(isGroup ? "تمت إضافة المجموعة" : "تمت إضافة البند");
+      toast.success(isGroup ? "تمت إضافة المجموعة" : "تمت إضافة البند بنجاح");
       qc.invalidateQueries({ queryKey: ["boq_items"] });
       setOpen(false);
-      setItemNo(""); setDesc(""); setUnit(""); setQty(""); setMc(""); setLc(""); setEc("");
+      setItemNo(""); setDesc(""); setUnit("م³"); setQty(""); setMc(""); setLc(""); setEc(""); setParentId("");
     },
     onError: (e: Error) => toast.error(e.message),
   });
+
+  // Filter custom groups not matching CSI codes
+  const customGroups = parentOptions.filter((p) => !CSI_DIVISIONS.some((d) => d.code === p.item_no));
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -521,17 +664,45 @@ function NewBoqDialog({
               <Input value={itemNo} onChange={(e) => setItemNo(e.target.value)} placeholder="01.05" />
             </div>
             <div className="col-span-2 space-y-1.5">
-              <Label>المجموعة الأم</Label>
-              <Select value={parentId} onValueChange={setParentId}>
+              <Label>المجموعة الأم (أقسام CSI)</Label>
+              <Select value={parentId} onValueChange={handleParentSelect}>
                 <SelectTrigger>
-                  <SelectValue placeholder={isGroup ? "بدون (مستوى أعلى)" : "اختر مجموعة"} />
+                  <SelectValue placeholder={isGroup ? "بدون (مستوى أعلى)" : "اختر مجموعة أو قسم CSI"} />
                 </SelectTrigger>
-                <SelectContent>
-                  {parentOptions.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>
-                      {g.item_no} — {g.description_ar}
-                    </SelectItem>
-                  ))}
+                <SelectContent className="max-h-72">
+                  <SelectItem value="none">
+                    {isGroup ? "بدون مجموعة (مستوى رئيسي أعلى)" : "بدون مجموعة (بند مستقل)"}
+                  </SelectItem>
+
+                  {/* Standard CSI Divisions */}
+                  <div className="px-2 py-1 text-[11px] font-bold text-primary bg-primary/10 rounded my-1">
+                    أقسام الـ CSI القياسية (MasterFormat)
+                  </div>
+                  {CSI_DIVISIONS.map((div) => {
+                    const existing = parentOptions.find(
+                      (p) => p.item_no === div.code || p.item_no?.startsWith(div.code + " ")
+                    );
+                    const val = existing ? existing.id : `csi_${div.code}`;
+                    return (
+                      <SelectItem key={`csi_${div.code}`} value={val}>
+                        القسم {div.code} — {div.name_ar} {existing ? "✓" : ""}
+                      </SelectItem>
+                    );
+                  })}
+
+                  {/* Other Custom Groups in Project */}
+                  {customGroups.length > 0 && (
+                    <>
+                      <div className="px-2 py-1 text-[11px] font-bold text-muted-foreground bg-muted/40 rounded my-1">
+                        مجموعات مخصصة أخرى بالمشروع
+                      </div>
+                      {customGroups.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.item_no} — {g.description_ar}
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>

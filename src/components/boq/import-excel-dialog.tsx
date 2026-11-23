@@ -120,9 +120,40 @@ function normHeader(s: unknown): string {
   return String(s ?? "")
     .trim()
     .toLowerCase()
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/[\u064B-\u065F]/g, "") // remove tashkeel
     .replace(/[:：()_\-/.]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function matchHeaderField(s: unknown): FieldKey | null {
+  const norm = normHeader(s);
+  if (!norm) return null;
+  if (HEADER_MAP[norm]) return HEADER_MAP[norm];
+
+  // Pattern matches
+  if (/^(رقم|بند|كود|الرقم|البند|الكود|فقره|الفقره|item|code|no|#)$/.test(norm)) return "item_no";
+  if (norm.includes("رقم البند") || norm.includes("رمز البند") || norm.includes("كود البند") || norm.includes("item no") || norm.includes("item_no")) return "item_no";
+
+  if (norm.includes("الوصف") || norm.includes("وصف") || norm.includes("البيان") || norm.includes("بيان") || norm.includes("تفاصيل") || norm.includes("الاعمال") || norm.includes("المواصفات") || norm.includes("description") || norm.includes("desc")) return "description_ar";
+
+  if (norm.includes("الوحده") || norm.includes("وحده") || norm.includes("unit") || norm.includes("uom")) return "unit";
+
+  if (norm.includes("الكميه") || norm.includes("كميه") || norm.includes("quantity") || norm.includes("qty")) return "quantity";
+
+  if (norm.includes("سعر الوحده") || norm.includes("سعر الافراد") || norm.includes("السعر الافرادي") || norm.includes("الفئه") || norm.includes("فئه") || norm.includes("unit rate") || norm.includes("unit price") || norm.includes("rate")) return "unit_rate";
+
+  if (norm.includes("الاجمالي") || norm.includes("المبلغ") || norm.includes("القيمه") || norm.includes("القيمه الاجماليه") || norm.includes("total") || norm.includes("amount")) return "total";
+
+  if (norm.includes("مواد") || norm.includes("المواد") || norm.includes("materials") || norm.includes("material")) return "material_cost";
+  if (norm.includes("عماله") || norm.includes("العماله") || norm.includes("اجور") || norm.includes("labor") || norm.includes("labour")) return "labor_cost";
+  if (norm.includes("معدات") || norm.includes("المعدات") || norm.includes("اليات") || norm.includes("equipment")) return "equipment_cost";
+  if (norm.includes("باطن") || norm.includes("مقاول") || norm.includes("subcontractor")) return "subcontractor_cost";
+
+  return null;
 }
 
 function toNum(v: unknown): number {
@@ -156,16 +187,16 @@ function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; preHeaders: un
     rows = rows.map(r => r.slice(0, maxCol + 1));
   }
 
-  // find header row: first row with >=2 known headers
+  // find header row: search first 50 rows for >=2 known headers
   let headerIdx = -1;
   let colMap: Record<number, FieldKey> = {};
-  for (let i = 0; i < Math.min(rows.length, 15); i++) {
+  for (let i = 0; i < Math.min(rows.length, 50); i++) {
     const r = rows[i] || [];
     const map: Record<number, FieldKey> = {};
     const usedFields = new Set<FieldKey>();
     let hits = 0;
     r.forEach((cell, idx) => {
-      const key = HEADER_MAP[normHeader(cell)];
+      const key = matchHeaderField(cell);
       // first matching column for a field wins; later same-meaning columns stay raw
       if (key && !usedFields.has(key)) {
         map[idx] = key;
