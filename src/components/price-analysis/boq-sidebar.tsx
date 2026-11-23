@@ -22,6 +22,7 @@ interface BoqSidebarProps {
   selectedId: string | null;
   onSelect: (item: BoqRow) => void;
   isLoading?: boolean;
+  onAddDemoItem?: () => void;
 }
 
 export function BoqSidebar({
@@ -29,6 +30,7 @@ export function BoqSidebar({
   selectedId,
   onSelect,
   isLoading = false,
+  onAddDemoItem,
 }: BoqSidebarProps) {
   const { t, language } = useLanguage();
   const isEn = language === "en";
@@ -167,10 +169,22 @@ export function BoqSidebar({
         )}
 
         {!isLoading && filteredItems.length === 0 && (
-          <div className="p-8 text-center text-xs text-muted-foreground">
-            {items.length === 0
-              ? t("pa.noItemsInBoq", "لا توجد بنود — أضف بنوداً في جدول الكميات أولاً.")
-              : "لا توجد نتائج تطابق معايير البحث."}
+          <div className="p-6 text-center text-xs text-muted-foreground space-y-3">
+            <p>
+              {items.length === 0
+                ? t("pa.noItemsInBoq", "لا توجد بنود — أضف بنوداً في جدول الكميات أولاً.")
+                : "لا توجد نتائج تطابق معايير البحث."}
+            </p>
+            {items.length === 0 && onAddDemoItem && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onAddDemoItem}
+                className="w-full text-xs gap-1.5 border-dashed"
+              >
+                + إضافة بند خرسانة تجريبي
+              </Button>
+            )}
           </div>
         )}
 

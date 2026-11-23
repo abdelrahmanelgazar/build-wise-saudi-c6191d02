@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,7 +14,9 @@ import {
   Menu,
   ArrowRight,
   ExternalLink,
+  Plus,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Sheet,
   SheetContent,
@@ -63,10 +65,12 @@ function PriceAnalysisPage() {
   const { item } = Route.useSearch();
   const navigate = Route.useNavigate();
   const projectId = useActiveProjectId();
+  const qc = useQueryClient();
 
   const [selectedId, setSelectedId] = useState<string | null>(item ?? null);
   const [templateCallerOpen, setTemplateCallerOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isAddingDemo, setIsAddingDemo] = useState(false);
 
   // Fetch BOQ items for active project
   const { data: boqItems = [], isLoading } = useQuery({
@@ -108,6 +112,49 @@ function PriceAnalysisPage() {
     setMobileSidebarOpen(false);
   };
 
+  const handleAddDemoItem = async () => {
+    if (!projectId) {
+      toast.error("يرجى اختيار مشروع أولاً");
+      return;
+    }
+    setIsAddingDemo(true);
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+      if (!userId) throw new Error("يرجى تسجيل الدخول أولاً");
+
+      const { data, error } = await supabase
+        .from("boq_items")
+        .insert({
+          project_id: projectId,
+          user_id: userId,
+          item_no: "03-30-01",
+          description_ar: "خرسانة مسلحة للأساسات والقواعد — م³ (شاملة الخرسانة C35 وحديد التسليح والمضخة)",
+          description_en: "Reinforced Concrete for Foundations — m³ (Including C35 ready-mix, steel rebar & pump)",
+          unit: "م³",
+          quantity: 50,
+          sheet_name: "أعمال الخرسانة",
+          sort_order: 1,
+          level: 1,
+          is_group: false,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      toast.success("تمت إضافة بند الخرسانة المسلحة التجريبي بنجاح!");
+      await qc.invalidateQueries({ queryKey: ["boq_items", projectId] });
+      if (data?.id) {
+        setSelectedId(data.id);
+        navigate({ search: { item: data.id }, replace: true });
+      }
+    } catch (e: any) {
+      toast.error(e.message || "حدث خطأ أثناء إضافة البند التجريبي");
+    } finally {
+      setIsAddingDemo(false);
+    }
+  };
+
   if (!projectId) {
     return (
       <div className="p-6">
@@ -146,6 +193,7 @@ function PriceAnalysisPage() {
             selectedId={selectedId}
             onSelect={handleSelectItem}
             isLoading={isLoading}
+            onAddDemoItem={handleAddDemoItem}
           />
         </div>
 
@@ -174,6 +222,7 @@ function PriceAnalysisPage() {
                           selectedId={selectedId}
                           onSelect={handleSelectItem}
                           isLoading={isLoading}
+                          onAddDemoItem={handleAddDemoItem}
                         />
                       </SheetContent>
                     </Sheet>
@@ -276,14 +325,25 @@ function PriceAnalysisPage() {
                     لا توجد بنود في جدول كميات هذا المشروع
                   </h3>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    يرجى استيراد ملف المقايسة (Excel) أو إضافة بنود في جدول الكميات لبدء تحليل الأسعار.
+                    يمكنك إضافة بند خرسانة مسلحة تجريبي لاختبار دورة التحليل واستدعاء النماذج فوراً، أو الذهاب لجدول الكميات لاستيراد مقايسة كاملة.
                   </p>
-                  <Link to="/boq">
-                    <Button size="sm" className="mt-2 gap-2 text-xs">
-                      <Calculator className="h-3.5 w-3.5" />
-                      الذهاب لجدول الكميات
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                    <Button
+                      size="sm"
+                      onClick={handleAddDemoItem}
+                      disabled={isAddingDemo}
+                      className="gap-2 text-xs font-semibold bg-primary text-primary-foreground shadow-sm"
+                    >
+                      <Plus className="h-4 w-4" />
+                      {isAddingDemo ? "جاري الإضافة…" : "إضافة بند خرسانة مسلحة (50 م³) لاختبار التحليل"}
                     </Button>
-                  </Link>
+                    <Link to="/boq">
+                      <Button size="sm" variant="outline" className="gap-2 text-xs">
+                        <Calculator className="h-3.5 w-3.5" />
+                        الذهاب لجدول الكميات
+                      </Button>
+                    </Link>
+                  </div>
                 </div>
               ) : (
                 <div className="max-w-md space-y-3">
