@@ -53,6 +53,7 @@ import type { Database as DB } from "@/integrations/supabase/types";
 import { useLanguage } from "@/lib/i18n";
 import { setActiveProjectId } from "@/lib/active-project";
 import { NewProjectDialog } from "./projects.index";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
 type Project = DB["public"]["Tables"]["projects"]["Row"];
 type Status = DB["public"]["Enums"]["project_status"];
@@ -92,6 +93,12 @@ const LOST_STATUSES: Status[] = ["client_rejected"];
 function DashboardPage() {
   const { t, language, direction: dir } = useLanguage();
   const navigate = useNavigate();
+
+  useRegisterPageActions({
+    pageKey: "dashboard",
+    hasEditableState: false,
+    queryKeys: [["dashboard-projects"], ["clients"], ["project-switcher-projects"]],
+  });
 
   // Expanded states for company and owner tree
   const [expandedCompanies, setExpandedCompanies] = useState<Set<string>>(new Set(["شركة غير محددة", "شركة أوتاد الفهد"]));
@@ -270,7 +277,7 @@ function DashboardPage() {
                 <ChevronDown className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56" dir="rtl">
+            <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel className="text-xs text-muted-foreground">
                 الوصول المباشر للوظائف الرئيسية
               </DropdownMenuLabel>

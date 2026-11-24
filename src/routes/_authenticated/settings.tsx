@@ -30,6 +30,8 @@ import { useLanguage } from "@/lib/i18n";
 import { useActiveProjectId } from "@/lib/active-project";
 import { readWorkspaceSetting, writeWorkspaceSetting } from "@/lib/workspace-settings";
 import { exportProjectBackup, restoreProjectBackup, type ProjectBackupSnapshot } from "@/lib/project-backup";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
+import { runTransitionalDataMigration, type MigrationSummary } from "@/lib/cell-styles-migration";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   head: () => ({
@@ -48,7 +50,18 @@ function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [migrationSummary, setMigrationSummary] = useState<MigrationSummary | null>(null);
   const queryClient = useQueryClient();
+
+  useRegisterPageActions({
+    pageKey: "settings",
+    hasEditableState: true,
+    queryKeys: [["projects"], ["clients"], ["boq_items"]],
+    onSave: async () => {
+      writeWorkspaceSetting("taqdiri:company_settings", JSON.stringify(company));
+      writeWorkspaceSetting("taqdiri:preferences", JSON.stringify(preferences));
+    },
+  });
 
   async function handleExport() {
     if (!activeProjectId) {
@@ -88,7 +101,7 @@ function SettingsPage() {
       toast.success(
         t(
           "settings.restoreSuccess",
-          `تم استعادة المشروع "${snapshot.project.name}" بنجاح (${res.boqItemsCount} بند، ${res.priceAnalysisCount} سطر تحليل)`
+          `تم استعادة المشروع "${snapshot.project.name}" بنجاح (${res.itemsRestored} بند، ${res.analysesRestored} سطر تحليل)`
         )
       );
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -468,10 +481,41 @@ function SettingsPage() {
                       className="gap-2"
                     >
                       <Upload className="h-4 w-4" />
-                      {isRestoring ? t("common.restoring", "جاري الاستعادة...") : t("settings.restoreBtn", "رفع واستعادة النسخة")}
+                      {isRestoring ? t("settings.restoring", "جاري الاستعادة...") : t("settings.restoreBtn", "استعادة من ملف")}
                     </Button>
                   </div>
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-border p-4 bg-muted/10 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h4 className="text-sm font-semibold">ترحيل البيانات الانتقالية والمصالحة (Migration & Reconciliation)</h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      نقل مفاتيح cell_styles إلى حقول الأعمال الصريحة وتصنيف المشاريع القابلة للإعادة بنفس النتيجة.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      const summary = await runTransitionalDataMigration();
+                      setMigrationSummary(summary);
+                      await queryClient.invalidateQueries();
+                      toast.success("اكتمل فحص وترحيل البيانات الانتقالية بنجاح");
+                    }}
+                    className="gap-2"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    تشغيل الترحيل والمصالحة
+                  </Button>
+                </div>
+                {migrationSummary && (
+                  <div className="rounded border border-border bg-card p-3 text-xs space-y-1">
+                    <div>بنود الكميات المفحوصة: {migrationSummary.boqItemsScanned} (تم ترحيل {migrationSummary.boqItemsMigrated})</div>
+                    <div>أسطر التحليل المفحوصة: {migrationSummary.paItemsScanned} (تم ترحيل {migrationSummary.paItemsMigrated})</div>
+                    <div>المشاريع المفحوصة: {migrationSummary.projectsScanned} (شركة غير محددة: {migrationSummary.projectsUnclassifiedCompany})</div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

@@ -43,6 +43,7 @@ import type { Database } from "@/integrations/supabase/types";
 import { useLanguage } from "@/lib/i18n";
 import { fmtNumber, fmtSAR } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
@@ -83,6 +84,17 @@ function PriceAnalysisPage() {
   const [templateCallerOpen, setTemplateCallerOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isAddingDemo, setIsAddingDemo] = useState(false);
+
+  useRegisterPageActions({
+    pageKey: "price-analysis",
+    hasEditableState: true,
+    queryKeys: [["pa_items", selectedId], ["pa_markup", selectedId], ["boq_items", projectId]],
+    onSave: async () => {
+      await qc.invalidateQueries({ queryKey: ["pa_items"] });
+      await qc.invalidateQueries({ queryKey: ["pa_markup"] });
+      await qc.invalidateQueries({ queryKey: ["boq_items", projectId] });
+    },
+  });
 
   // Sidebar resizable width & collapsible state (persisted)
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => {

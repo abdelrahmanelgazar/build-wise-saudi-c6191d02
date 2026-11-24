@@ -13,6 +13,15 @@ export interface ResourceCostInput {
   material_category?: "primary" | "accessory"; // Subcategory for materials per Phase 2
 }
 
+export type PriceAnalysisItemRow = ResourceCostInput & {
+  id?: string;
+  boq_item_id?: string;
+  description_ar?: string;
+  unit?: string;
+  cost_type?: "material" | "labor" | "equipment" | "subcontractor";
+  cell_styles?: Record<string, unknown> | null;
+};
+
 export interface MarkupSettings {
   indirect_pct?: number; // % on direct cost (تكلفة غير مباشرة)
   overhead_pct?: number; // % on direct cost (مصاريف عامة)
@@ -570,6 +579,7 @@ export function computeProjectFinancials(params: {
     manual_unit_price?: number | null;
     is_included_elsewhere?: boolean | null;
   }>;
+  paItemsByItemId?: Map<string, ResourceCostInput[]>;
   markupsByItemId?: Map<string, MarkupSettings>;
   defaultMarkup?: MarkupSettings;
   vatRate?: number; // e.g. 15 for 15%
@@ -578,6 +588,7 @@ export function computeProjectFinancials(params: {
 }): ProjectFinancialSummary {
   const {
     boqItems,
+    paItemsByItemId,
     markupsByItemId = new Map(),
     defaultMarkup,
     vatRate = 15,
@@ -610,14 +621,18 @@ export function computeProjectFinancials(params: {
     totalItemsCount++;
     const qty = Number(item.quantity) || 0;
     const markup = markupsByItemId.get(item.id) ?? defaultMarkup;
+    const paList = paItemsByItemId?.get(item.id);
+    const hasPa = Boolean(paList && paList.length > 0);
+    const paDirect = hasPa ? computeDirectUnitCost(paList!) : null;
 
     const line = computeLineItemFinancials({
       quantity: qty,
-      materialCost: Number(item.material_cost) || 0,
-      laborCost: Number(item.labor_cost) || 0,
-      equipmentCost: Number(item.equipment_cost) || 0,
-      subcontractorCost: Number(item.subcontractor_cost) || 0,
-      manualUnitSellingPrice: item.manual_unit_price,
+      materialCost: paDirect ? paDirect.materialCost : Number(item.material_cost) || 0,
+      ...(paDirect ? { primaryMaterialCost: paDirect.primaryMaterialCost, accessoryMaterialCost: paDirect.accessoryMaterialCost, directUnitCost: paDirect.directUnitCost } : {}),
+      laborCost: paDirect ? paDirect.laborCost : Number(item.labor_cost) || 0,
+      equipmentCost: paDirect ? paDirect.equipmentCost : Number(item.equipment_cost) || 0,
+      subcontractorCost: paDirect ? paDirect.subcontractorCost : Number(item.subcontractor_cost) || 0,
+      manualUnitSellingPrice: item.manual_unit_price ?? (markup as any)?.manual_unit_price,
       isIncludedElsewhere: !!item.is_included_elsewhere,
       markup,
       tenderDecimals,

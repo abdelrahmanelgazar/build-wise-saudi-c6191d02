@@ -55,6 +55,7 @@ const DEFAULT_FIELD_WIDTHS: Record<FieldKey, number> = {
   labor_cost: 110,
   equipment_cost: 110,
   subcontractor_cost: 110,
+  note: 180,
 };
 
 export function BoqGrid({

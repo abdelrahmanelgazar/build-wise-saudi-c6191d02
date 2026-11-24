@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { fmtSAR, fmtNumber } from "@/lib/format";
 import { useLanguage } from "@/lib/i18n";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
 export const Route = createFileRoute("/_authenticated/ai-assistant")({
   head: () => ({
@@ -44,6 +45,12 @@ function AiAssistantPage() {
   const { t, language } = useLanguage();
   const projectId = useActiveProjectId();
   const [input, setInput] = useState("");
+
+  useRegisterPageActions({
+    pageKey: "ai-assistant",
+    hasEditableState: false,
+    queryKeys: [["project_ai", projectId]],
+  });
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 

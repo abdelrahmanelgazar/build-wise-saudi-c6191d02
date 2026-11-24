@@ -19,6 +19,12 @@ const defaults = {
   clients: { status: "active", type: "government" },
   tenders: { status: "studying", estimated_value: 0 },
   tender_transitions: {},
+  companies: {},
+  company_client_links: {},
+  supplier_quotes: { currency: "SAR", version_no: 1 },
+  supplier_quote_items: { pack_size: 1, pack_price: 0, unit_price: 0, waste_pct: 0 },
+  tender_submissions: { currency: "SAR", pricing_policy: "additive_v2", vat_rate: 15 },
+  workspace_memberships: {},
 };
 export type Table = keyof typeof defaults;
 export type LocalQueryRequest = {
@@ -100,8 +106,14 @@ export function executeLocalQuery(
       });
       database[query.table] = tableRows;
     } else if (query.operation === "update") {
+      if (query.table === "tender_submissions") {
+        throw new Error("Submitted tender versions are immutable");
+      }
       for (const row of rows) Object.assign(row, query.values[0], { updated_at: now });
     } else if (query.operation === "delete") {
+      if (query.table === "tender_submissions") {
+        throw new Error("Submitted tender versions cannot be deleted");
+      }
       const removed = new Set(rows);
       database[query.table] = tableRows.filter((row) => !removed.has(row));
       deleteRelatedRows(database, query.table, rows);

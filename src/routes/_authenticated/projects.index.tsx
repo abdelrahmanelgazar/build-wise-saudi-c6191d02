@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { z } from "zod";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 import { estimationClient } from "@/lib/estimation-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -82,6 +84,11 @@ const CONTRACT_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "Lump sum", label: "Lump sum" },
 ];
 
+const projectsSearchSchema = z.object({
+  company: z.string().optional(),
+  new: z.union([z.string(), z.number()]).optional(),
+});
+
 export const Route = createFileRoute("/_authenticated/projects/")({
   head: () => ({
     meta: [
@@ -92,18 +99,35 @@ export const Route = createFileRoute("/_authenticated/projects/")({
       },
     ],
   }),
+  validateSearch: projectsSearchSchema,
   component: ProjectsIndex,
 });
 
 function ProjectsIndex() {
   const qc = useQueryClient();
   const { t, language, direction: dir } = useLanguage();
+  const { company: urlCompany, new: urlNew } = Route.useSearch();
 
   // View mode: cards (default) | table | tenders | pipeline
   const [viewMode, setViewMode] = useState<"table" | "cards" | "tenders" | "pipeline">("cards");
 
   // Filters
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(urlCompany && urlCompany !== "شركة غير محددة" ? urlCompany : "");
+
+  useEffect(() => {
+    if (urlCompany !== undefined) {
+      setSearch(urlCompany === "شركة غير محددة" ? "" : urlCompany);
+    }
+  }, [urlCompany]);
+
+  useRegisterPageActions({
+    pageKey: "projects",
+    hasEditableState: true,
+    queryKeys: [["projects"], ["clients"], ["tenders"]],
+    onSave: async () => {
+      await qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
   const [statusFilter, setStatusFilter] = useState<Status | "all">("all");
   const [clientFilter, setClientFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -135,7 +159,7 @@ function ProjectsIndex() {
     queryFn: async () => {
       const { data, error } = await estimationClient.from("clients").select("*");
       if (error) throw error;
-      return (data as Client[] | null) ?? [];
+      return ((data as unknown) as Client[] | null) ?? [];
     },
   });
 
@@ -148,7 +172,7 @@ function ProjectsIndex() {
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data as Tender[] | null) ?? [];
+      return ((data as unknown) as Tender[] | null) ?? [];
     },
   });
 
@@ -269,7 +293,7 @@ function ProjectsIndex() {
               <span>إدارة العملاء</span>
             </Button>
           </Link>
-          <NewProjectDialog clients={clients} />
+          <NewProjectDialog clients={clients} defaultOpen={Boolean(urlNew)} />
         </div>
       </div>
 
@@ -908,9 +932,12 @@ function NoEditor({ value, onSave }: { value: number | null | undefined; onSave:
   );
 }
 
-export function NewProjectDialog({ clients = [] }: { clients?: Client[] }) {
+export function NewProjectDialog({ clients = [], defaultOpen = false }: { clients?: Client[]; defaultOpen?: boolean }) {
   const { t } = useLanguage();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
+  useEffect(() => {
+    if (defaultOpen) setOpen(true);
+  }, [defaultOpen]);
   const [form, setForm] = useState({
     project_no: "",
     code: "",

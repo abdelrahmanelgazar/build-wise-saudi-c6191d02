@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { fmtNumber, fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
 import { useActiveProjectId } from "@/lib/active-project";
+import { computeDirectUnitCost, computePricingPhase2 } from "@/lib/estimation-calc";
 import type { Database } from "@/integrations/supabase/types";
 import { ImportPaDialog } from "./import-pa-dialog";
 import { SelectQuoteDialog } from "./select-quote-dialog";
@@ -143,22 +144,41 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     },
   });
 
-  const directCost  = items.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0);
-  const indirect    = Number(markup?.indirect_pct ?? 0);
-  const overhead    = Number(markup?.overhead_pct ?? 0);
-  const risk        = Number(markup?.risk_pct ?? 0);
-  const profit      = Number(markup?.profit_pct ?? 0);
+  const directBreakdown = useMemo(() => computeDirectUnitCost(items as any), [items]);
+  const directCost = directBreakdown.directUnitCost;
+  const indirect = Number(markup?.indirect_pct ?? 0);
+  const overhead = Number(markup?.overhead_pct ?? 0);
+  const risk = Number(markup?.risk_pct ?? 0);
+  const profit = Number(markup?.profit_pct ?? 0);
 
-  // Phase 2 Pricing Engine: 4 independent markups calculated on direct cost (§2 & §7)
-  const indirectVal = (directCost * indirect) / 100;
-  const overheadVal = (directCost * overhead) / 100;
-  const riskVal     = (directCost * risk) / 100;
-  const profitVal   = (directCost * profit) / 100;
-  const totalAdditions = indirectVal + overheadVal + riskVal + profitVal;
-  const rawSellingPrice = directCost + totalAdditions;
-  const approvedRate = rawSellingPrice > 0 ? Math.ceil(rawSellingPrice) : 0;
-  const roundingDifference = approvedRate - rawSellingPrice;
-  const selling     = approvedRate;
+  // Unified Phase 2 Pricing Engine contract (same engine as BOQ, Financial, and Export)
+  const phase2 = useMemo(
+    () =>
+      computePricingPhase2({
+        directUnitCost: directCost,
+        quantity: Number(boqItem.quantity ?? 1),
+        markups: {
+          indirect_pct: indirect,
+          overhead_pct: overhead,
+          risk_pct: risk,
+          profit_pct: profit,
+          pricing_policy: ((markup as any)?.pricing_policy as "additive_v2" | "cascaded_v1") ?? "additive_v2",
+          round_up_rate: (markup as any)?.round_up_rate ?? true,
+        },
+        manualSellingPrice: (markup as any)?.manual_unit_price ?? (boqItem as any)?.manual_unit_price ?? null,
+      }),
+    [directCost, boqItem, indirect, overhead, risk, profit, markup],
+  );
+
+  const indirectVal = phase2.indirectVal;
+  const overheadVal = phase2.overheadVal;
+  const riskVal = phase2.riskVal;
+  const profitVal = phase2.profitVal;
+  const totalAdditions = phase2.totalAdditions;
+  const rawSellingPrice = phase2.rawUnitSellingPrice;
+  const approvedRate = phase2.approvedUnitRate;
+  const roundingDifference = phase2.roundingDifferencePerUnit;
+  const selling = approvedRate;
 
   const resizeRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
   const onColResizeStart = (key: string, startW: number) => (e: React.MouseEvent) => {
@@ -197,7 +217,10 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
       const nextStyles = { ...cellStyles, material_category: nextCat };
       const { error } = await estimationClient
         .from("price_analysis_items")
-        .update({ cell_styles: nextStyles as any })
+        .update({
+          material_category: nextCat,
+          cell_styles: nextStyles as any,
+        })
         .eq("id", id);
       if (error) throw error;
     },
@@ -212,11 +235,11 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     mutationFn: async ({ note, description_ar }: { note?: string; description_ar?: string }) => {
       const patch: Record<string, unknown> = {};
       if (note !== undefined) {
-        patch.note = note;
-        patch.cell_styles = { ...((boqItem.cell_styles as Record<string, unknown>) ?? {}), note };
+        patch["note"] = note;
+        patch["cell_styles"] = { ...((boqItem.cell_styles as Record<string, unknown>) ?? {}), note };
       }
       if (description_ar !== undefined) {
-        patch.description_ar = description_ar;
+        patch["description_ar"] = description_ar;
       }
       const { error } = await estimationClient.from("boq_items").update(patch as any).eq("id", boqItem.id);
       if (error) throw error;
@@ -255,7 +278,8 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
         quantity:      1,
         unit_price:    0,
         sort_order:    maxSort + 1,
-        cell_styles:   (type === "material" ? { material_category: cat } : null) as any,
+        material_category: type === "material" ? (cat ?? "primary") : null,
+        cell_styles:   (type === "material" ? { material_category: cat ?? "primary" } : null) as any,
       });
       if (error) throw error;
     },
@@ -738,9 +762,9 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                           <div className="flex items-center gap-3">
                             <span>المجموع الفرعي: {fmtSAR(primaryTotal)}</span>
                             <Button
-                              size="xs"
+                              size="sm"
                               variant="ghost"
-                              className="h-5 text-[10px] text-chart-2 hover:bg-chart-2/20"
+                              className="h-5 px-2 text-[10px] text-chart-2 hover:bg-chart-2/20"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 addMut.mutate({ type: "material", materialCategory: "primary" });
@@ -761,9 +785,9 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                           <div className="flex items-center gap-3">
                             <span>المجموع الفرعي: {fmtSAR(accessoryTotal)}</span>
                             <Button
-                              size="xs"
+                              size="sm"
                               variant="ghost"
-                              className="h-5 text-[10px] text-amber-600 hover:bg-amber-500/20"
+                              className="h-5 px-2 text-[10px] text-amber-600 hover:bg-amber-500/20"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 addMut.mutate({ type: "material", materialCategory: "accessory" });

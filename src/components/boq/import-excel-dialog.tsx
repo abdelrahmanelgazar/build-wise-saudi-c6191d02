@@ -477,9 +477,10 @@ export function parseSheet(
     }
 
     candidates.sort((a, b) => b.score - a.score);
-    if (candidates.length > 0) {
-      headerIdx = candidates[0].rowIdx;
-      colMap = candidates[0].colMap;
+    const best = candidates[0];
+    if (best) {
+      headerIdx = best.rowIdx;
+      colMap = best.colMap;
     }
   }
 

@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { z } from "zod";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 import {
   Building2,
   Search,
@@ -42,6 +44,11 @@ import { MergeClientsDialog } from "@/components/clients/merge-clients-dialog";
 import { fmtSAR } from "@/lib/format";
 import { useLanguage } from "@/lib/i18n";
 
+const clientsSearchSchema = z.object({
+  company: z.string().optional(),
+  owner: z.string().optional(),
+});
+
 export const Route = createFileRoute("/_authenticated/clients/")({
   head: () => ({
     meta: [
@@ -52,15 +59,32 @@ export const Route = createFileRoute("/_authenticated/clients/")({
       },
     ],
   }),
+  validateSearch: clientsSearchSchema,
   component: ClientsIndexPage,
 });
 
 function ClientsIndexPage() {
   const { t, language } = useLanguage();
   const qc = useQueryClient();
-  const [search, setSearch] = useState("");
+  const { company: urlCompany, owner: urlOwner } = Route.useSearch();
+  const initialSearch = urlOwner || (urlCompany && urlCompany !== "شركة غير محددة" ? urlCompany : "");
+  const [search, setSearch] = useState(initialSearch);
   const [typeFilter, setTypeFilter] = useState<ClientType | "all">("all");
   const [statusFilter, setStatusFilter] = useState<ClientStatus | "all">("active");
+
+  useEffect(() => {
+    const next = urlOwner || (urlCompany && urlCompany !== "شركة غير محددة" ? urlCompany : "");
+    setSearch(next);
+  }, [urlCompany, urlOwner]);
+
+  useRegisterPageActions({
+    pageKey: "clients",
+    hasEditableState: true,
+    queryKeys: [["clients"]],
+    onSave: async () => {
+      await qc.invalidateQueries({ queryKey: ["clients"] });
+    },
+  });
 
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ["clients"],

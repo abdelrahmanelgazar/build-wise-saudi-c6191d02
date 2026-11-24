@@ -37,11 +37,11 @@ describe("Excel BOQ Header Matching and Parsing", () => {
     expect(result.detectedHeaderIdx).toBe(4);
     expect(result.warnings.length).toBe(0);
     expect(result.data.length).toBe(2);
-    expect(result.data[0].item_no).toBe("01.01");
-    expect(result.data[0].unit).toBe("شهر");
-    expect(result.data[0].description_ar).toContain("أعمال الإشراف");
+    expect(result.data[0]?.item_no).toBe("01.01");
+    expect(result.data[0]?.unit).toBe("شهر");
+    expect(result.data[0]?.description_ar).toContain("أعمال الإشراف");
     // Qty defaults to 1 when missing for items with unit / unit_rate
-    expect(result.data[0].quantity).toBe(1);
-    expect(result.data[0].material_cost).toBe(1500);
+    expect(result.data[0]?.quantity).toBe(1);
+    expect(result.data[0]?.material_cost).toBe(1500);
   });
 });

@@ -41,7 +41,8 @@ import { useActiveProjectId } from "@/lib/active-project";
 import { ImportExcelDialog } from "@/components/boq/import-excel-dialog";
 import { BoqGrid, type TreeNode } from "@/components/boq/boq-grid";
 import { useLanguage } from "@/lib/i18n";
-import { computeUnitSellingPrice } from "@/lib/estimation-calc";
+import { computeDirectUnitCost, computeUnitSellingPrice, type ResourceCostInput } from "@/lib/estimation-calc";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
@@ -109,6 +110,16 @@ function BoqPage() {
   const projectId = useActiveProjectId();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [activeSheet, setActiveSheet] = useState<string>("");
+
+  useRegisterPageActions({
+    pageKey: "boq",
+    hasEditableState: true,
+    queryKeys: [["boq_items", projectId], ["pa_items_project", projectId], ["pa_markup_project", projectId], ["project", projectId]],
+    onSave: async () => {
+      await qc.invalidateQueries({ queryKey: ["boq_items", projectId] });
+      await qc.invalidateQueries({ queryKey: ["pa_items_project", projectId] });
+    },
+  });
 
   const { data: rows = [] } = useQuery({
     queryKey: ["boq_items", projectId],
@@ -195,10 +206,10 @@ function BoqPage() {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
       const { data, error } = await estimationClient
         .from("price_analysis_items")
-        .select("boq_item_id, quantity, unit_price")
+        .select("boq_item_id, resource_type, quantity, unit_price, waste_pct, productivity, cell_styles")
         .eq("project_id", projectId);
       if (error) throw error;
-      return data as { boq_item_id: string; quantity: number; unit_price: number }[];
+      return data as Array<ResourceCostInput & { boq_item_id: string }>;
     },
   });
 
@@ -226,18 +237,25 @@ function BoqPage() {
   });
 
   const paRates = useMemo(() => {
-    const direct = new Map<string, number>();
+    const grouped = new Map<string, Array<ResourceCostInput>>();
     paItems.forEach((r) => {
-      direct.set(
-        r.boq_item_id,
-        (direct.get(r.boq_item_id) ?? 0) + Number(r.quantity) * Number(r.unit_price),
-      );
+      const list = grouped.get(r.boq_item_id) ?? [];
+      list.push(r);
+      grouped.set(r.boq_item_id, list);
+    });
+    const direct = new Map<string, number>();
+    grouped.forEach((list, id) => {
+      direct.set(id, computeDirectUnitCost(list).directUnitCost);
     });
     const markupBy = new Map(paMarkups.map((m) => [m.boq_item_id, m]));
     const selling = new Map<string, number>();
     direct.forEach((cost, id) => {
       const m = markupBy.get(id);
-      const res = computeUnitSellingPrice(cost, (m as any) ?? null);
+      const res = computeUnitSellingPrice(cost, {
+        ...(m as any),
+        pricing_policy: (m as any)?.pricing_policy ?? "additive_v2",
+        round_up_rate: (m as any)?.round_up_rate ?? true,
+      });
       selling.set(id, res.unitSellingPrice);
     });
     return { direct, selling };

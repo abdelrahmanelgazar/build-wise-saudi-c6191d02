@@ -41,6 +41,7 @@ import type { Client, Tender, ClientContact } from "@/types/client-tender";
 import { CLIENT_TYPE_META, CLIENT_STATUS_META, TENDER_STATUS_META } from "@/types/client-tender";
 import { fmtSAR, fmtNumber } from "@/lib/format";
 import { useLanguage } from "@/lib/i18n";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   head: () => ({
@@ -57,6 +58,12 @@ function ClientDetailPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { language } = useLanguage();
+
+  useRegisterPageActions({
+    pageKey: `client-${clientId}`,
+    hasEditableState: true,
+    queryKeys: [["client", clientId], ["client_projects", clientId], ["client_tenders", clientId]],
+  });
 
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
   const [newContact, setNewContact] = useState<Partial<ClientContact>>({
@@ -90,8 +97,8 @@ function ClientDetailPage() {
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      const list = (data as Record<string, unknown>[] | null) ?? [];
-      return list.filter((p) => p.client_id === clientId || p.client_name === client?.name);
+      const list = ((data as unknown) as Array<Record<string, any>> | null) ?? [];
+      return list.filter((p) => p["client_id"] === clientId || p["client_name"] === client?.name);
     },
   });
 
@@ -105,8 +112,8 @@ function ClientDetailPage() {
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      const list = (data as Tender[] | null) ?? [];
-      const projectIds = new Set(projects.map((p) => String(p.id)));
+      const list = ((data as unknown) as Tender[] | null) ?? [];
+      const projectIds = new Set(projects.map((p) => String(p["id"])));
       return list.filter((t) => t.client_id === clientId || projectIds.has(t.project_id));
     },
   });
@@ -120,8 +127,8 @@ function ClientDetailPage() {
         id: crypto.randomUUID ? crypto.randomUUID() : `cnt-${Date.now()}`,
         name: newContact.name.trim(),
         role: newContact.role?.trim() || "جهة اتصال",
-        email: newContact.email?.trim() || undefined,
-        phone: newContact.phone?.trim() || undefined,
+        ...(newContact.email?.trim() ? { email: newContact.email.trim() } : {}),
+        ...(newContact.phone?.trim() ? { phone: newContact.phone.trim() } : {}),
         is_primary: currentContacts.length === 0,
       };
 
@@ -170,7 +177,7 @@ function ClientDetailPage() {
 
   const typeMeta = CLIENT_TYPE_META[client.type] ?? { label: client.type, cls: "bg-muted" };
   const statusMeta = CLIENT_STATUS_META[client.status] ?? { label: client.status, cls: "bg-muted" };
-  const totalValue = projects.reduce((s, p) => s + Number(p.estimated_value || 0), 0);
+  const totalValue = projects.reduce((s, p) => s + Number(p["estimated_value"] || 0), 0);
   const activeTenders = tenders.filter(
     (t) => t.status === "registered" || t.status === "studying" || t.status === "review"
   );
@@ -335,32 +342,32 @@ function ClientDetailPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
-                  {projects.map((p) => (
-                    <tr key={String(p.id)} className="hover:bg-muted/20 transition-colors">
-                      <td className="p-3 font-mono">{String(p.project_no || "—")}</td>
+                  {projects.map((p: Record<string, any>) => (
+                    <tr key={String(p["id"])} className="hover:bg-muted/20 transition-colors">
+                      <td className="p-3 font-mono">{String(p["project_no"] || "—")}</td>
                       <td className="p-3 font-medium text-foreground">
                         <Link
                           to="/projects/$projectId"
-                          params={{ projectId: String(p.id) }}
+                          params={{ projectId: String(p["id"]) }}
                           className="hover:text-primary hover:underline flex items-center gap-1.5"
                         >
-                          <span>{String(p.name)}</span>
+                          <span>{String(p["name"])}</span>
                           <ExternalLink className="h-3 w-3 opacity-60" />
                         </Link>
                       </td>
                       <td className="p-3 font-mono text-[11px] text-muted-foreground">
-                        {String(p.code || "—")}
+                        {String(p["code"] || "—")}
                       </td>
-                      <td className="p-3 text-muted-foreground">{String(p.location || "—")}</td>
-                      <td className="p-3 text-muted-foreground">{String(p.scope_of_work || "—")}</td>
+                      <td className="p-3 text-muted-foreground">{String(p["location"] || "—")}</td>
+                      <td className="p-3 text-muted-foreground">{String(p["scope_of_work"] || "—")}</td>
                       <td className="p-3 font-mono text-muted-foreground">
-                        {String(p.last_submit_date || "—")}
+                        {String(p["last_submit_date"] || "—")}
                       </td>
                       <td className="p-3 font-mono font-bold text-primary">
-                        {fmtSAR(Number(p.estimated_value || 0), language)}
+                        {fmtSAR(Number(p["estimated_value"] || 0), language)}
                       </td>
                       <td className="p-3 text-end">
-                        <Link to="/projects/$projectId" params={{ projectId: String(p.id) }}>
+                        <Link to="/projects/$projectId" params={{ projectId: String(p["id"]) }}>
                           <Button size="sm" variant="ghost" className="h-7 text-xs">
                             فتح
                           </Button>

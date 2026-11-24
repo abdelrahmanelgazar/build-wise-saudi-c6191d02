@@ -2,7 +2,6 @@ import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { isLocalDevelopment } from "@/lib/local-development";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { lovable } from "@/integrations/lovable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -146,17 +145,6 @@ function AuthPage() {
   async function handleGoogle() {
     setLoading(true);
     try {
-      // 1. Try Lovable OAuth helper
-      const lovableResult = await lovable.auth.signInWithOAuth("google", {
-        redirect_uri: `${window.location.origin}/auth`,
-      });
-      if (lovableResult?.redirected) return;
-      if (!lovableResult?.error) {
-        navigate({ to: "/boq", replace: true });
-        return;
-      }
-
-      // 2. Direct Supabase OAuth fallback
       const { error: sbError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {

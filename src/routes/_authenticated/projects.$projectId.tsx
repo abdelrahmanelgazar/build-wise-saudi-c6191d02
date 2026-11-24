@@ -43,11 +43,13 @@ import {
 } from "lucide-react";
 import { fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import type { Tender, TenderStatus } from "@/types/client-tender";
 import { TENDER_STATUS_META } from "@/types/client-tender";
 import { transitionTenderStatus } from "@/lib/client-tender-service";
 import { setActiveProjectId } from "@/lib/active-project";
 import type { Database } from "@/integrations/supabase/types";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
 type Project = Database["public"]["Tables"]["projects"]["Row"];
 type Status = Database["public"]["Enums"]["project_status"];
@@ -75,7 +77,7 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
     <div className="p-8 max-w-lg mx-auto text-center space-y-4">
       <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-5 text-destructive">
         <h2 className="font-semibold text-lg">تعذّر تحميل بيانات المشروع</h2>
-        <p className="text-xs mt-2 text-muted-foreground">{String(error?.message || error)}</p>
+        <p className="text-xs mt-2 text-muted-foreground">{String((error as any)?.message || error)}</p>
       </div>
       <div className="flex justify-center gap-3">
         <Button onClick={() => reset()}>إعادة المحاولة</Button>
@@ -93,6 +95,12 @@ function ProjectDetail() {
   useEffect(() => {
     setActiveProjectId(projectId);
   }, [projectId]);
+
+  useRegisterPageActions({
+    pageKey: `project-${projectId}`,
+    hasEditableState: true,
+    queryKeys: [["project", projectId], ["project_stats", projectId], ["project_tenders", projectId], ["project_files", projectId]],
+  });
 
   const { data: project, isLoading } = useQuery({
     queryKey: ["project", projectId],
@@ -132,7 +140,7 @@ function ProjectDetail() {
   const { data: projectTenders = [] } = useQuery({
     queryKey: ["project_tenders", projectId],
     queryFn: async () => {
-      const { data, error } = await estimationClient
+      const { data, error } = await (estimationClient as any)
         .from("tenders")
         .select("*")
         .eq("project_id", projectId);
@@ -640,17 +648,17 @@ function ProjectTendersTab({
       const { data: userData } = await estimationClient.auth.getUser();
       const user_id = userData.user?.id || "00000000-0000-0000-0000-000000000000";
 
-      const { data, error } = await estimationClient
+      const { data, error } = await (estimationClient as any)
         .from("tenders")
         .insert({
           user_id,
           project_id: projectId,
           client_id: clientId || null,
-          reference_no: refNo || `TND-${Date.now().toString().slice(-4)}`,
+          tender_no: refNo || `TND-${Date.now().toString().slice(-4)}`,
           title: title || projectName,
           client_name: clientName || null,
-          package_scope: pkgScope || null,
-          assigned_to: assignedTo || null,
+          package_name: pkgScope || null,
+          responsible_person: assignedTo || null,
           submission_deadline: deadline || null,
           estimated_value: Number(estVal) || 0,
           status: "registered",
@@ -703,7 +711,7 @@ function ProjectTendersTab({
   const deleteTender = async (tenderId: string) => {
     if (!confirm("هل أنت متأكد من حذف هذه المنافسة؟")) return;
     try {
-      const { error } = await estimationClient.from("tenders").delete().eq("id", tenderId);
+      const { error } = await (estimationClient as any).from("tenders").delete().eq("id", tenderId);
       if (error) throw error;
       toast.success("تم حذف المنافسة");
       qc.invalidateQueries({ queryKey: ["project_tenders", projectId] });
@@ -755,10 +763,10 @@ function ProjectTendersTab({
                 };
                 return (
                   <tr key={t.id} className="hover:bg-muted/20">
-                    <td className="px-3 py-2.5 font-mono font-medium">{t.reference_no}</td>
+                    <td className="px-3 py-2.5 font-mono font-medium">{t.tender_no}</td>
                     <td className="px-3 py-2.5 font-semibold">{t.title}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{t.package_scope || "—"}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{t.assigned_to || "—"}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{t.package_name || "—"}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{t.responsible_person || "—"}</td>
                     <td className="px-3 py-2.5 whitespace-nowrap">
                       {t.submission_deadline ? (
                         <span className="inline-flex items-center gap-1">
@@ -773,7 +781,7 @@ function ProjectTendersTab({
                       {t.estimated_value ? fmtSAR(Number(t.estimated_value)) : "—"}
                     </td>
                     <td className="px-3 py-2.5">
-                      <Badge variant="outline" className={cn("text-[11px]", meta.color)}>
+                      <Badge variant="outline" className={cn("text-[11px]", meta.cls)}>
                         {meta.label}
                       </Badge>
                     </td>
@@ -891,7 +899,7 @@ function ProjectTendersTab({
           <DialogHeader>
             <DialogTitle>تغيير مرحلة المنافسة وتوثيق القرار</DialogTitle>
             <DialogDescription className="text-xs">
-              منافسة: {transitionTender?.title} ({transitionTender?.reference_no})
+              منافسة: {transitionTender?.title} ({transitionTender?.tender_no})
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2 text-xs">

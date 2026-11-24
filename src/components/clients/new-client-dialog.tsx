@@ -73,7 +73,7 @@ export function NewClientDialog({
         form.code.trim() ||
         `CLI-${Math.floor(100 + Math.random() * 900)}`;
 
-      const newClient: Client = {
+      const newClient = {
         id: crypto.randomUUID ? crypto.randomUUID() : `c-${Date.now()}`,
         code,
         name: form.name.trim(),
@@ -86,8 +86,8 @@ export function NewClientDialog({
                 id: "1",
                 name: form.contactName.trim(),
                 role: form.contactRole.trim() || "جهة اتصال",
-                email: form.contactEmail.trim() || undefined,
-                phone: form.contactPhone.trim() || undefined,
+                ...(form.contactEmail.trim() ? { email: form.contactEmail.trim() } : {}),
+                ...(form.contactPhone.trim() ? { phone: form.contactPhone.trim() } : {}),
                 is_primary: true,
               },
             ]
@@ -103,7 +103,7 @@ export function NewClientDialog({
         .single();
 
       if (error) throw error;
-      return (data || newClient) as Client;
+      return ((data || newClient) as unknown) as Client;
     },
     onSuccess: (client) => {
       toast.success(`تمت إضافة العميل "${client.name}" بنجاح`);

@@ -28,7 +28,9 @@ import {
 } from "lucide-react";
 import { fmtSAR, fmtNumber } from "@/lib/format";
 import { useLanguage } from "@/lib/i18n";
-import { computeProjectFinancials, type MarkupSettings } from "@/lib/estimation-calc";
+import { computeProjectFinancials, type MarkupSettings, type ResourceCostInput } from "@/lib/estimation-calc";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
+import { submitTenderVersion } from "@/lib/client-tender-service";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/financial")({
@@ -48,6 +50,12 @@ function FinancialPage() {
   const [vatRate, setVatRate] = useState<number>(15);
   const [isIssuing, setIsIssuing] = useState(false);
 
+  useRegisterPageActions({
+    pageKey: "financial",
+    hasEditableState: false,
+    queryKeys: [["project_financial", projectId], ["financial_boq", projectId], ["financial_pa_items", projectId], ["financial_markups", projectId]],
+  });
+
   const handleIssueTender = async () => {
     if (!financials.canIssueTender) {
       toast.error("لا يمكن إصدار العرض لوجود بنود غير مسعرة في المقايسة");
@@ -55,6 +63,27 @@ function FinancialPage() {
     }
     setIsIssuing(true);
     try {
+      const { data: userData } = await estimationClient.auth.getUser();
+      const userId = userData.user?.id || "local-approver";
+      const { data: tendersList } = await estimationClient
+        .from("tenders")
+        .select("id")
+        .eq("project_id", projectId!);
+      const targetTenderId = tendersList?.[0]?.id || projectId!;
+
+      await submitTenderVersion({
+        tenderId: targetTenderId,
+        projectId: projectId!,
+        expectedDraftVersion: 1,
+        currentDraftVersion: 1,
+        idempotencyKey: `issue-${projectId}-${Date.now()}`,
+        userId,
+        vatRate,
+        boqItems: boqItems as any,
+        paItemsByBoqId: paItemsByItemId as any,
+        markupsByBoqId: markupsMap,
+      });
+
       await estimationClient
         .from("projects")
         .update({
@@ -64,8 +93,9 @@ function FinancialPage() {
         })
         .eq("id", projectId!);
 
-      toast.success("تم اعتماد وإصدار العرض المالي للمشروع بنجاح!");
+      toast.success("تم اعتماد وإصدار العرض المالي وتثبيت لقطة التقديم بنجاح!");
       await qc.invalidateQueries({ queryKey: ["project_financial", projectId] });
+      await qc.invalidateQueries({ queryKey: ["tenders"] });
     } catch (e: any) {
       toast.error(e.message || "حدث خطأ أثناء اعتماد العرض");
     } finally {
@@ -135,17 +165,32 @@ function FinancialPage() {
           overhead_pct: Number(m.overhead_pct ?? 0),
           risk_pct: Number(m.risk_pct ?? 0),
           profit_pct: Number(m.profit_pct ?? 0),
+          pricing_policy: ((m as any).pricing_policy as "additive_v2" | "cascaded_v1") ?? "additive_v2",
+          round_up_rate: (m as any).round_up_rate ?? true,
         });
       }
     }
     return map;
   }, [markups]);
 
+  const paItemsByItemId = useMemo(() => {
+    const map = new Map<string, ResourceCostInput[]>();
+    for (const item of paItems as any[]) {
+      if (!item.boq_item_id) continue;
+      const list = map.get(item.boq_item_id) ?? [];
+      list.push(item);
+      map.set(item.boq_item_id, list);
+    }
+    return map;
+  }, [paItems]);
+
   // Unified calculation using central estimation engine
   const financials = useMemo(() => {
     const summary = computeProjectFinancials({
       boqItems: boqItems as any,
+      paItemsByItemId,
       markupsByItemId: markupsMap,
+      defaultMarkup: { pricing_policy: "additive_v2", round_up_rate: true },
       vatRate,
     });
 

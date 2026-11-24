@@ -54,8 +54,8 @@ describe("Estimation Calculation Engine - PLATFORM_DEVELOPMENT_AUDIT.md & EXCEL_
 
     // Qty change test: change Item 1 qty to 51
     const boqItemsUpdated = [
-      { ...boqItems[0], quantity: 51 },
-      boqItems[1],
+      { ...boqItems[0]!, quantity: 51 },
+      boqItems[1]!,
     ];
 
     const updatedResult = computeProjectFinancials({
@@ -241,11 +241,11 @@ describe("Estimation Calculation Engine - PLATFORM_DEVELOPMENT_AUDIT.md & EXCEL_
 
     // Increase steel to 110 kg
     const modifiedBreakdown = [
-      baseBreakdown[0],
+      baseBreakdown[0]!,
       { resource_type: "material" as const, quantity: 110, unit_price: 3.00 }, // Steel 110 kg (+10 kg)
-      baseBreakdown[2],
-      baseBreakdown[3],
-      baseBreakdown[4],
+      baseBreakdown[2]!,
+      baseBreakdown[3]!,
+      baseBreakdown[4]!,
     ];
 
     const modifiedCost = computeDirectUnitCost(modifiedBreakdown);
@@ -286,7 +286,7 @@ describe("Estimation Calculation Engine - PLATFORM_DEVELOPMENT_AUDIT.md & EXCEL_
     const result = computeProjectFinancials({ boqItems });
     expect(result.canIssueTender).toBe(false);
     expect(result.unpricedItemsCount).toBe(1);
-    expect(result.missingPriceItems[0].item_no).toBe("02");
+    expect(result.missingPriceItems[0]?.item_no).toBe("02");
   });
 
   it("handles intentional zero cost when item is explicitly included elsewhere", () => {

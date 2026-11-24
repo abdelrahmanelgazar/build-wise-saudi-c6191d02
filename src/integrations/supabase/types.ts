@@ -23,10 +23,13 @@ export type Database = {
           equipment_cost: number | null
           id: string
           is_group: boolean
+          is_included_elsewhere: boolean | null
           item_no: string
           labor_cost: number | null
           level: number
+          manual_unit_price: number | null
           material_cost: number | null
+          note: string | null
           parent_id: string | null
           project_id: string | null
           quantity: number | null
@@ -46,10 +49,13 @@ export type Database = {
           equipment_cost?: number | null
           id?: string
           is_group?: boolean
+          is_included_elsewhere?: boolean | null
           item_no: string
           labor_cost?: number | null
           level?: number
+          manual_unit_price?: number | null
           material_cost?: number | null
+          note?: string | null
           parent_id?: string | null
           project_id?: string | null
           quantity?: number | null
@@ -69,10 +75,13 @@ export type Database = {
           equipment_cost?: number | null
           id?: string
           is_group?: boolean
+          is_included_elsewhere?: boolean | null
           item_no?: string
           labor_cost?: number | null
           level?: number
+          manual_unit_price?: number | null
           material_cost?: number | null
+          note?: string | null
           parent_id?: string | null
           project_id?: string | null
           quantity?: number | null
@@ -105,50 +114,77 @@ export type Database = {
         Row: {
           boq_item_id: string
           cell_styles: Json | null
+          consumption_rate: number | null
+          copied_unit: string | null
+          copied_unit_price: number | null
           created_at: string
           description_ar: string
           description_en: string | null
           id: string
+          line_note: string | null
+          material_category: string | null
+          productivity: number | null
           project_id: string | null
           quantity: number
+          quote_id: string | null
+          quote_version: number | null
           resource_id: string | null
           resource_type: Database["public"]["Enums"]["resource_type"]
           sort_order: number
           unit: string
           unit_price: number
           user_id: string
+          waste_pct: number | null
         }
         Insert: {
           boq_item_id: string
           cell_styles?: Json | null
+          consumption_rate?: number | null
+          copied_unit?: string | null
+          copied_unit_price?: number | null
           created_at?: string
           description_ar: string
           description_en?: string | null
           id?: string
+          line_note?: string | null
+          material_category?: string | null
+          productivity?: number | null
           project_id?: string | null
           quantity?: number
+          quote_id?: string | null
+          quote_version?: number | null
           resource_id?: string | null
           resource_type: Database["public"]["Enums"]["resource_type"]
           sort_order?: number
           unit: string
           unit_price?: number
           user_id: string
+          waste_pct?: number | null
         }
         Update: {
           boq_item_id?: string
           cell_styles?: Json | null
+          consumption_rate?: number | null
+          copied_unit?: string | null
+          copied_unit_price?: number | null
           created_at?: string
           description_ar?: string
           description_en?: string | null
           id?: string
+          line_note?: string | null
+          material_category?: string | null
+          productivity?: number | null
           project_id?: string | null
           quantity?: number
+          quote_id?: string | null
+          quote_version?: number | null
           resource_id?: string | null
           resource_type?: Database["public"]["Enums"]["resource_type"]
           sort_order?: number
           unit?: string
           unit_price?: number
           user_id?: string
+          waste_pct?: number | null
         }
         Relationships: [
           {
@@ -178,30 +214,39 @@ export type Database = {
         Row: {
           boq_item_id: string
           indirect_pct: number
+          manual_unit_price: number | null
           overhead_pct: number
+          pricing_policy: string | null
           profit_pct: number
           project_id: string | null
           risk_pct: number
+          round_up_rate: boolean | null
           updated_at: string
           user_id: string
         }
         Insert: {
           boq_item_id: string
           indirect_pct?: number
+          manual_unit_price?: number | null
           overhead_pct?: number
+          pricing_policy?: string | null
           profit_pct?: number
           project_id?: string | null
           risk_pct?: number
+          round_up_rate?: boolean | null
           updated_at?: string
           user_id: string
         }
         Update: {
           boq_item_id?: string
           indirect_pct?: number
+          manual_unit_price?: number | null
           overhead_pct?: number
+          pricing_policy?: string | null
           profit_pct?: number
           project_id?: string | null
           risk_pct?: number
+          round_up_rate?: boolean | null
           updated_at?: string
           user_id?: string
         }
@@ -270,8 +315,12 @@ export type Database = {
         Row: {
           area: string | null
           budget: number | null
+          client_id: string | null
           client_name: string | null
           code: string | null
+          company_client_link_id: string | null
+          company_id: string | null
+          company_name: string | null
           contract_type: string | null
           created_at: string
           duration: string | null
@@ -301,8 +350,12 @@ export type Database = {
         Insert: {
           area?: string | null
           budget?: number | null
+          client_id?: string | null
           client_name?: string | null
           code?: string | null
+          company_client_link_id?: string | null
+          company_id?: string | null
+          company_name?: string | null
           contract_type?: string | null
           created_at?: string
           duration?: string | null
@@ -332,8 +385,12 @@ export type Database = {
         Update: {
           area?: string | null
           budget?: number | null
+          client_id?: string | null
           client_name?: string | null
           code?: string | null
+          company_client_link_id?: string | null
+          company_id?: string | null
+          company_name?: string | null
           contract_type?: string | null
           created_at?: string
           duration?: string | null
@@ -369,8 +426,10 @@ export type Database = {
           division: string | null
           id: string
           name_ar: string
+          name_en: string | null
           notes: string | null
           project_id: string | null
+          supplier_name: string | null
           type: Database["public"]["Enums"]["resource_type"]
           unit: string
           unit_price: number
@@ -383,8 +442,10 @@ export type Database = {
           division?: string | null
           id?: string
           name_ar: string
+          name_en?: string | null
           notes?: string | null
           project_id?: string | null
+          supplier_name?: string | null
           type: Database["public"]["Enums"]["resource_type"]
           unit: string
           unit_price?: number
@@ -397,8 +458,10 @@ export type Database = {
           division?: string | null
           id?: string
           name_ar?: string
+          name_en?: string | null
           notes?: string | null
           project_id?: string | null
+          supplier_name?: string | null
           type?: Database["public"]["Enums"]["resource_type"]
           unit?: string
           unit_price?: number
@@ -434,6 +497,238 @@ export type Database = {
           role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
+        Relationships: []
+      }
+      clients: {
+        Row: {
+          code: string
+          contacts: Json | null
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          sector: string | null
+          status: string
+          type: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          contacts?: Json | null
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          sector?: string | null
+          status?: string
+          type?: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          contacts?: Json | null
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          sector?: string | null
+          status?: string
+          type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tenders: {
+        Row: {
+          client_id: string | null
+          client_name: string | null
+          created_at: string
+          currency: string | null
+          estimated_value: number | null
+          id: string
+          notes: string | null
+          package_name: string | null
+          project_id: string
+          responsible_person: string | null
+          rfi_deadline: string | null
+          status: string
+          status_reason: string | null
+          submission_deadline: string | null
+          submission_time: string | null
+          submitted_amount: number | null
+          submitted_at: string | null
+          tender_no: string
+          title: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          client_id?: string | null
+          client_name?: string | null
+          created_at?: string
+          currency?: string | null
+          estimated_value?: number | null
+          id?: string
+          notes?: string | null
+          package_name?: string | null
+          project_id: string
+          responsible_person?: string | null
+          rfi_deadline?: string | null
+          status?: string
+          status_reason?: string | null
+          submission_deadline?: string | null
+          submission_time?: string | null
+          submitted_amount?: number | null
+          submitted_at?: string | null
+          tender_no: string
+          title: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          client_id?: string | null
+          client_name?: string | null
+          created_at?: string
+          currency?: string | null
+          estimated_value?: number | null
+          id?: string
+          notes?: string | null
+          package_name?: string | null
+          project_id?: string
+          responsible_person?: string | null
+          rfi_deadline?: string | null
+          status?: string
+          status_reason?: string | null
+          submission_deadline?: string | null
+          submission_time?: string | null
+          submitted_amount?: number | null
+          submitted_at?: string | null
+          tender_no?: string
+          title?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      tender_transitions: {
+        Row: {
+          changed_by: string | null
+          created_at: string
+          from_status: string
+          id: string
+          reason: string | null
+          tender_id: string
+          to_status: string
+        }
+        Insert: {
+          changed_by?: string | null
+          created_at?: string
+          from_status: string
+          id?: string
+          reason?: string | null
+          tender_id: string
+          to_status: string
+        }
+        Update: {
+          changed_by?: string | null
+          created_at?: string
+          from_status?: string
+          id?: string
+          reason?: string | null
+          tender_id?: string
+          to_status?: string
+        }
+        Relationships: []
+      }
+      companies: {
+        Row: {
+          code: string | null
+          created_at: string
+          id: string
+          name: string
+          updated_at: string
+          workspace_id: string
+        }
+        Insert: {
+          code?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          updated_at?: string
+          workspace_id: string
+        }
+        Update: {
+          code?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          updated_at?: string
+          workspace_id?: string
+        }
+        Relationships: []
+      }
+      company_client_links: {
+        Row: {
+          client_id: string
+          company_id: string
+          created_at: string
+          id: string
+          workspace_id: string
+        }
+        Insert: {
+          client_id: string
+          company_id: string
+          created_at?: string
+          id?: string
+          workspace_id: string
+        }
+        Update: {
+          client_id?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          workspace_id?: string
+        }
+        Relationships: []
+      }
+      tender_submissions: {
+        Row: {
+          currency: string
+          document_ref: string | null
+          grand_total_with_vat: number
+          id: string
+          idempotency_key: string
+          items_snapshot: Json
+          net_selling_price: number
+          pricing_policy: string
+          project_id: string
+          submitted_at: string
+          submitted_by: string
+          tender_id: string
+          total_direct_cost: number
+          vat_amount: number
+          vat_rate: number
+          version_no: number
+        }
+        Insert: {
+          currency?: string
+          document_ref?: string | null
+          grand_total_with_vat: number
+          id?: string
+          idempotency_key: string
+          items_snapshot: Json
+          net_selling_price: number
+          pricing_policy?: string
+          project_id: string
+          submitted_at?: string
+          submitted_by: string
+          tender_id: string
+          total_direct_cost: number
+          vat_amount: number
+          vat_rate?: number
+          version_no: number
+        }
+        Update: never
         Relationships: []
       }
     }

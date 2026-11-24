@@ -14,7 +14,15 @@ import {
 } from "@/components/ui/select";
 import { Download, Printer, FileSpreadsheet, FolderKanban, Calculator, Database as DatabaseIcon, FileBarChart } from "lucide-react";
 import { fmtSAR } from "@/lib/format";
-import { roundTo } from "@/lib/estimation-calc";
+import {
+  computeDirectUnitCost,
+  computeUnitSellingPrice,
+  roundTo,
+  type MarkupSettings,
+  type ResourceCostInput,
+} from "@/lib/estimation-calc";
+import { getSubmittedTenderSnapshots } from "@/lib/client-tender-service";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 import * as XLSX from "xlsx";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -46,6 +54,12 @@ export const Route = createFileRoute("/_authenticated/reports")({
 });
 
 function ReportsPage() {
+  useRegisterPageActions({
+    pageKey: "reports",
+    hasEditableState: false,
+    queryKeys: [["report-projects"], ["report-boq"], ["report-resources"], ["report-stats"]],
+  });
+
   return (
     <div className="p-6 print:p-0">
       <div className="flex flex-wrap items-start justify-between gap-3 print:hidden">
@@ -217,6 +231,7 @@ function ProjectsReport() {
 /* ============== 2) BOQ REPORT ============== */
 function BoqReport() {
   const [projectId, setProjectId] = useState<string>("");
+  const [selectedVersion, setSelectedVersion] = useState<string>("draft");
 
   const { data: projects = [] } = useQuery({
     queryKey: ["report-boq-projects-list"],
@@ -245,19 +260,106 @@ function BoqReport() {
     },
   });
 
+  const { data: paItems = [] } = useQuery({
+    queryKey: ["report-pa-items", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await estimationClient
+        .from("price_analysis_items")
+        .select("boq_item_id, resource_type, quantity, unit_price, waste_pct, productivity, cell_styles")
+        .eq("project_id", projectId);
+      if (error) throw error;
+      return (data as Array<ResourceCostInput & { boq_item_id: string }>) ?? [];
+    },
+  });
+
+  const { data: paMarkups = [] } = useQuery({
+    queryKey: ["report-pa-markups", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await estimationClient
+        .from("price_analysis_markup")
+        .select("*")
+        .eq("project_id", projectId);
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const { data: projectTenders = [] } = useQuery({
+    queryKey: ["report-tenders", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data } = await estimationClient.from("tenders").select("id").eq("project_id", projectId);
+      return data ?? [];
+    },
+  });
+
+  const snapshots = useMemo(() => {
+    const ids = new Set<string>([projectId, ...projectTenders.map((t: any) => String(t.id))]);
+    return Array.from(ids).flatMap((tid) => getSubmittedTenderSnapshots(tid));
+  }, [projectId, projectTenders]);
+
+  const activeSnapshot = useMemo(
+    () => (selectedVersion === "draft" ? null : snapshots.find((s) => s.id === selectedVersion) ?? null),
+    [selectedVersion, snapshots],
+  );
+
   const project = projects.find((p) => p.id === projectId);
 
-  const rows = useMemo(() => items.map((b) => {
-    const unitCost = roundTo(
-      Number(b.material_cost ?? 0) + Number(b.labor_cost ?? 0)
-      + Number(b.equipment_cost ?? 0) + Number(b.subcontractor_cost ?? 0),
-      2
-    );
-    const total = b.is_group ? 0 : roundTo(Number(b.quantity ?? 0) * unitCost, 2);
-    return { b, unitCost, total };
-  }), [items]);
+  const rows = useMemo(() => {
+    if (activeSnapshot) {
+      return activeSnapshot.items.map((it) => ({
+        b: {
+          id: it.boqItemId,
+          item_no: it.itemNo,
+          description_ar: it.descriptionAr,
+          unit: it.unit,
+          quantity: it.quantity,
+          is_group: false,
+          material_cost: it.directUnitCost,
+          labor_cost: 0,
+          equipment_cost: 0,
+          subcontractor_cost: 0,
+        } as any,
+        unitCost: it.approvedUnitRate,
+        total: it.lineSellingPrice,
+      }));
+    }
 
-  const grandTotal = roundTo(rows.reduce((s, r) => s + r.total, 0), 2);
+    const groupedPa = new Map<string, ResourceCostInput[]>();
+    for (const p of paItems) {
+      const list = groupedPa.get(p.boq_item_id) ?? [];
+      list.push(p);
+      groupedPa.set(p.boq_item_id, list);
+    }
+    const markupBy = new Map(paMarkups.map((m) => [m.boq_item_id, m]));
+
+    return items.map((b) => {
+      if (b.is_group) return { b, unitCost: 0, total: 0 };
+      const paList = groupedPa.get(b.id) ?? [];
+      const direct =
+        paList.length > 0
+          ? computeDirectUnitCost(paList).directUnitCost
+          : Number(b.material_cost ?? 0) +
+            Number(b.labor_cost ?? 0) +
+            Number(b.equipment_cost ?? 0) +
+            Number(b.subcontractor_cost ?? 0);
+      const m = markupBy.get(b.id);
+      const calc = computeUnitSellingPrice(direct, {
+        ...(m as MarkupSettings | undefined),
+        pricing_policy: ((m as any)?.pricing_policy as "additive_v2" | "cascaded_v1") ?? "additive_v2",
+        round_up_rate: (m as any)?.round_up_rate ?? true,
+      });
+      const unitCost = b.manual_unit_price && b.manual_unit_price > 0 ? b.manual_unit_price : calc.unitSellingPrice;
+      const total = roundTo(Number(b.quantity ?? 0) * unitCost, 2);
+      return { b, unitCost, total };
+    });
+  }, [activeSnapshot, items, paItems, paMarkups]);
+
+  const grandTotal = activeSnapshot
+    ? activeSnapshot.netSellingPrice
+    : roundTo(rows.reduce((s, r) => s + r.total, 0), 2);
 
   const exportExcel = () => {
     if (!project) return;
@@ -281,7 +383,7 @@ function BoqReport() {
       <Toolbar title="تقرير BOQ التفصيلي" onExcel={exportExcel} />
 
       <div className="mb-3 flex flex-wrap items-center gap-3 print:hidden">
-        <Select value={projectId} onValueChange={setProjectId}>
+        <Select value={projectId} onValueChange={(v) => { setProjectId(v); setSelectedVersion("draft"); }}>
           <SelectTrigger className="h-9 w-80"><SelectValue placeholder="اختر مشروعاً…" /></SelectTrigger>
           <SelectContent>
             {projects.map((p) => (
@@ -291,6 +393,22 @@ function BoqReport() {
             ))}
           </SelectContent>
         </Select>
+
+        {snapshots.length > 0 && (
+          <Select value={selectedVersion} onValueChange={setSelectedVersion}>
+            <SelectTrigger className="h-9 w-64">
+              <SelectValue placeholder="الإصدار" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="draft">المسودة الحالية (الأسعار الحية)</SelectItem>
+              {snapshots.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  الإصدار المقدّم #{s.versionNo} ({fmtSAR(s.netSellingPrice)})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {!projectId && (

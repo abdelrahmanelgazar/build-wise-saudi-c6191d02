@@ -1,31 +1,72 @@
-// @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
-// or the app will break with duplicate plugins:
-//   - TanStack devtools (dev-only, first), tanstackStart, viteReact, tailwindcss, tsConfigPaths,
-//     nitro (build-only using cloudflare as a default target), VITE_* env injection, @ path alias,
-//     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
-// Never set ssr.external or resolve.external: the Worker has no runtime module resolution, so
-// the build fails. Never add compression (compressPublicAssets, vite-plugin-compression):
-// hosting already compresses at the edge.
-// You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { defineConfig, loadEnv } from "vite";
+import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import viteReact from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+import tsConfigPaths from "vite-tsconfig-paths";
 import { localEstimationDb } from "./scripts/local-estimation-db";
 
-export default defineConfig({
-  tanstackStart: {
-    // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-    // nitro/vite builds from this
-    server: { entry: "server" },
-  },
-  vite: {
+export default defineConfig(async ({ command, mode }) => {
+  const env = loadEnv(mode, process.cwd(), "VITE_");
+  const envDefine: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    envDefine[`import.meta.env.${key}`] = JSON.stringify(value);
+  }
+
+  const plugins: any[] = [
+    tsConfigPaths({ projects: ["./tsconfig.json"] }),
+    tailwindcss(),
+    tanstackStart({
+      server: { entry: "server" },
+    }),
+  ];
+
+  if (command === "build") {
+    const { nitro } = await import("nitro/vite");
+    plugins.push(
+      nitro({
+        preset: process.env["NITRO_PRESET"] || "cloudflare-module",
+        cloudflare: {
+          nodeCompat: true,
+          deployConfig: true,
+        },
+      } as any),
+    );
+  }
+
+  plugins.push(viteReact() as any, localEstimationDb() as any);
+
+  return {
     base: "./",
-    plugins: [localEstimationDb()],
+    define: envDefine,
+    css: { transformer: "lightningcss" as const },
+    resolve: {
+      alias: { "@": `${process.cwd()}/src` },
+      dedupe: [
+        "react",
+        "react-dom",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+        "@tanstack/react-query",
+        "@tanstack/query-core",
+      ],
+    },
+    optimizeDeps: {
+      include: [
+        "react",
+        "react-dom",
+        "react-dom/client",
+        "react/jsx-runtime",
+        "react/jsx-dev-runtime",
+      ],
+      ignoreOutdatedRequests: true,
+    },
     server: {
       host: "127.0.0.1",
-      port: 5173,
-      strictPort: true,
-      // Avoid reloading on database writes or route-generator output.
+      port: 8080,
+      strictPort: false,
       watch: { ignored: ["**/data/*.sqlite*", "**/src/routeTree.gen.ts"] },
       fs: { deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**", "**/*.sqlite*"] },
     },
-  },
+    plugins,
+  };
 });

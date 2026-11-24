@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
+import { z } from "zod";
 import { estimationClient } from "@/lib/estimation-client";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -27,25 +28,31 @@ import { fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
 import type { Database } from "@/integrations/supabase/types";
 import { useActiveProjectId } from "@/lib/active-project";
-import { Link } from "@tanstack/react-router";
 import { FolderPlus } from "lucide-react";
 import { useDivisions } from "@/lib/divisions";
 import { CSI_DIVISIONS, csiDivisionCode, csiDivisionLabel } from "@/lib/csi-divisions";
 import { useLanguage } from "@/lib/i18n";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
 type ResourceRow = Database["public"]["Tables"]["resources"]["Row"] & {
   name_en?: string | null;
   division?: string | null;
 };
 type ResourceType = Database["public"]["Enums"]["resource_type"];
-type QuotationTab = "subcontractor" | "equipment" | "labor" | "material" | "general_requirements";
+type QuotationTab = "all" | "subcontractor" | "equipment" | "labor" | "material" | "general_requirements";
+
+const resourcesSearchSchema = z.object({
+  tab: z.enum(["all", "subcontractor", "equipment", "labor", "material", "general_requirements"]).optional(),
+});
 
 export const Route = createFileRoute("/_authenticated/resources")({
   head: () => ({ meta: [{ title: 'عروض الأسعار — تقديري' }, { name: "description", content: 'منصة تقديري لإدارة عروض أسعار الموردين ومقاولي الباطن وتصنيف CSI MasterFormat في السوق السعودي.' }, { property: "og:title", content: 'عروض الأسعار — تقديري' }, { property: "og:description", content: 'منصة تقديري لإدارة عروض أسعار الموردين ومقاولي الباطن وتصنيف CSI MasterFormat في السوق السعودي.' }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary_large_image" }] }),
+  validateSearch: resourcesSearchSchema,
   component: ResourcesPage,
 });
 
 const TAB_CONFIG: Record<QuotationTab, { labelKey: string; defaultLabel: string; icon: typeof Boxes; color: string; resourceType: ResourceType }> = {
+  all: { labelKey: "resources.tabAll", defaultLabel: "عام (الكل)", icon: Boxes, color: "text-foreground", resourceType: "material" },
   subcontractor: { labelKey: "resources.tabSubcontractor", defaultLabel: "مقاولو الباطن", icon: Truck, color: "text-chart-4", resourceType: "subcontractor" },
   equipment: { labelKey: "resources.tabEquipment", defaultLabel: "المعدات", icon: Truck, color: "text-primary", resourceType: "equipment" },
   labor: { labelKey: "resources.tabLabour", defaultLabel: "العمالة", icon: Hammer, color: "text-chart-3", resourceType: "labor" },
@@ -55,12 +62,26 @@ const TAB_CONFIG: Record<QuotationTab, { labelKey: string; defaultLabel: string;
 
 function ResourcesPage() {
   const { t, language } = useLanguage();
-  const [tab, setTab] = useState<QuotationTab>("subcontractor");
+  const { tab: searchTab } = Route.useSearch();
+  const [tab, setTab] = useState<QuotationTab>(searchTab ?? "all");
   const [search, setSearch] = useState("");
   const [selectedDivisionFilter, setSelectedDivisionFilter] = useState<string>("all");
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
   const { divisions, rename, remove, labelFor } = useDivisions(projectId);
+
+  useEffect(() => {
+    if (searchTab) setTab(searchTab);
+  }, [searchTab]);
+
+  useRegisterPageActions({
+    pageKey: "resources",
+    hasEditableState: true,
+    queryKeys: [["resources", projectId]],
+    onSave: async () => {
+      await qc.invalidateQueries({ queryKey: ["resources", projectId] });
+    },
+  });
 
   const { data: resources = [], isLoading } = useQuery({
     queryKey: ["resources", projectId],
@@ -79,6 +100,7 @@ function ResourcesPage() {
   });
 
   const ofType = useMemo(() => {
+    if (tab === "all") return resources;
     if (tab === "general_requirements") {
       return resources.filter((r) => csiDivisionCode(r.division) === "01" || r.code?.startsWith("01-") || r.name_ar.includes("متطلبات عامة") || r.name_ar.includes("مكتب الموقع"));
     }
@@ -169,9 +191,11 @@ function ResourcesPage() {
             {(Object.keys(TAB_CONFIG) as QuotationTab[]).map((tKey) => {
               const cfg = TAB_CONFIG[tKey];
               const Icon = cfg.icon;
-              const count = tKey === "general_requirements"
-                ? resources.filter((r) => r.division === "01" || r.code?.startsWith("01-")).length
-                : resources.filter((r) => r.type === tKey).length;
+              const count = tKey === "all"
+                ? resources.length
+                : tKey === "general_requirements"
+                  ? resources.filter((r) => r.division === "01" || r.code?.startsWith("01-")).length
+                  : resources.filter((r) => r.type === tKey).length;
 
               return (
                 <TabsTrigger key={tKey} value={tKey} className="gap-2 text-xs font-medium">

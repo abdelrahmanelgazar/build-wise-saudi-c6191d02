@@ -55,6 +55,7 @@ import {
   type BreakdownResourceType,
 } from "@/lib/breakdown-library";
 import type { Database } from "@/integrations/supabase/types";
+import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 const resourceLabels = {
@@ -79,6 +80,12 @@ function ItemBreakdownLibraryPage() {
   const isEn = language === "en";
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
+
+  useRegisterPageActions({
+    pageKey: "item-breakdown-library",
+    hasEditableState: true,
+    queryKeys: [["boq_items", projectId]],
+  });
 
   const [search, setSearch] = useState("");
   const [selectedDivision, setSelectedDivision] = useState<string>("all");
