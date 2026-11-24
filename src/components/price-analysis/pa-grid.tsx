@@ -11,6 +11,7 @@ import {
   Download,
   ChevronDown,
   ChevronRight,
+  Calculator,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,23 +37,21 @@ type PaItem = Database["public"]["Tables"]["price_analysis_items"]["Row"];
 type Markup = Database["public"]["Tables"]["price_analysis_markup"]["Row"];
 type ResourceType = Database["public"]["Enums"]["resource_type"];
 
-// ─── Labels ──────────────────────────────────────────────────────────────────
+// ─── Dual-Language Resource Type Labels (Plan Section 3) ──────────────────────
 const TYPE_LABEL: Record<ResourceType, string> = {
-  material: "مواد",
-  labor: "عمالة",
-  equipment: "معدات",
-  subcontractor: "مقاول باطن",
+  material: "مواد (Material)",
+  labor: "عمالة (Labor)",
+  equipment: "معدات (Equipment)",
+  subcontractor: "مقاول باطن (Subcontractor)",
 };
 
-// ─── Platform-native colour tokens per section ───────────────────────────────
-// Excel-like layout: bold section headers without coloured bands; a thin left
-// bar keeps the type accent on-brand, and subtotals use a neutral muted tint.
 const SECTION_HEADER_CLS: Record<ResourceType, string> = {
   material:      "bg-muted/40 text-foreground border-r-[3px] border-r-chart-2",
   labor:         "bg-muted/40 text-foreground border-r-[3px] border-r-chart-3",
   equipment:     "bg-muted/40 text-foreground border-r-[3px] border-r-primary",
   subcontractor: "bg-muted/40 text-foreground border-r-[3px] border-r-chart-4",
 };
+
 const SECTION_SUBTOTAL_CLS: Record<ResourceType, string> = {
   material:      "bg-muted/25 text-foreground",
   labor:         "bg-muted/25 text-foreground",
@@ -60,44 +59,21 @@ const SECTION_SUBTOTAL_CLS: Record<ResourceType, string> = {
   subcontractor: "bg-muted/25 text-foreground",
 };
 
-// ─── Cell-style type (rich-text per cell) ────────────────────────────────────
 type CellStyles = Record<
   string,
-  { bold?: boolean; italic?: boolean; align?: "right" | "center" | "left"; fontSize?: number }
+  { bold?: boolean; italic?: boolean; align?: "right" | "center" | "left"; fontSize?: number; note?: string }
 >;
 
-// ─── Type-code abbreviations used in hierarchical task codes ─────────────────
-const TYPE_CODE: Record<ResourceType, string> = {
-  material:      "MA",
-  labor:         "MP",
-  equipment:     "EQ",
-  subcontractor: "SUB",
-};
-
-// ─── Column definitions ───────────────────────────────────────────────────────
 type Col = { key: string; label: string; defaultW: number; align: "center" | "left" | "right" };
 
-const COLS: Col[] = [
-  { key: "level",          label: "رقم البند",           defaultW: 70,  align: "center" },
-  { key: "description_en", label: "Description",    defaultW: 320, align: "left"   },
-  { key: "description",    label: "التوصيف",        defaultW: 320, align: "right"  },
-  { key: "qty",            label: "الكمية",            defaultW: 70,  align: "center" },
-  { key: "uom",            label: "وحدة القياس",           defaultW: 70,  align: "center" },
-  { key: "rate",           label: "التكلفة المباشرة",      defaultW: 110, align: "center" },
-  { key: "amount",         label: "اجمالي تكلفة البند",    defaultW: 140, align: "center" },
-  { key: "__actions",      label: "",               defaultW: 48,  align: "center" },
-];
-
-// ─── Shared cell base class ───────────────────────────────────────────────────
 const CELL = "flex shrink-0 items-center overflow-hidden border-l border-border/40 px-2 py-[5px] text-[11px] tabular-nums";
 
 export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   const qc        = useQueryClient();
   const projectId = useActiveProjectId();
   const { t, language } = useLanguage();
-  const storageKey = `pa-grid-v2-widths:${boqItem.id}`;
+  const storageKey = `pa-grid-v3-widths:${boqItem.id}`;
 
-  // ── Column widths (persisted) ──────────────────────────────────────────────
   const [colWidths, setColWidths] = useState<Record<string, number>>(() => {
     try { return JSON.parse(localStorage.getItem(storageKey) ?? "{}"); }
     catch { return {}; }
@@ -106,23 +82,22 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     localStorage.setItem(storageKey, JSON.stringify(colWidths));
   }, [colWidths, storageKey]);
 
+  // Unified single "التوصيف (Description)" column + dedicated "الملاحظات (Notes)" column
   const cols = useMemo(() => {
-    const isEn = language === "en";
     const rawCols: Col[] = [
-      { key: "level",          label: t("pa.colItemNo", "رقم البند"),      defaultW: 70,  align: "center" },
-      { key: "description_en", label: isEn ? t("common.description", "Description") : "Description (EN)",    defaultW: 320, align: "left"   },
-      { key: "description",    label: isEn ? "التوصيف (عربي)" : t("common.description", "التوصيف"), defaultW: 320, align: "right"  },
-      { key: "qty",            label: t("common.quantity", "الكمية"),   defaultW: 70,  align: "center" },
-      { key: "uom",            label: t("common.unit", "وحدة القياس"),       defaultW: 70,  align: "center" },
-      { key: "rate",           label: t("common.directCost", "التكلفة المباشرة"), defaultW: 110, align: "center" },
-      { key: "amount",         label: t("pa.itemTotalCost", "اجمالي تكلفة البند"),  defaultW: 140, align: "center" },
-      { key: "__actions",      label: "",                     defaultW: 48,  align: "center" },
+      { key: "level",          label: t("pa.colItemNo", "رقم البند"),             defaultW: 75,  align: "center" },
+      { key: "description",    label: "التوصيف (Description)",                    defaultW: 380, align: "right"  },
+      { key: "notes",          label: "الملاحظات (Notes)",                        defaultW: 200, align: "right"  },
+      { key: "qty",            label: t("common.quantity", "الكمية"),             defaultW: 75,  align: "center" },
+      { key: "uom",            label: t("common.unit", "وحدة القياس"),            defaultW: 75,  align: "center" },
+      { key: "rate",           label: t("common.directCost", "التكلفة المباشرة"), defaultW: 120, align: "center" },
+      { key: "amount",         label: "إجمالي التكلفة المباشرة",                   defaultW: 140, align: "center" },
+      { key: "__actions",      label: "",                                         defaultW: 48,  align: "center" },
     ];
     return rawCols.map((c) => ({ ...c, w: colWidths[c.key] ?? c.defaultW }));
-  }, [colWidths, t, language]);
+  }, [colWidths, t]);
   const totalW = cols.reduce((s, c) => s + c.w, 0);
 
-  // ── Collapsed sections ─────────────────────────────────────────────────────
   const [collapsed, setCollapsed] = useState<Set<ResourceType>>(new Set());
   const toggleCollapse = (t: ResourceType) =>
     setCollapsed((prev) => {
@@ -131,7 +106,6 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
       return next;
     });
 
-  // ── Queries ────────────────────────────────────────────────────────────────
   const { data: items = [] } = useQuery({
     queryKey: ["pa_items", boqItem.id],
     queryFn: async () => {
@@ -159,7 +133,6 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     },
   });
 
-  // ── Markup calc ────────────────────────────────────────────────────────────
   const directCost  = items.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0);
   const indirect    = Number(markup?.indirect_pct ?? 0);
   const overhead    = Number(markup?.overhead_pct ?? 0);
@@ -174,7 +147,6 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   const profitVal   = (s3 * profit) / 100;
   const selling     = s3 + profitVal;
 
-  // ── Column resize ──────────────────────────────────────────────────────────
   const resizeRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
   const onColResizeStart = (key: string, startW: number) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -194,7 +166,6 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     window.addEventListener("mouseup",   onUp);
   };
 
-  // ── Mutations ──────────────────────────────────────────────────────────────
   const updateMut = useMutation({
     mutationFn: async (vars: { id: string; patch: Partial<PaItem> }) => {
       const { error } = await estimationClient
@@ -203,6 +174,26 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] }),
     onError:   (e: Error) => toast.error(e.message),
+  });
+
+  const updateBoqItemMut = useMutation({
+    mutationFn: async ({ note, description_ar }: { note?: string; description_ar?: string }) => {
+      const patch: Record<string, unknown> = {};
+      if (note !== undefined) {
+        patch.note = note;
+        patch.cell_styles = { ...((boqItem.cell_styles as Record<string, unknown>) ?? {}), note };
+      }
+      if (description_ar !== undefined) {
+        patch.description_ar = description_ar;
+      }
+      const { error } = await estimationClient.from("boq_items").update(patch as any).eq("id", boqItem.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("تم تحديث بيانات البند بنجاح");
+      qc.invalidateQueries({ queryKey: ["boq_items"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const deleteMut = useMutation({
@@ -224,8 +215,8 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
         user_id:       userId,
         project_id:    projectId,
         resource_type: type,
-        description_ar: "بند جديد",
-        unit:          "وحدة",
+        description_ar: `مكوّن جديد (${TYPE_LABEL[type]})`,
+        unit:          type === "material" ? "م³" : type === "labor" ? "يومية" : type === "equipment" ? "ساعة" : "مقطوعية",
         quantity:      1,
         unit_price:    0,
         sort_order:    maxSort + 1,
@@ -236,7 +227,6 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     onError:   (e: Error) => toast.error(e.message),
   });
 
-  // ── Helper: col width object ───────────────────────────────────────────────
   const cw = (key: string) => {
     const c = cols.find((x) => x.key === key);
     if (!c) return { width: 0, minWidth: 0 };
@@ -245,28 +235,29 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
 
   const TYPES: ResourceType[] = ["material", "labor", "equipment", "subcontractor"];
 
-  // ── Render ─────────────────────────────────────────────────────────────────
-  const typeLabels: Record<ResourceType, string> = {
-    material: t("pa.materials", "مواد"),
-    labor: t("pa.labour", "عمالة"),
-    equipment: t("pa.equipment", "معدات"),
-    subcontractor: t("pa.subcontractor", "مقاول باطن"),
-  };
+  // Combined BOQ item description (Arabic + English verbatim if both present)
+  const boqDescCombined = useMemo(() => {
+    const ar = boqItem.description_ar?.trim() ?? "";
+    const en = (boqItem as any).description_en?.trim() ?? "";
+    if (ar && en && ar !== en) return `${ar}\n${en}`;
+    return ar || en || "—";
+  }, [boqItem]);
+
+  const boqNoteValue = boqItem.note || ((boqItem.cell_styles as any)?.note as string) || "";
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-
       {/* ══ Toolbar ══════════════════════════════════════════════════════════ */}
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/20 px-4 py-2">
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
           <span className="rounded bg-primary/10 px-2 py-0.5 font-mono font-semibold text-primary">
             {boqItem.item_no}
           </span>
-          <span className="truncate max-w-xs">{language === "en" && boqItem.description_en ? boqItem.description_en : boqItem.description_ar}</span>
+          <span className="truncate max-w-sm font-medium text-foreground">{boqDescCombined.split("\n")[0]}</span>
           <span className="text-border">·</span>
           <span>{t("pa.quantityLabel", "الكمية:")} <strong className="text-foreground">{fmtNumber(boqItem.quantity, 2)}</strong> {boqItem.unit}</span>
           <span className="text-border">·</span>
-          <span>{t("pa.sellingPriceLabel", "سعر البيع:")} <strong className="text-primary">{fmtSAR(selling, language)}</strong></span>
+          <span>{t("pa.sellingPriceLabel", "سعر البيع:")} <strong className="text-primary font-bold">{fmtSAR(selling, language)}</strong></span>
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -286,7 +277,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                     "bg-primary":  t === "equipment",
                     "bg-chart-4":  t === "subcontractor",
                   })} />
-                  {typeLabels[t]}
+                  {TYPE_LABEL[t]}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
@@ -331,7 +322,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                 {c.key !== "__actions" && (
                   <span
                     onMouseDown={onColResizeStart(c.key, c.w)}
-                    className="absolute inset-y-0 left-0 z-10 w-1.5 cursor-col-resize hover:bg-primary/50"
+                    className="absolute inset-y-0 start-0 z-10 w-1.5 cursor-col-resize hover:bg-primary/50"
                   />
                 )}
               </div>
@@ -348,15 +339,31 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               className={cn(CELL, "justify-center font-mono text-[11px] font-bold border-l-primary-foreground/20")}>
               {boqItem.item_no ?? "—"}
             </div>
-            {/* Description EN */}
-            <div style={cw("description_en")}
-              className={cn(CELL, "font-bold text-[12px] border-l-primary-foreground/20 justify-start text-left")} dir="ltr">
-              {(boqItem as BoqRow & { description_en?: string | null }).description_en ?? ""}
-            </div>
-            {/* Description AR */}
+            {/* Description (Single unified column) */}
             <div style={cw("description")}
               className={cn(CELL, "font-bold text-[12px] border-l-primary-foreground/20 justify-start text-right")}>
-              {boqItem.description_ar}
+              <EditableCell
+                value={boqItem.description_ar}
+                onSave={(v) => updateBoqItemMut.mutate({ description_ar: v })}
+                className="flex-1"
+              >
+                <div className="whitespace-pre-wrap break-words leading-snug">
+                  {boqDescCombined}
+                </div>
+              </EditableCell>
+            </div>
+            {/* Notes (Editable item note) */}
+            <div style={cw("notes")}
+              className={cn(CELL, "border-l-primary-foreground/20 justify-start text-right")}>
+              <EditableCell
+                value={boqNoteValue}
+                onSave={(v) => updateBoqItemMut.mutate({ note: v })}
+                className="flex-1"
+              >
+                <span className="block w-full whitespace-pre-wrap break-words text-[11px] opacity-90 truncate" title={boqNoteValue || "أضف ملاحظة للبند…"}>
+                  {boqNoteValue || "—"}
+                </span>
+              </EditableCell>
             </div>
             {/* QTY */}
             <div style={cw("qty")}
@@ -368,29 +375,52 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               className={cn(CELL, "justify-center font-bold border-l-primary-foreground/20")}>
               {boqItem.unit ?? "—"}
             </div>
-            {/* Rate */}
+            {/* Rate (Direct Cost per Unit) */}
             <div style={cw("rate")}
               className={cn(CELL, "justify-center font-bold border-l-primary-foreground/20")}>
               {fmtNumber(directCost, 2)}
             </div>
-            {/* Amount */}
+            {/* Amount (Total Direct Cost = Qty * Direct Cost) */}
             <div style={cw("amount")}
-              className={cn(CELL, "justify-center border-l-0 font-bold text-[12px]")}>
+              className={cn(CELL, "justify-center border-l-0 font-bold text-[12px]")}
+              title="إجمالي التكلفة المباشرة للبند = كمية المقايسة × التكلفة المباشرة للوحدة"
+            >
               {fmtNumber(directCost * Number(boqItem.quantity ?? 0), 2)}
             </div>
             {/* Actions placeholder */}
             <div style={cw("__actions")} className={cn(CELL, "border-l-0")} />
           </div>
 
-          {/* ── Empty state ── */}
+          {/* ── Empty state with quick add buttons (Plan Section 3) ── */}
           {items.length === 0 && (
-            <div className="flex flex-col items-center justify-center gap-3 py-16 text-center text-muted-foreground">
-              <div className="text-5xl opacity-20">📋</div>
-              <p className="text-sm">لا توجد بنود — أضف صفوفاً أو استورد من Excel.</p>
+            <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
+              <div className="rounded-full bg-primary/10 p-4 ring-1 ring-primary/20">
+                <Calculator className="h-8 w-8 text-primary" />
+              </div>
+              <div className="max-w-md space-y-1">
+                <h3 className="text-base font-semibold text-foreground">البند غير مسعّر بعد</h3>
+                <p className="text-xs text-muted-foreground">
+                  أضف مكوّنات التكلفة المباشرة للبدء في تحليل سعر البند واشتقاق سعر البيع بعد هوامش الربح:
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                {TYPES.map((t) => (
+                  <Button
+                    key={t}
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs font-semibold"
+                    onClick={() => addMut.mutate(t)}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    {TYPE_LABEL[t]}
+                  </Button>
+                ))}
+              </div>
             </div>
           )}
 
-          {/* ── Sections ── */}
+          {/* ── Resource Sections ── */}
           {TYPES.map((type) => {
             const sectionItems = items.filter((i) => i.resource_type === type);
             const subtotal     = sectionItems.reduce(
@@ -400,8 +430,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
 
             return (
               <div key={type}>
-
-                {/* Section header — Excel-style bold (size 14) without colour band */}
+                {/* Section header — Dual-language label + item count */}
                 <div
                   onClick={() => toggleCollapse(type)}
                   className={cn(
@@ -410,48 +439,38 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                   )}
                   style={{ minWidth: totalW }}
                 >
-                  {/* Level (with collapse icon) */}
                   <div style={cw("level")}
                     className={cn(CELL, "justify-center text-[11px] text-muted-foreground")}>
                     {isCollapsed
                       ? <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                       : <ChevronDown  className="h-3.5 w-3.5 shrink-0" />}
                   </div>
-                  {/* Description EN (section label, left-aligned) */}
-                  <div style={cw("description_en")}
-                    className={cn(CELL, "gap-1.5 text-[13px] font-bold justify-start text-left")} dir="ltr">
-                    {type === "material" ? "Materials" : type === "labor" ? "Labour" : type === "equipment" ? "Equipment" : "Subcontractor"}
-                    <span className="text-[10px] font-normal text-muted-foreground">({sectionItems.length})</span>
-                  </div>
-                  {/* Description AR */}
                   <div style={cw("description")}
-                    className={cn(CELL, "gap-1.5 text-[13px] font-bold justify-start text-right")}>
-                    {TYPE_LABEL[type]}
+                    className={cn(CELL, "gap-2 text-[13px] font-bold justify-start text-right")}>
+                    <span>{TYPE_LABEL[type]}</span>
+                    <span className="text-[11px] font-normal text-muted-foreground">({sectionItems.length})</span>
                   </div>
-                  {/* QTY */}
+                  <div style={cw("notes")} className={cn(CELL, "justify-start")} />
                   <div style={cw("qty")}   className={cn(CELL, "justify-center")} />
-                  {/* UOM */}
                   <div style={cw("uom")}   className={cn(CELL, "justify-center")} />
-                  {/* Rate */}
                   <div style={cw("rate")}  className={cn(CELL, "justify-center")} />
-                  {/* Amount (section subtotal preview) */}
                   <div style={cw("amount")}
                     className={cn(CELL, "justify-center border-l-0 text-[12px] font-bold")}>
                     {subtotal > 0 ? fmtNumber(subtotal, 2) : ""}
                   </div>
-                  {/* Actions */}
                   <div style={cw("__actions")} className={cn(CELL, "border-l-0")} />
                 </div>
 
-                {/* Item rows */}
+                {/* Component rows */}
                 {!isCollapsed && sectionItems.map((it, idx) => {
                   const cellStyles = ((it.cell_styles ?? {}) as CellStyles);
                   const total      = Number(it.quantity) * Number(it.unit_price);
+                  const noteVal    = (cellStyles as any)?.note ?? "";
 
                   return (
                     <div
                       key={it.id}
-                      className="group flex border-b border-border/40 hover:bg-muted/10"
+                      className="group flex border-b border-border/40 hover:bg-muted/10 transition-colors"
                       style={{ minWidth: totalW, minHeight: 30 }}
                     >
                       {/* Level */}
@@ -460,26 +479,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                         {idx + 1}
                       </div>
 
-                      {/* Description EN (editable) */}
-                      <div
-                        className={cn(CELL, "gap-1")}
-                        style={{ ...cw("description_en"), textAlign: "left" }}
-                        dir="ltr"
-                      >
-                        <EditableCell
-                          value={(it as PaItem & { description_en?: string | null }).description_en ?? ""}
-                          onSave={(v) =>
-                            updateMut.mutate({ id: it.id, patch: { description_en: v } as Partial<PaItem> })
-                          }
-                          className="flex-1"
-                        >
-                          <span className="block w-full whitespace-pre-wrap break-words text-[11px] text-left">
-                            {(it as PaItem & { description_en?: string | null }).description_en ?? ""}
-                          </span>
-                        </EditableCell>
-                      </div>
-
-                      {/* Description AR (editable) */}
+                      {/* Description (Unified editable cell) */}
                       <div
                         className={cn(CELL, "gap-1", {
                           "font-bold": cellStyles["description"]?.bold,
@@ -510,6 +510,25 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                             updateMut.mutate({ id: it.id, patch: { cell_styles: next as unknown as never } })
                           }
                         />
+                      </div>
+
+                      {/* Notes (Independent component note) */}
+                      <div
+                        className={cn(CELL, "gap-1")}
+                        style={cw("notes")}
+                      >
+                        <EditableCell
+                          value={noteVal}
+                          onSave={(v) => {
+                            const nextStyles = { ...cellStyles, note: v };
+                            updateMut.mutate({ id: it.id, patch: { cell_styles: nextStyles as unknown as never } });
+                          }}
+                          className="flex-1"
+                        >
+                          <span className="block w-full whitespace-pre-wrap break-words text-[11px] text-muted-foreground truncate" title={noteVal}>
+                            {noteVal || "—"}
+                          </span>
+                        </EditableCell>
                       </div>
 
                       {/* QTY (editable) */}
@@ -580,16 +599,14 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                     className={cn("flex border-b text-[11px] font-semibold", SECTION_SUBTOTAL_CLS[type])}
                     style={{ minWidth: totalW }}
                   >
-                    <div style={cw("level")}          className={cn(CELL, "justify-center")} />
-                    <div style={cw("description_en")} className={cn(CELL, "justify-start text-left font-bold")} dir="ltr">
-                      Total {type === "material" ? "Materials" : type === "labor" ? "Labour" : type === "equipment" ? "Equipment" : "Subcontractor"}
-                    </div>
-                    <div style={cw("description")}    className={cn(CELL, "justify-start text-right font-bold")}>
+                    <div style={cw("level")}       className={cn(CELL, "justify-center")} />
+                    <div style={cw("description")} className={cn(CELL, "justify-start text-right font-bold")}>
                       مجموع {TYPE_LABEL[type]}
                     </div>
-                    <div style={cw("qty")}            className={cn(CELL, "justify-center")} />
-                    <div style={cw("uom")}            className={cn(CELL, "justify-center")} />
-                    <div style={cw("rate")}           className={cn(CELL, "justify-center")} />
+                    <div style={cw("notes")}       className={cn(CELL, "justify-start")} />
+                    <div style={cw("qty")}         className={cn(CELL, "justify-center")} />
+                    <div style={cw("uom")}         className={cn(CELL, "justify-center")} />
+                    <div style={cw("rate")}        className={cn(CELL, "justify-center")} />
                     <div style={cw("amount")}
                       className={cn(CELL, "justify-center border-l-0 font-bold")}>
                       {fmtNumber(subtotal, 2)}
@@ -607,10 +624,12 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               className="sticky bottom-0 z-10 flex border-t-2 border-primary/40 bg-primary/10 text-[12px] font-bold backdrop-blur"
               style={{ minWidth: totalW }}
             >
-              <div style={cw("level")}      className={cn(CELL, "justify-center")} />
+              <div style={cw("level")} className={cn(CELL, "justify-center")} />
               <div
-                style={{ width: (cols[1]?.w ?? 0) + (cols[2]?.w ?? 0) + (cols[3]?.w ?? 0) + (cols[4]?.w ?? 0) + (cols[5]?.w ?? 0),
-                         minWidth: (cols[1]?.w ?? 0) + (cols[2]?.w ?? 0) + (cols[3]?.w ?? 0) + (cols[4]?.w ?? 0) + (cols[5]?.w ?? 0) }}
+                style={{
+                  width: (cols[1]?.w ?? 0) + (cols[2]?.w ?? 0) + (cols[3]?.w ?? 0) + (cols[4]?.w ?? 0) + (cols[5]?.w ?? 0),
+                  minWidth: (cols[1]?.w ?? 0) + (cols[2]?.w ?? 0) + (cols[3]?.w ?? 0) + (cols[4]?.w ?? 0) + (cols[5]?.w ?? 0),
+                }}
                 className={cn(CELL, "justify-end text-primary")}
               >
                 إجمالي التكلفة المباشرة للوحدة ({boqItem.unit ?? "وحدة"})
@@ -649,7 +668,6 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   );
 }
 
-// ─── SumLine ─────────────────────────────────────────────────────────────────
 function SumLine({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center justify-between">
@@ -659,7 +677,6 @@ function SumLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-// ─── MarkupLine ───────────────────────────────────────────────────────────────
 function MarkupLine({
   label, pct, value, field, boqItemId, markup, projectId, lang,
 }: {
@@ -719,7 +736,6 @@ function MarkupLine({
   );
 }
 
-// ─── EditableCell ─────────────────────────────────────────────────────────────
 function EditableCell({
   value,
   onSave,
@@ -749,8 +765,8 @@ function EditableCell({
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); }
             if (e.key === "Escape")               { setDraft(value); setEditing(false); }
           }}
-          className="h-full w-full resize-none bg-background px-1 text-[11px] outline-none ring-1 ring-primary"
-          style={{ direction: "inherit", textAlign: "inherit" }}
+          className="w-full resize-none rounded border border-primary bg-background px-1.5 py-0.5 text-[11px] leading-tight outline-none focus:ring-1 focus:ring-primary"
+          rows={Math.min(4, Math.max(1, draft.split("\n").length))}
         />
       </div>
     );
@@ -758,17 +774,16 @@ function EditableCell({
 
   return (
     <div
-      className={cn(className, "cursor-text")}
+      onClick={() => setEditing(true)}
+      className={cn("cursor-pointer rounded px-1 py-0.5 hover:bg-muted/40", className)}
       style={style}
-      onDoubleClick={() => setEditing(true)}
-      title="انقر مرّتين للتحرير"
+      title="انقر للتحرير"
     >
       {children}
     </div>
   );
 }
 
-// ─── FormatPopover ────────────────────────────────────────────────────────────
 function FormatPopover({
   styles,
   colKey,
@@ -776,41 +791,101 @@ function FormatPopover({
 }: {
   styles: CellStyles;
   colKey: string;
-  onChange: (next: CellStyles) => void;
+  onChange: (s: CellStyles) => void;
 }) {
-  const cur = styles[colKey] ?? {};
-  const set = (patch: Partial<CellStyles[string]>) =>
-    onChange({ ...styles, [colKey]: { ...cur, ...patch } });
+  const st = styles[colKey] ?? {};
+  const setBold = () =>
+    onChange({ ...styles, [colKey]: { ...st, bold: !st.bold } });
+  const setItalic = () =>
+    onChange({ ...styles, [colKey]: { ...st, italic: !st.italic } });
+  const setAlign = (align: "right" | "center" | "left") =>
+    onChange({ ...styles, [colKey]: { ...st, align } });
+  const setSize = (delta: number) => {
+    const cur = st.fontSize ?? 11;
+    onChange({ ...styles, [colKey]: { ...st, fontSize: Math.max(9, Math.min(18, cur + delta)) } });
+  };
 
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
-          className="invisible h-5 w-5 shrink-0 rounded text-muted-foreground hover:bg-muted hover:text-foreground group-hover:visible"
-          onClick={(e) => e.stopPropagation()}
-          title="تنسيق النص"
+          type="button"
+          className="opacity-0 transition-opacity group-hover:opacity-60 hover:opacity-100! text-muted-foreground p-0.5"
+          title="تنسيق الخلية"
         >
-          <Bold className="mx-auto h-3 w-3" />
+          <span className="text-[10px] font-mono">Aa</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-1.5" align="end" dir="rtl">
-        <div className="flex items-center gap-0.5">
-          <button className={cn("rounded p-1 hover:bg-muted", cur.bold   && "bg-muted")} onClick={() => set({ bold:   !cur.bold   })}><Bold   className="h-3.5 w-3.5" /></button>
-          <button className={cn("rounded p-1 hover:bg-muted", cur.italic && "bg-muted")} onClick={() => set({ italic: !cur.italic })}><Italic className="h-3.5 w-3.5" /></button>
-          <div className="mx-1 h-4 w-px bg-border" />
-          <button className={cn("rounded p-1 hover:bg-muted", cur.align === "right"  && "bg-muted")} onClick={() => set({ align: "right"  })}><AlignRight  className="h-3.5 w-3.5" /></button>
-          <button className={cn("rounded p-1 hover:bg-muted", cur.align === "center" && "bg-muted")} onClick={() => set({ align: "center" })}><AlignCenter className="h-3.5 w-3.5" /></button>
-          <button className={cn("rounded p-1 hover:bg-muted", cur.align === "left"   && "bg-muted")} onClick={() => set({ align: "left"   })}><AlignLeft   className="h-3.5 w-3.5" /></button>
-          <div className="mx-1 h-4 w-px bg-border" />
-          <select
-            value={cur.fontSize ?? 12}
-            onChange={(e) => set({ fontSize: Number(e.target.value) })}
-            className="rounded border border-border bg-background px-1 py-0.5 text-xs"
+      <PopoverContent className="w-auto p-1.5" align="start">
+        <div className="flex items-center gap-1 text-xs">
+          <Button
+            size="icon"
+            variant={st.bold ? "secondary" : "ghost"}
+            className="h-7 w-7"
+            onClick={setBold}
+            title="عريض"
           >
-            {[10, 11, 12, 13, 14, 16, 18, 20].map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
+            <Bold className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant={st.italic ? "secondary" : "ghost"}
+            className="h-7 w-7"
+            onClick={setItalic}
+            title="مائل"
+          >
+            <Italic className="h-3.5 w-3.5" />
+          </Button>
+          <div className="mx-1 h-4 w-px bg-border" />
+          <Button
+            size="icon"
+            variant={st.align === "right" ? "secondary" : "ghost"}
+            className="h-7 w-7"
+            onClick={() => setAlign("right")}
+            title="محاذاة لليمين"
+          >
+            <AlignRight className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant={st.align === "center" ? "secondary" : "ghost"}
+            className="h-7 w-7"
+            onClick={() => setAlign("center")}
+            title="توسيط"
+          >
+            <AlignCenter className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant={st.align === "left" ? "secondary" : "ghost"}
+            className="h-7 w-7"
+            onClick={() => setAlign("left")}
+            title="محاذاة لليسار"
+          >
+            <AlignLeft className="h-3.5 w-3.5" />
+          </Button>
+          <div className="mx-1 h-4 w-px bg-border" />
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-1.5 text-xs font-mono"
+            onClick={() => setSize(-1)}
+            title="تصغير الخط"
+          >
+            A-
+          </Button>
+          <span className="text-[10px] text-muted-foreground w-4 text-center font-mono">
+            {st.fontSize ?? 11}
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-1.5 text-xs font-mono"
+            onClick={() => setSize(1)}
+            title="تكبير الخط"
+          >
+            A+
+          </Button>
         </div>
       </PopoverContent>
     </Popover>

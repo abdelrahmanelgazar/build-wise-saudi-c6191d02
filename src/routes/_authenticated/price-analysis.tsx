@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
 import { estimationClient } from "@/lib/estimation-client";
 import { Button } from "@/components/ui/button";
@@ -11,11 +11,22 @@ import {
   Sparkles,
   Calculator,
   ChevronRight,
+  ChevronLeft,
   Menu,
   ArrowRight,
   ExternalLink,
   Plus,
+  FolderKanban,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import {
   Sheet,
@@ -24,13 +35,14 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { useActiveProjectId } from "@/lib/active-project";
+import { useActiveProjectId, setActiveProjectId } from "@/lib/active-project";
 import { PaGrid } from "@/components/price-analysis/pa-grid";
 import { BoqSidebar } from "@/components/price-analysis/boq-sidebar";
 import { InPlaceTemplateCaller } from "@/components/price-analysis/in-place-template-caller";
 import type { Database } from "@/integrations/supabase/types";
 import { useLanguage } from "@/lib/i18n";
 import { fmtNumber, fmtSAR } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
@@ -60,7 +72,7 @@ export const Route = createFileRoute("/_authenticated/price-analysis")({
 });
 
 function PriceAnalysisPage() {
-  const { t, language } = useLanguage();
+  const { t, language, direction } = useLanguage();
   const isEn = language === "en";
   const { item } = Route.useSearch();
   const navigate = Route.useNavigate();
@@ -71,6 +83,54 @@ function PriceAnalysisPage() {
   const [templateCallerOpen, setTemplateCallerOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isAddingDemo, setIsAddingDemo] = useState(false);
+
+  // Sidebar resizable width & collapsible state (persisted)
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      return Number(localStorage.getItem("taqdiri:pa_sidebar_width")) || 340;
+    } catch {
+      return 340;
+    }
+  });
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("taqdiri:pa_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("taqdiri:pa_sidebar_width", String(sidebarWidth));
+    } catch { /* storage full */ }
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("taqdiri:pa_sidebar_collapsed", String(sidebarCollapsed));
+    } catch { /* storage full */ }
+  }, [sidebarCollapsed]);
+
+  // Fetch available projects
+  const { data: projects = [] } = useQuery({
+    queryKey: ["projects"],
+    queryFn: async () => {
+      const { data, error } = await estimationClient
+        .from("projects")
+        .select("id, name, client_name")
+        .order("project_no", { ascending: false });
+      if (error) throw error;
+      return data as { id: string; name: string; client_name: string | null }[];
+    },
+  });
+
+  // Auto-activate first project if none active
+  useEffect(() => {
+    if (!projectId && projects.length > 0 && projects[0]?.id) {
+      setActiveProjectId(projects[0].id);
+    }
+  }, [projectId, projects]);
 
   // Fetch BOQ items for active project
   const { data: boqItems = [], isLoading } = useQuery({
@@ -112,6 +172,29 @@ function PriceAnalysisPage() {
     setMobileSidebarOpen(false);
   };
 
+  // Drag resizing for sidebar
+  const resizingRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const handleResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const dx = (ev.clientX - resizingRef.current.startX) * (direction === "rtl" ? -1 : 1);
+      const newWidth = Math.max(260, Math.min(520, resizingRef.current.startWidth + dx));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      resizingRef.current = null;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
   const handleAddDemoItem = async () => {
     if (!projectId) {
       toast.error("يرجى اختيار مشروع أولاً");
@@ -132,7 +215,11 @@ function PriceAnalysisPage() {
           description_ar: "خرسانة مسلحة للأساسات والقواعد — م³ (شاملة الخرسانة C35 وحديد التسليح والمضخة)",
           description_en: "Reinforced Concrete for Foundations — m³ (Including C35 ready-mix, steel rebar & pump)",
           unit: "م³",
-          quantity: 50,
+          quantity: 6000,
+          material_cost: 210,
+          labor_cost: 45,
+          equipment_cost: 32.25,
+          subcontractor_cost: 25,
           sheet_name: "أعمال الخرسانة",
           sort_order: 1,
           level: 1,
@@ -155,7 +242,7 @@ function PriceAnalysisPage() {
     }
   };
 
-  if (!projectId) {
+  if (!projectId && projects.length === 0) {
     return (
       <div className="p-6">
         <div className="rounded-lg border border-dashed border-border bg-card p-10 text-center">
@@ -174,7 +261,6 @@ function PriceAnalysisPage() {
     );
   }
 
-  // Calculate quick stats for selected item
   const directUnitCost = selected
     ? (selected.material_cost ?? 0) +
       (selected.labor_cost ?? 0) +
@@ -184,18 +270,107 @@ function PriceAnalysisPage() {
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden bg-background">
-      {/* Master-Detail Container */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Desktop Sidebar (Master List): in RTL displays on the right, in LTR on the left */}
-        <div className="hidden lg:flex shrink-0">
-          <BoqSidebar
-            items={boqItems}
-            selectedId={selectedId}
-            onSelect={handleSelectItem}
-            isLoading={isLoading}
-            onAddDemoItem={handleAddDemoItem}
-          />
+      {/* Top Application Bar */}
+      <div className="flex items-center justify-between border-b border-border bg-card/80 px-4 py-2 shrink-0 gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="h-8 gap-1.5 text-xs hidden lg:flex shrink-0 font-medium"
+            title={sidebarCollapsed ? "إظهار بنود جدول الكميات" : "طي القائمة الجانبية"}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4 text-primary" /> : <PanelLeftClose className="h-4 w-4" />}
+            <span>بنود جدول الكميات</span>
+          </Button>
+
+          {/* Project Selector in Price Analysis Header */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <FolderKanban className="h-3.5 w-3.5 text-primary shrink-0 hidden sm:block" />
+            <Select
+              value={projectId ?? ""}
+              onValueChange={(val) => {
+                setActiveProjectId(val);
+                setSelectedId(null);
+              }}
+            >
+              <SelectTrigger className="h-8 max-w-[280px] sm:max-w-[340px] text-xs bg-background/60 truncate font-semibold">
+                <SelectValue placeholder="اختر المشروع" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Link to="/boq">
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+              <Calculator className="h-3.5 w-3.5 text-primary" />
+              <span>جدول الكميات</span>
+            </Button>
+          </Link>
+          <Link to="/item-breakdown-library">
+            <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs hidden sm:flex text-muted-foreground">
+              <Layers className="h-3.5 w-3.5 text-primary" />
+              <span>مكتبة النماذج</span>
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* Master-Detail Container */}
+      <div className="flex flex-1 overflow-hidden relative">
+        {/* Desktop Sidebar (Master List) */}
+        {!sidebarCollapsed && (
+          <div className="hidden lg:flex shrink-0 relative" style={{ width: `${sidebarWidth}px` }}>
+            <BoqSidebar
+              items={boqItems}
+              selectedId={selectedId}
+              onSelect={handleSelectItem}
+              isLoading={isLoading}
+              onAddDemoItem={handleAddDemoItem}
+              width={sidebarWidth}
+              onToggleCollapse={() => setSidebarCollapsed(true)}
+            />
+            {/* Draggable resize handle */}
+            <div
+              onMouseDown={handleResizeMouseDown}
+              className={cn(
+                "absolute top-0 bottom-0 w-2 cursor-col-resize hover:bg-primary/40 transition-colors z-20",
+                direction === "rtl" ? "start-0 -ms-1" : "end-0 -me-1"
+              )}
+              title="اسحب لتعديل عرض قائمة البنود"
+            />
+          </div>
+        )}
+
+        {/* Collapsed Sidebar Restore Tab */}
+        {sidebarCollapsed && (
+          <div className="hidden lg:flex shrink-0 border-e border-border bg-card/40 flex-col items-center py-3 px-1 gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-primary hover:bg-primary/10"
+              onClick={() => setSidebarCollapsed(false)}
+              title="إظهار بنود جدول الكميات"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </Button>
+            <span
+              className="text-[10px] text-muted-foreground font-medium whitespace-nowrap cursor-pointer select-none"
+              style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+              onClick={() => setSidebarCollapsed(false)}
+            >
+              بنود جدول الكميات ({boqItems.length})
+            </span>
+          </div>
+        )}
 
         {/* Main Work Area (Detail Editor) */}
         <main className="flex flex-1 flex-col overflow-hidden min-w-0">
@@ -204,7 +379,7 @@ function PriceAnalysisPage() {
               {/* Active Item Top Banner & Actions Header */}
               <div className="border-b border-border bg-card/70 px-4 py-2.5 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  {/* Left (or Right in RTL): Mobile Sidebar Trigger + Item Info */}
+                  {/* Item info */}
                   <div className="flex items-center gap-2.5 min-w-0">
                     <Sheet open={mobileSidebarOpen} onOpenChange={setMobileSidebarOpen}>
                       <SheetTrigger asChild>
@@ -227,7 +402,7 @@ function PriceAnalysisPage() {
                       </SheetContent>
                     </Sheet>
 
-                    <Badge variant="outline" className="font-mono text-xs px-2 py-0.5 shrink-0">
+                    <Badge variant="outline" className="font-mono text-xs px-2 py-0.5 shrink-0 bg-primary/10 text-primary border-primary/30">
                       {selected.item_no}
                     </Badge>
 
@@ -242,7 +417,7 @@ function PriceAnalysisPage() {
                     )}
                   </div>
 
-                  {/* Action Buttons */}
+                  {/* Actions */}
                   <div className="flex items-center gap-2 shrink-0">
                     <Button
                       size="sm"
@@ -252,22 +427,6 @@ function PriceAnalysisPage() {
                       <Sparkles className="h-3.5 w-3.5" />
                       {t("pa.callBreakdownFromLibrary", "استدعاء تحليل من المكتبة")}
                     </Button>
-
-                    <Link to="/item-breakdown-library">
-                      <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-                        <Layers className="h-3.5 w-3.5 text-primary" />
-                        <span className="hidden sm:inline">
-                          {t("breakdown.title", "مكتبة نماذج البنود")}
-                        </span>
-                      </Button>
-                    </Link>
-
-                    <Link to="/boq">
-                      <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground">
-                        <Calculator className="h-3.5 w-3.5" />
-                        <span className="hidden md:inline">جدول الكميات</span>
-                      </Button>
-                    </Link>
                   </div>
                 </div>
 
@@ -293,7 +452,7 @@ function PriceAnalysisPage() {
                     <>
                       <div className="h-3 w-px bg-border" />
                       <div className="flex items-center gap-1.5">
-                        <span>إجمالي التكلفة المباشرة للكمية:</span>
+                        <span>إجمالي التكلفة المباشرة للبند:</span>
                         <span className="font-mono font-bold text-primary">
                           {fmtSAR(directUnitCost * Number(selected.quantity), language)}
                         </span>
@@ -325,7 +484,7 @@ function PriceAnalysisPage() {
                     لا توجد بنود في جدول كميات هذا المشروع
                   </h3>
                   <p className="text-xs text-muted-foreground leading-relaxed">
-                    يمكنك إضافة بند خرسانة مسلحة تجريبي لاختبار دورة التحليل واستدعاء النماذج فوراً، أو الذهاب لجدول الكميات لاستيراد مقايسة كاملة.
+                    يمكنك إضافة بند خرسانة مسلحة تجريبي (6,000 م³) لاختبار دورة التحليل وتطبيق الهوامش فوراً، أو الذهاب لجدول الكميات لاستيراد مقايسة كاملة.
                   </p>
                   <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
                     <Button
@@ -335,7 +494,7 @@ function PriceAnalysisPage() {
                       className="gap-2 text-xs font-semibold bg-primary text-primary-foreground shadow-sm"
                     >
                       <Plus className="h-4 w-4" />
-                      {isAddingDemo ? "جاري الإضافة…" : "إضافة بند خرسانة مسلحة (50 م³) لاختبار التحليل"}
+                      {isAddingDemo ? "جاري الإضافة…" : "إضافة بند خرسانة مسلحة (6,000 م³) لاختبار التحليل"}
                     </Button>
                     <Link to="/boq">
                       <Button size="sm" variant="outline" className="gap-2 text-xs">

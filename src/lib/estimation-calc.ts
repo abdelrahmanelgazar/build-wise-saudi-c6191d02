@@ -45,6 +45,10 @@ export interface ProjectFinancialSummary {
   equipmentTotal: number;
   subcontractorTotal: number;
   totalDirectCost: number;
+  indirectTotal: number;
+  overheadTotal: number;
+  riskTotal: number;
+  profitTotal: number;
   netSellingPrice: number;
   totalMarkupAmount: number;
   totalMarkupPercentage: number;
@@ -57,6 +61,21 @@ export interface ProjectFinancialSummary {
   unpricedItemsCount: number;
   missingPriceItems: Array<{ id: string; item_no: string; description_ar: string }>;
   canIssueTender: boolean;
+}
+
+/**
+ * Convert Arabic/Indic digits and formatted numeric strings (e.g. "١٬٢٥٠٫٥٠" or "1,250.50") to a standard JavaScript number
+ */
+export function parseArabicNumber(val: unknown): number {
+  if (val === null || val === undefined || val === "") return 0;
+  if (typeof val === "number") return Number.isFinite(val) ? val : 0;
+  let str = String(val).trim();
+  // Arabic-Indic digits conversion (٠١٢٣٤٥٦٧٨٩ -> 0123456789)
+  str = str.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)));
+  // Arabic decimal separator (٫) -> dot, Arabic thousands separator (٬) -> empty
+  str = str.replace(/٫/g, ".").replace(/٬/g, "").replace(/,/g, "").replace(/\s+/g, "");
+  const num = Number(str);
+  return Number.isFinite(num) ? num : 0;
 }
 
 /**
@@ -164,8 +183,10 @@ export function computeUnitSellingPrice(
   if (mode === "margin") {
     // Selling Price = Loaded Cost / (1 - margin%)
     // margin must be strictly less than 100%
-    const margin = Math.min(profit, 99.99);
-    unitSellingPrice = loadedCost / (1 - margin / 100);
+    if (profit >= 100) {
+      throw new Error("هامش الربح كنسبة من سعر البيع يجب أن يكون أقل قطعيًا من 100%");
+    }
+    unitSellingPrice = loadedCost / (1 - profit / 100);
   } else {
     // Standard Cost-Plus: Profit added onto loaded cost
     const profitVal = (loadedCost * profit) / 100;
@@ -342,6 +363,10 @@ export function computeProjectFinancials(params: {
   let equipmentTotal = 0;
   let subcontractorTotal = 0;
   let totalDirectCost = 0;
+  let indirectTotal = 0;
+  let overheadTotal = 0;
+  let riskTotal = 0;
+  let profitTotal = 0;
   let netSellingPrice = 0;
 
   const missingPriceItems: Array<{ id: string; item_no: string; description_ar: string }> = [];
@@ -385,11 +410,36 @@ export function computeProjectFinancials(params: {
     equipmentTotal += roundTo(qty * line.equipmentCost, currencyDecimals);
     subcontractorTotal += roundTo(qty * line.subcontractorCost, currencyDecimals);
 
+    // Track loadings breakdown
+    if (!line.isGroup && !line.isIncludedElsewhere && line.directUnitCost > 0) {
+      if (markup?.custom_factor !== undefined && markup.custom_factor > 0) {
+        profitTotal += roundTo(line.lineSellingPrice - line.lineDirectCost, currencyDecimals);
+      } else {
+        const directU = line.directUnitCost;
+        const indVal = (directU * Number(markup?.indirect_pct ?? 0)) / 100;
+        const s1 = directU + indVal;
+        const ovVal = (s1 * Number(markup?.overhead_pct ?? 0)) / 100;
+        const s2 = s1 + ovVal;
+        const rskVal = (s2 * Number(markup?.risk_pct ?? 0)) / 100;
+        const loadedU = s2 + rskVal;
+        const profitU = line.unitSellingPrice - loadedU;
+
+        indirectTotal += roundTo(qty * indVal, currencyDecimals);
+        overheadTotal += roundTo(qty * ovVal, currencyDecimals);
+        riskTotal += roundTo(qty * rskVal, currencyDecimals);
+        profitTotal += roundTo(qty * profitU, currencyDecimals);
+      }
+    }
+
     totalDirectCost += line.lineDirectCost;
     netSellingPrice += line.lineSellingPrice;
   }
 
   totalDirectCost = roundTo(totalDirectCost, currencyDecimals);
+  indirectTotal = roundTo(indirectTotal, currencyDecimals);
+  overheadTotal = roundTo(overheadTotal, currencyDecimals);
+  riskTotal = roundTo(riskTotal, currencyDecimals);
+  profitTotal = roundTo(profitTotal, currencyDecimals);
   netSellingPrice = roundTo(netSellingPrice, currencyDecimals);
 
   const totalMarkupAmount = roundTo(netSellingPrice - totalDirectCost, currencyDecimals);
@@ -408,6 +458,10 @@ export function computeProjectFinancials(params: {
     equipmentTotal: roundTo(equipmentTotal, currencyDecimals),
     subcontractorTotal: roundTo(subcontractorTotal, currencyDecimals),
     totalDirectCost,
+    indirectTotal,
+    overheadTotal,
+    riskTotal,
+    profitTotal,
     netSellingPrice,
     totalMarkupAmount,
     totalMarkupPercentage,

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Search, CheckCircle2, Clock, Layers, Filter } from "lucide-react";
+import { Search, CheckCircle2, Clock, Layers, Filter, ChevronLeft, ChevronRight } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,8 @@ interface BoqSidebarProps {
   onSelect: (item: BoqRow) => void;
   isLoading?: boolean;
   onAddDemoItem?: () => void;
+  width?: number;
+  onToggleCollapse?: () => void;
 }
 
 export function BoqSidebar({
@@ -32,8 +34,10 @@ export function BoqSidebar({
   onSelect,
   isLoading = false,
   onAddDemoItem,
+  width,
+  onToggleCollapse,
 }: BoqSidebarProps) {
-  const { t, language } = useLanguage();
+  const { t, language, direction } = useLanguage();
   const isEn = language === "en";
 
   const [search, setSearch] = useState("");
@@ -52,7 +56,6 @@ export function BoqSidebar({
   // Filtered items
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
-      // Search check
       const query = search.trim().toLowerCase();
       const matchSearch =
         !query ||
@@ -62,12 +65,10 @@ export function BoqSidebar({
 
       if (!matchSearch) return false;
 
-      // Sheet check
       if (sheetFilter !== "all" && item.sheet_name !== sheetFilter) {
         return false;
       }
 
-      // Priced status check
       const hasPrice =
         (item.material_cost ?? 0) > 0 ||
         (item.labor_cost ?? 0) > 0 ||
@@ -92,7 +93,13 @@ export function BoqSidebar({
   }, [items]);
 
   return (
-    <aside className="flex h-full w-full flex-col border-border bg-card/60 lg:w-[350px] lg:border-e shrink-0">
+    <aside
+      style={width ? { width: `${width}px` } : undefined}
+      className={cn(
+        "flex h-full w-full flex-col border-border bg-card/60 shrink-0 select-none",
+        direction === "rtl" ? "border-l" : "border-r"
+      )}
+    >
       {/* Header */}
       <div className="border-b border-border p-3 space-y-2.5">
         <div className="flex items-center justify-between">
@@ -109,6 +116,17 @@ export function BoqSidebar({
             <Badge variant="secondary" className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20 text-[10px] px-1.5 py-0 font-mono">
               {pricedCount} {t("pa.statusPriced", "مسعّر")}
             </Badge>
+            {onToggleCollapse && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-muted-foreground hover:text-foreground hidden lg:flex"
+                onClick={onToggleCollapse}
+                title="طي قائمة البنود"
+              >
+                {direction === "rtl" ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+              </Button>
+            )}
           </div>
         </div>
 
@@ -145,13 +163,13 @@ export function BoqSidebar({
 
           {sheets.length > 1 && (
             <Select value={sheetFilter} onValueChange={setSheetFilter}>
-              <SelectTrigger className="h-7 w-[95px] text-[10px] px-1.5 shrink-0 bg-background/50">
+              <SelectTrigger className="h-7 w-[105px] text-[10px] px-1.5 shrink-0 bg-background/50 truncate">
                 <SelectValue placeholder="الورقة" />
               </SelectTrigger>
-              <SelectContent className="text-xs">
+              <SelectContent className="text-xs max-h-56">
                 <SelectItem value="all">كل الأوراق</SelectItem>
                 {sheets.map((s) => (
-                  <SelectItem key={s} value={s}>
+                  <SelectItem key={s} value={s} className="truncate text-xs">
                     {s}
                   </SelectItem>
                 ))}
@@ -161,100 +179,94 @@ export function BoqSidebar({
         </div>
       </div>
 
-      {/* Items List */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-        {isLoading && (
-          <div className="p-6 text-center text-xs text-muted-foreground">
-            {t("common.loading", "جاري التحميل…")}
+      {/* Item List */}
+      <div className="flex-1 overflow-y-auto divide-y divide-border/40 select-text">
+        {isLoading ? (
+          <div className="p-8 text-center text-xs text-muted-foreground animate-pulse">
+            جاري تحميل البنود…
           </div>
-        )}
-
-        {!isLoading && filteredItems.length === 0 && (
-          <div className="p-6 text-center text-xs text-muted-foreground space-y-3">
-            <p>
+        ) : filteredItems.length === 0 ? (
+          <div className="p-8 text-center space-y-2">
+            <p className="text-xs text-muted-foreground">
               {items.length === 0
-                ? t("pa.noItemsInBoq", "لا توجد بنود — أضف بنوداً في جدول الكميات أولاً.")
-                : "لا توجد نتائج تطابق معايير البحث."}
+                ? "لا توجد بنود بعد في هذا المشروع."
+                : "لا توجد نتائج مطابقة لخيارات التصفية."}
             </p>
             {items.length === 0 && onAddDemoItem && (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={onAddDemoItem}
-                className="w-full text-xs gap-1.5 border-dashed"
+                className="text-xs gap-1.5 mt-2"
               >
                 + إضافة بند خرسانة تجريبي
               </Button>
             )}
           </div>
-        )}
-
-        {!isLoading &&
+        ) : (
           filteredItems.map((item) => {
             const isSelected = item.id === selectedId;
-            const directCost =
+            const hasPrice =
+              (item.material_cost ?? 0) > 0 ||
+              (item.labor_cost ?? 0) > 0 ||
+              (item.equipment_cost ?? 0) > 0 ||
+              (item.subcontractor_cost ?? 0) > 0;
+
+            const directUnitCost =
               (item.material_cost ?? 0) +
               (item.labor_cost ?? 0) +
               (item.equipment_cost ?? 0) +
               (item.subcontractor_cost ?? 0);
-            const isPriced = directCost > 0;
-            const desc = isEn && item.description_en ? item.description_en : item.description_ar;
+
+            const descText =
+              isEn && item.description_en ? item.description_en : item.description_ar;
 
             return (
               <button
                 key={item.id}
-                type="button"
                 onClick={() => onSelect(item)}
                 className={cn(
-                  "group w-full text-start rounded-lg border p-2.5 transition-all",
+                  "flex w-full flex-col gap-1 p-3 text-start transition-colors hover:bg-muted/30 focus-visible:outline-none",
                   isSelected
-                    ? "border-primary bg-primary/10 shadow-sm"
-                    : "border-border/60 bg-card hover:border-border hover:bg-accent/40"
+                    ? "bg-primary/10 border-s-2 border-primary"
+                    : "bg-transparent"
                 )}
               >
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="font-mono text-[11px] font-bold text-foreground group-hover:text-primary">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-mono text-[11px] font-bold text-foreground">
                     {item.item_no}
                   </span>
-                  {isPriced ? (
-                    <Badge
-                      variant="secondary"
-                      className="h-4 gap-1 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-1 text-[10px] font-normal"
-                    >
-                      <CheckCircle2 className="h-2.5 w-2.5" />
-                      {fmtSAR(directCost, language)}/{item.unit || "وحدة"}
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className="h-4 gap-1 text-muted-foreground border-border/80 px-1 text-[10px] font-normal"
-                    >
-                      <Clock className="h-2.5 w-2.5" />
-                      {t("pa.statusUnpriced", "غير مسعّر")}
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-1">
+                    {hasPrice ? (
+                      <span className="flex items-center gap-0.5 text-[10px] text-emerald-500 font-medium">
+                        <CheckCircle2 className="h-3 w-3" />
+                        {fmtSAR(directUnitCost, language)}
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        {t("pa.statusUnpriced", "غير مسعّر")}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <p className="line-clamp-2 text-xs text-foreground/90 font-medium leading-relaxed">
-                  {desc}
+                <p className="line-clamp-2 text-xs leading-relaxed text-foreground/80 font-normal">
+                  {descText}
                 </p>
 
-                <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t border-border/40">
-                  <span>
-                    {t("common.quantity", "الكمية")}:{" "}
-                    <span className="font-mono font-medium text-foreground">
-                      {fmtNumber(item.quantity, 2)} {item.unit}
-                    </span>
+                <div className="mt-1 flex items-center justify-between text-[10px] text-muted-foreground">
+                  <span className="truncate max-w-[130px]" title={item.sheet_name || ""}>
+                    {item.sheet_name || "—"}
                   </span>
-                  {item.sheet_name && (
-                    <span className="truncate max-w-[100px] text-muted-foreground/80">
-                      {item.sheet_name}
-                    </span>
-                  )}
+                  <span className="font-mono">
+                    {fmtNumber(item.quantity, 2)} {item.unit || ""}
+                  </span>
                 </div>
               </button>
             );
-          })}
+          })
+        )}
       </div>
     </aside>
   );

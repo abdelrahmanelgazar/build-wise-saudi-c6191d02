@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, TrendingUp, Trash2, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Globe } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, TrendingUp, Trash2, Bold, Italic, AlignLeft, AlignCenter, AlignRight, Globe, ExternalLink } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -30,7 +30,8 @@ type FieldKey =
   | "equipment_cost"
   | "subcontractor_cost"
   | "unit_rate"
-  | "total";
+  | "total"
+  | "note";
 
 type RawHeader = string | { label: string; field: FieldKey | null };
 
@@ -358,17 +359,49 @@ function CellRenderer({
 
   switch (col.field) {
     case "item_no":
+      if (node.is_group) {
+        return (
+          <div
+            className={cn(baseClass, "cursor-pointer hover:bg-muted/40 font-mono text-[11px] font-bold text-primary select-none")}
+            style={styleAttr}
+            onClick={() => onToggle(node.id)}
+            title="انقر لتوسيع أو طي المجموعة"
+          >
+            {node.item_no || "—"}
+          </div>
+        );
+      }
+      return (
+        <div className={baseClass} style={styleAttr}>
+          <Link
+            to="/price-analysis"
+            search={{ item: node.id }}
+            className="flex items-center gap-1 font-mono text-[11px] text-primary hover:underline hover:text-primary/80 transition-colors"
+            title="فتح تحليل السعر لهذا البند"
+          >
+            <span>{node.item_no || "تحليل السعر"}</span>
+            <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+          </Link>
+        </div>
+      );
+    case "note": {
+      const noteVal = node.note || ((node.cell_styles as any)?.note as string) || "";
       return (
         <EditableCell
           className={baseClass}
           style={styleAttr}
-          value={node.item_no}
-          onSave={(v) => onPatch({ item_no: v })}
-          fixedLtr
+          value={noteVal}
+          onSave={(v) => {
+            const nextStyles = { ...styles, note: v };
+            onPatch({ note: v, cell_styles: nextStyles as unknown as never });
+          }}
         >
-          <span className="font-mono text-[11px] text-muted-foreground">{node.item_no}</span>
+          <span className="text-[11px] text-muted-foreground truncate" title={noteVal}>
+            {noteVal || "—"}
+          </span>
         </EditableCell>
       );
+    }
     case "description_ar": {
       // Respect user's selected language:
       // In English mode, display description_en if present; fallback to description_ar with visual note only if description_ar is Arabic

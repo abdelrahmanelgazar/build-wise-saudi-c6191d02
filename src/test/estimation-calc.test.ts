@@ -4,10 +4,11 @@ import {
   computeUnitSellingPrice,
   computeLineItemFinancials,
   computeProjectFinancials,
+  parseArabicNumber,
   roundTo,
 } from "../lib/estimation-calc";
 
-describe("Estimation Calculation Engine - PLATFORM_DEVELOPMENT_AUDIT.md Verification", () => {
+describe("Estimation Calculation Engine - PLATFORM_DEVELOPMENT_AUDIT.md & EXCEL_BOQ_PRICING_PLAN.md Verification", () => {
   it("passes the mandatory financial acceptance test: 9,000 direct cost and 10,300 selling price", () => {
     // 50 units * cost 100 * factor 1.10 = 5,500 (direct 5,000)
     // 20 units * cost 200 * factor 1.20 = 4,800 (direct 4,000)
@@ -66,6 +67,152 @@ describe("Estimation Calculation Engine - PLATFORM_DEVELOPMENT_AUDIT.md Verifica
     // 51 * 110 = 5,610 + 4,800 = 10,410 selling
     expect(updatedResult.totalDirectCost).toBe(9100);
     expect(updatedResult.netSellingPrice).toBe(10410);
+  });
+
+  it("verifies the 6,000 m3 acceptance test from EXCEL_BOQ_PRICING_PLAN (1,873,500.00 direct / 2,248,200.00 selling)", () => {
+    // Quantity: 6,000, Direct Unit Cost: 312.25 -> Total Direct = 1,873,500.00
+    // Markup 20% cost-plus, other loadings zero -> Unit Selling = 374.70, Total Selling = 2,248,200.00
+    const boqItems = [
+      {
+        id: "item-conc-6000",
+        item_no: "04-01-01",
+        description_ar: "خرسانة مسلحة للمشروع 6,000 م3",
+        quantity: 6000,
+        is_group: false,
+        material_cost: 312.25,
+        labor_cost: 0,
+        equipment_cost: 0,
+        subcontractor_cost: 0,
+      },
+    ];
+
+    const markupsByItemId = new Map([
+      ["item-conc-6000", { profit_pct: 20, margin_mode: "markup" as const }],
+    ]);
+
+    const result = computeProjectFinancials({
+      boqItems,
+      markupsByItemId,
+    });
+
+    expect(result.totalDirectCost).toBe(1873500.00);
+    expect(result.netSellingPrice).toBe(2248200.00);
+    expect(result.totalMarkupAmount).toBe(374700.00);
+
+    // Verify unit selling price
+    const unitCalc = computeUnitSellingPrice(312.25, { profit_pct: 20, margin_mode: "markup" });
+    expect(unitCalc.unitSellingPrice).toBe(374.70);
+  });
+
+  it("verifies independent multi-item cascaded loadings test (EXCEL_BOQ_PRICING_PLAN Section 7)", () => {
+    // Item A: 50 * 100.00 | indirect 10% on direct, admin 5% after indirect, profit 20% on loaded cost -> 138.60 / 6,930.00
+    // Item B: 20 * 200.00 | risk 5% on direct, margin 16% on selling price -> 250.00 / 5,000.00
+    const boqItems = [
+      {
+        id: "item-A",
+        item_no: "A-01",
+        description_ar: "بند أ",
+        quantity: 50,
+        is_group: false,
+        material_cost: 100.00,
+        labor_cost: 0,
+        equipment_cost: 0,
+        subcontractor_cost: 0,
+      },
+      {
+        id: "item-B",
+        item_no: "B-01",
+        description_ar: "بند ب",
+        quantity: 20,
+        is_group: false,
+        material_cost: 200.00,
+        labor_cost: 0,
+        equipment_cost: 0,
+        subcontractor_cost: 0,
+      },
+    ];
+
+    const markupsByItemId = new Map([
+      [
+        "item-A",
+        {
+          indirect_pct: 10,
+          overhead_pct: 5,
+          risk_pct: 0,
+          profit_pct: 20,
+          margin_mode: "markup" as const,
+        },
+      ],
+      [
+        "item-B",
+        {
+          indirect_pct: 0,
+          overhead_pct: 0,
+          risk_pct: 5,
+          profit_pct: 16,
+          margin_mode: "margin" as const,
+        },
+      ],
+    ]);
+
+    const result = computeProjectFinancials({
+      boqItems,
+      markupsByItemId,
+      vatRate: 15,
+    });
+
+    // Check line A unit price & line price
+    const calcA = computeUnitSellingPrice(100.00, {
+      indirect_pct: 10,
+      overhead_pct: 5,
+      profit_pct: 20,
+      margin_mode: "markup",
+    });
+    expect(calcA.unitSellingPrice).toBe(138.60);
+
+    // Check line B unit price & line price
+    const calcB = computeUnitSellingPrice(200.00, {
+      risk_pct: 5,
+      profit_pct: 16,
+      margin_mode: "margin",
+    });
+    expect(calcB.unitSellingPrice).toBe(250.00);
+
+    // Check comprehensive breakdown totals
+    expect(result.totalDirectCost).toBe(9000.00);
+    expect(result.indirectTotal).toBe(500.00);
+    expect(result.overheadTotal).toBe(275.00);
+    expect(result.riskTotal).toBe(200.00);
+    expect(result.profitTotal).toBe(1955.00);
+    expect(result.netSellingPrice).toBe(11930.00);
+    expect(result.vatAmount).toBe(1789.50);
+    expect(result.grandTotalWithVat).toBe(13719.50);
+  });
+
+  it("verifies half-up rounding on unit price and line total (10.125 * 3 gives 10.13 unit and 30.39 total)", () => {
+    const line = computeLineItemFinancials({
+      quantity: 3,
+      directUnitCost: 10.125,
+      tenderDecimals: 2,
+      currencyDecimals: 2,
+    });
+    expect(line.unitSellingPrice).toBe(10.13);
+    expect(line.lineSellingPrice).toBe(30.39);
+  });
+
+  it("parses Arabic-Indic digits and formatted numbers correctly into float numbers", () => {
+    expect(parseArabicNumber("١٬٢٥٠٫٥٠")).toBe(1250.50);
+    expect(parseArabicNumber("٣٧٤٫٧٠")).toBe(374.70);
+    expect(parseArabicNumber("1,250.50")).toBe(1250.50);
+    expect(parseArabicNumber("0")).toBe(0);
+    expect(parseArabicNumber("")).toBe(0);
+    expect(parseArabicNumber(null)).toBe(0);
+  });
+
+  it("throws a clear error when margin of 100% or more is entered in margin mode", () => {
+    expect(() => {
+      computeUnitSellingPrice(100, { profit_pct: 100, margin_mode: "margin" });
+    }).toThrow("هامش الربح كنسبة من سعر البيع يجب أن يكون أقل قطعيًا من 100%");
   });
 
   it("verifies markup mode vs margin on selling price correctly (100 cost: markup 20% gives 120, margin 20% gives 125)", () => {

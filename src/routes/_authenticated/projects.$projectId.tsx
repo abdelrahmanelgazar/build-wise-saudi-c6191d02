@@ -68,7 +68,8 @@ export const Route = createFileRoute("/_authenticated/projects/$projectId")({
 });
 
 function ProjectDetail() {
-  const { projectId } = Route.useParams();
+  const { projectId: rawProjectId } = Route.useParams();
+  const projectId = rawProjectId?.replace(/\//g, "7") ?? rawProjectId;
   const navigate = useNavigate();
 
   useEffect(() => {

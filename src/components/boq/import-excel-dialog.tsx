@@ -123,8 +123,9 @@ function normHeader(s: unknown): string {
     .replace(/[أإآ]/g, "ا")
     .replace(/ة/g, "ه")
     .replace(/ى/g, "ي")
+    .replace(/\u0640/g, "") // remove Arabic tatweel / kashida (e.g. وصــف -> وصف)
     .replace(/[\u064B-\u065F]/g, "") // remove tashkeel
-    .replace(/[:：()_\-/.]/g, " ")
+    .replace(/[:：()_\-/.\r\n\t]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -134,19 +135,91 @@ function matchHeaderField(s: unknown): FieldKey | null {
   if (!norm) return null;
   if (HEADER_MAP[norm]) return HEADER_MAP[norm];
 
-  // Pattern matches
-  if (/^(رقم|بند|كود|الرقم|البند|الكود|فقره|الفقره|item|code|no|#)$/.test(norm)) return "item_no";
-  if (norm.includes("رقم البند") || norm.includes("رمز البند") || norm.includes("كود البند") || norm.includes("item no") || norm.includes("item_no")) return "item_no";
+  // Description patterns (checked before item_no to prevent "وصف البند" matching "البند")
+  if (
+    norm.includes("الوصف") ||
+    norm.includes("وصف") ||
+    norm.includes("البيان") ||
+    norm.includes("بيان") ||
+    norm.includes("تفاصيل") ||
+    norm.includes("الاعمال") ||
+    norm.includes("المواصفات") ||
+    norm.includes("description") ||
+    norm.includes("desc")
+  ) {
+    return "description_ar";
+  }
 
-  if (norm.includes("الوصف") || norm.includes("وصف") || norm.includes("البيان") || norm.includes("بيان") || norm.includes("تفاصيل") || norm.includes("الاعمال") || norm.includes("المواصفات") || norm.includes("description") || norm.includes("desc")) return "description_ar";
+  // Item number / code patterns
+  if (
+    /^(رقم|بند|كود|الرقم|البند|الكود|فقره|الفقره|item|code|no|#)$/.test(norm) ||
+    norm.includes("رقم البند") ||
+    norm.includes("رمز البند") ||
+    norm.includes("كود البند") ||
+    norm.includes("item no") ||
+    norm.includes("item_no") ||
+    norm.includes("البند item") ||
+    norm.includes("item بند") ||
+    norm === "البند" ||
+    norm === "رقم" ||
+    norm === "item" ||
+    norm.startsWith("بند ") ||
+    norm.endsWith(" بند")
+  ) {
+    return "item_no";
+  }
 
-  if (norm.includes("الوحده") || norm.includes("وحده") || norm.includes("unit") || norm.includes("uom")) return "unit";
+  // Unit of measurement
+  if (
+    norm.includes("الوحده") ||
+    norm.includes("وحده") ||
+    norm.includes("وحدة") ||
+    norm.includes("unit") ||
+    norm.includes("uom")
+  ) {
+    return "unit";
+  }
 
-  if (norm.includes("الكميه") || norm.includes("كميه") || norm.includes("quantity") || norm.includes("qty")) return "quantity";
+  // Quantity
+  if (
+    norm.includes("الكميه") ||
+    norm.includes("كميه") ||
+    norm.includes("quantity") ||
+    norm.includes("qty")
+  ) {
+    return "quantity";
+  }
 
-  if (norm.includes("سعر الوحده") || norm.includes("سعر الافراد") || norm.includes("السعر الافرادي") || norm.includes("الفئه") || norm.includes("فئه") || norm.includes("unit rate") || norm.includes("unit price") || norm.includes("rate")) return "unit_rate";
+  // Unit rate / Price / Category (الفئة)
+  if (
+    norm.includes("سعر الوحده") ||
+    norm.includes("سعر الافراد") ||
+    norm.includes("السعر الافرادي") ||
+    norm.includes("الفئه") ||
+    norm.includes("فئه") ||
+    norm.includes("unit rate") ||
+    norm.includes("unit price") ||
+    norm.includes("rate") ||
+    norm === "سعر" ||
+    norm === "السعر" ||
+    norm === "الفئة"
+  ) {
+    return "unit_rate";
+  }
 
-  if (norm.includes("الاجمالي") || norm.includes("المبلغ") || norm.includes("القيمه") || norm.includes("القيمه الاجماليه") || norm.includes("total") || norm.includes("amount")) return "total";
+  // Total amount
+  if (
+    norm.includes("الاجمالي") ||
+    norm.includes("اجمالي") ||
+    norm.includes("المبلغ") ||
+    norm.includes("القيمه") ||
+    norm.includes("القيمه الاجماليه") ||
+    norm.includes("السعر الاجمالي") ||
+    norm.includes("total") ||
+    norm.includes("amount")
+  ) {
+    return "total";
+  }
 
   if (norm.includes("مواد") || norm.includes("المواد") || norm.includes("materials") || norm.includes("material")) return "material_cost";
   if (norm.includes("عماله") || norm.includes("العماله") || norm.includes("اجور") || norm.includes("labor") || norm.includes("labour")) return "labor_cost";
@@ -187,10 +260,10 @@ function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; preHeaders: un
     rows = rows.map(r => r.slice(0, maxCol + 1));
   }
 
-  // find header row: search first 50 rows for >=2 known headers
+  // find header row: search first 60 rows for >=2 known headers
   let headerIdx = -1;
   let colMap: Record<number, FieldKey> = {};
-  for (let i = 0; i < Math.min(rows.length, 50); i++) {
+  for (let i = 0; i < Math.min(rows.length, 60); i++) {
     const r = rows[i] || [];
     const map: Record<number, FieldKey> = {};
     const usedFields = new Set<FieldKey>();
@@ -208,6 +281,32 @@ function parseSheet(rows: unknown[][]): { headers: ExcelHeader[]; preHeaders: un
       headerIdx = i;
       colMap = map;
       break;
+    }
+  }
+
+  // Multi-row header detection: if no single row had >=2 headers, check combinations of adjacent rows (e.g. Arabic on top, English below)
+  if (headerIdx < 0) {
+    for (let i = 0; i < Math.min(rows.length - 1, 60); i++) {
+      const r1 = rows[i] || [];
+      const r2 = rows[i + 1] || [];
+      const maxLen = Math.max(r1.length, r2.length);
+      const map: Record<number, FieldKey> = {};
+      const usedFields = new Set<FieldKey>();
+      let hits = 0;
+      for (let idx = 0; idx < maxLen; idx++) {
+        const combined = `${r1[idx] ?? ""} ${r2[idx] ?? ""}`;
+        const key = matchHeaderField(combined);
+        if (key && !usedFields.has(key)) {
+          map[idx] = key;
+          usedFields.add(key);
+          hits++;
+        }
+      }
+      if (hits >= 2) {
+        headerIdx = i + 1; // start data rows after row i+1
+        colMap = map;
+        break;
+      }
     }
   }
   if (headerIdx < 0) {
