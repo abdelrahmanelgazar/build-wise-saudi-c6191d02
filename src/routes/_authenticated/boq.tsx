@@ -580,13 +580,15 @@ function NewBoqDialog({
           const div = CSI_DIVISIONS.find((d) => d.code === code);
 
           // Check if this CSI group already exists in the project
-          const { data: existingGroup } = await estimationClient
+          const { data: allGroups } = await estimationClient
             .from("boq_items")
-            .select("id")
+            .select("id, item_no")
             .eq("project_id", projectId)
-            .eq("is_group", true)
-            .or(`item_no.eq.${code},item_no.like.${code} %`)
-            .maybeSingle();
+            .eq("is_group", true);
+
+          const existingGroup = (allGroups as Array<{ id: string; item_no: string }> | null)?.find(
+            (g) => g.item_no === code || g.item_no?.startsWith(code + " ") || g.item_no?.startsWith(code + "-")
+          );
 
           if (existingGroup) {
             finalParentId = existingGroup.id;
@@ -607,7 +609,7 @@ function NewBoqDialog({
               .select("id")
               .single();
             if (grpErr) throw grpErr;
-            finalParentId = createdGroup.id;
+            finalParentId = (createdGroup as any)?.id;
           }
           level = 1;
         } else {
@@ -664,10 +666,10 @@ function NewBoqDialog({
               <Input value={itemNo} onChange={(e) => setItemNo(e.target.value)} placeholder="01.05" />
             </div>
             <div className="col-span-2 space-y-1.5">
-              <Label>المجموعة الأم (أقسام CSI)</Label>
+              <Label>المجموعة الأم (جميع أقسام الـ CSI = المجموعات)</Label>
               <Select value={parentId} onValueChange={handleParentSelect}>
                 <SelectTrigger>
-                  <SelectValue placeholder={isGroup ? "بدون (مستوى أعلى)" : "اختر مجموعة أو قسم CSI"} />
+                  <SelectValue placeholder={isGroup ? "بدون (مستوى أعلى)" : "اختر قسم CSI أو مجموعة"} />
                 </SelectTrigger>
                 <SelectContent className="max-h-72">
                   <SelectItem value="none">
@@ -676,16 +678,16 @@ function NewBoqDialog({
 
                   {/* Standard CSI Divisions */}
                   <div className="px-2 py-1 text-[11px] font-bold text-primary bg-primary/10 rounded my-1">
-                    أقسام الـ CSI القياسية (MasterFormat)
+                    جميع أقسام الـ CSI القياسية (المجموعات MasterFormat)
                   </div>
                   {CSI_DIVISIONS.map((div) => {
                     const existing = parentOptions.find(
-                      (p) => p.item_no === div.code || p.item_no?.startsWith(div.code + " ")
+                      (p) => p.item_no === div.code || p.item_no?.startsWith(div.code + " ") || p.item_no?.startsWith(div.code + "-")
                     );
                     const val = existing ? existing.id : `csi_${div.code}`;
                     return (
                       <SelectItem key={`csi_${div.code}`} value={val}>
-                        القسم {div.code} — {div.name_ar} {existing ? "✓" : ""}
+                        القسم {div.code} — {div.name_ar} {existing ? "✓ (موجودة)" : ""}
                       </SelectItem>
                     );
                   })}

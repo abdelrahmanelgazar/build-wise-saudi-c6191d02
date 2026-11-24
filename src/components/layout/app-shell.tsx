@@ -1,3 +1,4 @@
+import taqdiriMark from "@/assets/taqdiri-mark.svg";
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useRouter, useRouterState } from "@tanstack/react-router";
 import {
@@ -42,6 +43,7 @@ type NavItemConfig = {
 
 const NAV_ITEMS: NavItemConfig[] = [
   { to: "/dashboard", translationKey: "nav.dashboard", defaultLabel: "لوحة التحكم", icon: LayoutDashboard, enabled: true },
+  { to: "/clients", translationKey: "nav.clients", defaultLabel: "العملاء", icon: Building2, enabled: true },
   { to: "/projects", translationKey: "nav.projects", defaultLabel: "المشاريع", icon: FileText, enabled: true },
   { to: "/boq", translationKey: "nav.boq", defaultLabel: "جدول الكميات", icon: Calculator, enabled: true },
   { to: "/price-analysis", translationKey: "nav.priceAnalysis", defaultLabel: "تحليل الأسعار", icon: TrendingUp, enabled: true },
@@ -166,9 +168,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
       >
         <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border px-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/15 ring-1 ring-primary/30">
-            <Calculator className="h-4 w-4 text-primary" />
-          </div>
+          <img src={taqdiriMark} alt="" width={32} height={32} />
           <div className="leading-tight">
             <div className="text-sm font-bold text-sidebar-foreground">{t("nav.brand", "تقديري")}</div>
             <div className="text-[10px] text-muted-foreground">{t("nav.subtitle", "منصة التسعير الاحترافية")}</div>

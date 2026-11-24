@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48" fill="none">
+  <title>تقديري</title>
+  <rect width="48" height="48" rx="11" fill="#103B3A"/>
+  <path d="M12 36V10h17l7 7v7M28 10v8h8" stroke="#C8EEE4" stroke-width="2.6" stroke-linejoin="round"/>
+  <path d="M17 20h6m-6 5h5" stroke="#C8EEE4" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M17 37h20V23Z" fill="#EDBA69"/>
+  <path d="M27 33.5h6.5V29Z" fill="#103B3A"/>
+</svg>

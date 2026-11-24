@@ -38,11 +38,85 @@ export const CSI_DIVISIONS = ([
   ["48", "توليد الطاقة الكهربائية", "Electrical Power Generation"],
 ] as const).map(([code, name_ar, name_en]) => ({ code, name_ar, name_en }));
 
+// Compound ordinals must be listed first so "الثاني عشر" is not matched by "الثاني"
+const ARABIC_ORDINALS: [string, string][] = [
+  ["الحادي عشر", "11"],
+  ["حادي عشر", "11"],
+  ["الثاني عشر", "12"],
+  ["ثاني عشر", "12"],
+  ["الثالث عشر", "13"],
+  ["الثالث-عشر", "13"],
+  ["ثالث عشر", "13"],
+  ["الرابع عشر", "14"],
+  ["رابع عشر", "14"],
+  ["الخامس عشر", "15"],
+  ["خامس عشر", "15"],
+  ["السادس عشر", "26"],
+  ["سادس عشر", "26"],
+  ["الاول", "01"],
+  ["الأول", "01"],
+  ["اول", "01"],
+  ["أول", "01"],
+  ["الثاني", "02"],
+  ["ثاني", "02"],
+  ["الثالث", "03"],
+  ["ثالث", "03"],
+  ["الرابع", "04"],
+  ["رابع", "04"],
+  ["الخامس", "05"],
+  ["خامس", "05"],
+  ["السادس", "06"],
+  ["سادس", "06"],
+  ["السابع", "07"],
+  ["سابع", "07"],
+  ["الثامن", "08"],
+  ["ثامن", "08"],
+  ["التاسع", "09"],
+  ["تاسع", "09"],
+  ["العاشر", "10"],
+  ["عاشر", "10"],
+];
+
 export function csiDivisionCode(value: string | null | undefined) {
-  const normalized = value?.trim().replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)));
-  const match = normalized?.match(/^(?:(?:div(?:ision)?\.?|القسم)\s*)?(\d{1,2})(?=$|[\s.\-–—:])/i);
+  if (!value) return undefined;
+  const raw = value.trim();
+  const normalized = raw.replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)));
+
+  // 1. Direct digits (e.g. "01", "القسم 03", "Div 09")
+  const match = normalized.match(/^(?:(?:div(?:ision)?\.?|القسم)\s*)?(\d{1,2})(?=$|[\s.\-–—:])/i);
   const code = match?.[1]?.padStart(2, "0");
-  return CSI_DIVISIONS.some((division) => division.code === code) ? code : undefined;
+  if (code && CSI_DIVISIONS.some((division) => division.code === code)) {
+    return code;
+  }
+
+  // 2. Arabic words (e.g. "القسم الاول", "القسم الثالث-الاعمال الخرسانية")
+  const clean = raw.replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/[\u064B-\u065F\u0640]/g, "");
+  for (const [ordinal, divCode] of ARABIC_ORDINALS) {
+    const cleanOrdinal = ordinal.replace(/[أإآ]/g, "ا").replace(/ة/g, "ه");
+    if (clean.includes(cleanOrdinal)) {
+      // Check trade-specific overrides within Division 15 in classical 16-division format
+      if (divCode === "15") {
+        if (clean.includes("تكييف") || clean.includes("hvac")) return "23";
+        if (clean.includes("حريق") || clean.includes("اطفاء") || clean.includes("مكافحة")) return "21";
+        if (clean.includes("صحي") || clean.includes("سباكه") || clean.includes("غازات")) return "22";
+      }
+      return divCode;
+    }
+  }
+
+  // 3. Trade keyword match
+  if (clean.includes("كهرب") || clean.includes("اناره")) return "26";
+  if (clean.includes("تكييف") || clean.includes("تهويه")) return "23";
+  if (clean.includes("خرسان")) return "03";
+  if (clean.includes("مبان") || clean.includes("بلوك")) return "04";
+  if (clean.includes("معدن") || clean.includes("حديد")) return "05";
+  if (clean.includes("تشطيب") || clean.includes("دهان") || clean.includes("ارضيات")) return "09";
+  if (clean.includes("ابواب") || clean.includes("نوافذ")) return "08";
+  if (clean.includes("عزل") || clean.includes("رطوب")) return "07";
+  if (clean.includes("موقع") || clean.includes("حفر") || clean.includes("تراب")) return "02";
+  if (clean.includes("متطلبات عامه") || clean.includes("عام")) return "01";
+
+  return undefined;
 }
 
 export function csiDivisionLabel(value: string, language: "ar" | "en") {

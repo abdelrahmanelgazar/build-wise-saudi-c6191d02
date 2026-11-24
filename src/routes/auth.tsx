@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, Calculator, Loader2 } from "lucide-react";
+import { Building2, Loader2 } from "lucide-react";
+import taqdiriMark from "@/assets/taqdiri-mark.svg";
 import { toast } from "sonner";
 import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
@@ -178,9 +179,7 @@ function AuthPage() {
 
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/25">
-            <Calculator className="h-7 w-7" />
-          </div>
+          <img src={taqdiriMark} alt="" width={56} height={56} className="mx-auto mb-3" />
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             {t("auth.brandName", "تـقـديـري")}
           </h1>

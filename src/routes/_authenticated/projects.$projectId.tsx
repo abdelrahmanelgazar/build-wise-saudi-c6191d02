@@ -16,6 +16,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   ArrowRight,
   Calculator,
   Database as DatabaseIcon,
@@ -25,9 +34,18 @@ import {
   TrendingUp,
   Trash2,
   Upload,
+  Building2,
+  Clock,
+  Plus,
+  ExternalLink,
+  Kanban,
+  CheckCircle,
 } from "lucide-react";
 import { fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
+import type { Tender, TenderStatus } from "@/types/client-tender";
+import { TENDER_STATUS_META } from "@/types/client-tender";
+import { transitionTenderStatus } from "@/lib/client-tender-service";
 import { setActiveProjectId } from "@/lib/active-project";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -111,6 +129,18 @@ function ProjectDetail() {
     },
   });
 
+  const { data: projectTenders = [] } = useQuery({
+    queryKey: ["project_tenders", projectId],
+    queryFn: async () => {
+      const { data, error } = await estimationClient
+        .from("tenders")
+        .select("*")
+        .eq("project_id", projectId);
+      if (error) return [] as Tender[];
+      return (data as Tender[]) ?? [];
+    },
+  });
+
   if (isLoading) {
     return <div className="p-6 text-muted-foreground">جاري التحميل…</div>;
   }
@@ -131,6 +161,8 @@ function ProjectDetail() {
     cls: "bg-muted/60 text-muted-foreground border-border/60",
   };
 
+  const clientId = (project as any).client_id;
+
   return (
     <div className="p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -147,16 +179,44 @@ function ProjectDetail() {
                 {statusMeta.label}
               </Badge>
             </div>
-            <div className="mt-1 text-sm text-muted-foreground">
-              {project.client_name || "—"} · {project.location || "—"}
+            <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+              {clientId ? (
+                <Link
+                  to="/clients/$clientId"
+                  params={{ clientId }}
+                  className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
+                >
+                  <Building2 className="h-3.5 w-3.5" />
+                  {project.client_name || "ملف العميل"}
+                </Link>
+              ) : (
+                <span className="inline-flex items-center gap-1 font-medium text-foreground">
+                  <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  {project.client_name || "—"}
+                </span>
+              )}
+              <span>·</span>
+              <span>{project.location || "—"}</span>
+              {project.code && (
+                <>
+                  <span>·</span>
+                  <Badge variant="outline" className="font-mono text-xs">{project.code}</Badge>
+                </>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       <Tabs defaultValue="overview" className="mt-6">
-        <TabsList>
+        <TabsList className="flex flex-wrap h-auto gap-1">
           <TabsTrigger value="overview">نظرة عامة</TabsTrigger>
+          <TabsTrigger value="tenders" className="gap-1.5">
+            سجل المنافسات
+            <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+              {projectTenders.length}
+            </Badge>
+          </TabsTrigger>
           <TabsTrigger value="info">البيانات الأساسية</TabsTrigger>
           <TabsTrigger value="requirements">المتطلبات</TabsTrigger>
           <TabsTrigger value="files">الملفات</TabsTrigger>
@@ -175,6 +235,16 @@ function ProjectDetail() {
             <QuickLink to="/price-analysis" icon={TrendingUp} title="تحليل الأسعار" desc="موارد وتكاليف كل بند" />
             <QuickLink to="/resources" icon={DatabaseIcon} title="عروض الأسعار" desc="الموردين ومقاولي الباطن وتصنيف CSI" />
           </div>
+        </TabsContent>
+
+        <TabsContent value="tenders" className="mt-4">
+          <ProjectTendersTab
+            projectId={project.id}
+            projectName={project.name}
+            clientId={clientId}
+            clientName={project.client_name || ""}
+            tenders={projectTenders}
+          />
         </TabsContent>
 
         <TabsContent value="info" className="mt-4">
@@ -536,3 +606,341 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     </div>
   );
 }
+
+function ProjectTendersTab({
+  projectId,
+  projectName,
+  clientId,
+  clientName,
+  tenders,
+}: {
+  projectId: string;
+  projectName: string;
+  clientId?: string;
+  clientName?: string;
+  tenders: Tender[];
+}) {
+  const qc = useQueryClient();
+  const [newOpen, setNewOpen] = useState(false);
+  const [transitionTender, setTransitionTender] = useState<Tender | null>(null);
+  const [newStatus, setNewStatus] = useState<TenderStatus>("studying");
+  const [decisionReason, setDecisionReason] = useState("");
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Form for new tender
+  const [refNo, setRefNo] = useState("");
+  const [title, setTitle] = useState(projectName ? `منافسة: ${projectName}` : "");
+  const [pkgScope, setPkgScope] = useState("");
+  const [assignedTo, setAssignedTo] = useState("");
+  const [deadline, setDeadline] = useState("");
+  const [estVal, setEstVal] = useState("");
+
+  const addMut = useMutation({
+    mutationFn: async () => {
+      const { data: userData } = await estimationClient.auth.getUser();
+      const user_id = userData.user?.id || "00000000-0000-0000-0000-000000000000";
+
+      const { data, error } = await estimationClient
+        .from("tenders")
+        .insert({
+          user_id,
+          project_id: projectId,
+          client_id: clientId || null,
+          reference_no: refNo || `TND-${Date.now().toString().slice(-4)}`,
+          title: title || projectName,
+          client_name: clientName || null,
+          package_scope: pkgScope || null,
+          assigned_to: assignedTo || null,
+          submission_deadline: deadline || null,
+          estimated_value: Number(estVal) || 0,
+          status: "registered",
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast.success("تم تسجيل المنافسة بنجاح");
+      qc.invalidateQueries({ queryKey: ["project_tenders", projectId] });
+      qc.invalidateQueries({ queryKey: ["tenders"] });
+      setNewOpen(false);
+      setRefNo("");
+      setTitle("");
+      setPkgScope("");
+      setAssignedTo("");
+      setDeadline("");
+      setEstVal("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const handleApplyTransition = async () => {
+    if (!transitionTender) return;
+    setIsTransitioning(true);
+    try {
+      const { data: userData } = await estimationClient.auth.getUser();
+      const user_id = userData.user?.id || "00000000-0000-0000-0000-000000000000";
+      await transitionTenderStatus(
+        transitionTender.id,
+        transitionTender.status as TenderStatus,
+        newStatus,
+        decisionReason || "",
+        user_id,
+      );
+      toast.success("تم تحديث حالة المنافسة وتوثيق القرار بنجاح");
+      qc.invalidateQueries({ queryKey: ["project_tenders", projectId] });
+      qc.invalidateQueries({ queryKey: ["tenders"] });
+      setTransitionTender(null);
+      setDecisionReason("");
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setIsTransitioning(false);
+    }
+  };
+
+  const deleteTender = async (tenderId: string) => {
+    if (!confirm("هل أنت متأكد من حذف هذه المنافسة؟")) return;
+    try {
+      const { error } = await estimationClient.from("tenders").delete().eq("id", tenderId);
+      if (error) throw error;
+      toast.success("تم حذف المنافسة");
+      qc.invalidateQueries({ queryKey: ["project_tenders", projectId] });
+      qc.invalidateQueries({ queryKey: ["tenders"] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-5 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-base">سجل المنافسات والعطاءات للمشروع</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            إدارة كافة المنافسات المرتبطة بالمشروع ومراحل تقديم العطاءات والقرارات الموثقة.
+          </p>
+        </div>
+        <Button onClick={() => setNewOpen(true)} size="sm" className="gap-1.5">
+          <Plus className="h-4 w-4" />
+          إضافة منافسة لهذا المشروع
+        </Button>
+      </div>
+
+      {tenders.length === 0 ? (
+        <div className="py-12 text-center text-sm text-muted-foreground border rounded-lg bg-muted/10">
+          لا توجد منافسات مسجلة لهذا المشروع حتى الآن.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full text-xs text-right">
+            <thead className="bg-muted/50 border-b border-border text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2.5 font-medium">رقم المنافسة / المرجع</th>
+                <th className="px-3 py-2.5 font-medium">عنوان العطاء</th>
+                <th className="px-3 py-2.5 font-medium">حزمة العمل</th>
+                <th className="px-3 py-2.5 font-medium">المسؤول</th>
+                <th className="px-3 py-2.5 font-medium">موعد التقديم</th>
+                <th className="px-3 py-2.5 font-medium">القيمة التقديرية</th>
+                <th className="px-3 py-2.5 font-medium">الحالة</th>
+                <th className="px-3 py-2.5 font-medium text-center">الإجراءات</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {tenders.map((t) => {
+                const meta = TENDER_STATUS_META[t.status as TenderStatus] || {
+                  label: t.status,
+                  color: "bg-muted text-muted-foreground",
+                };
+                return (
+                  <tr key={t.id} className="hover:bg-muted/20">
+                    <td className="px-3 py-2.5 font-mono font-medium">{t.reference_no}</td>
+                    <td className="px-3 py-2.5 font-semibold">{t.title}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{t.package_scope || "—"}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground">{t.assigned_to || "—"}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      {t.submission_deadline ? (
+                        <span className="inline-flex items-center gap-1">
+                          <Clock className="h-3 w-3 text-muted-foreground" />
+                          {t.submission_deadline}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 font-mono">
+                      {t.estimated_value ? fmtSAR(Number(t.estimated_value)) : "—"}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <Badge variant="outline" className={cn("text-[11px]", meta.color)}>
+                        {meta.label}
+                      </Badge>
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-[11px] gap-1"
+                          onClick={() => {
+                            setTransitionTender(t);
+                            setNewStatus(t.status as TenderStatus);
+                            setDecisionReason("");
+                          }}
+                        >
+                          تغيير المرحلة
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => deleteTender(t.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* New Tender Dialog */}
+      <Dialog open={newOpen} onOpenChange={setNewOpen}>
+        <DialogContent dir="rtl" className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>إضافة منافسة جديدة</DialogTitle>
+            <DialogDescription className="text-xs">
+              تسجيل عطاء أو منافسة جديدة مرتبطة بمشروع ({projectName})
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-xs">
+            <Field label="المرجع / رقم المنافسة">
+              <Input
+                value={refNo}
+                onChange={(e) => setRefNo(e.target.value)}
+                placeholder="MOH-2026-TND-01"
+              />
+            </Field>
+            <Field label="عنوان المنافسة">
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="عنوان العطاء أو المنافسة"
+              />
+            </Field>
+            <Field label="نطاق العمل / حزمة العطاء">
+              <Input
+                value={pkgScope}
+                onChange={(e) => setPkgScope(e.target.value)}
+                placeholder="مثال: الأعمال الكهروميكانيكية والتشطيبات"
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="المسؤول">
+                <Input
+                  value={assignedTo}
+                  onChange={(e) => setAssignedTo(e.target.value)}
+                  placeholder="مهندس التسعير"
+                />
+              </Field>
+              <Field label="القيمة التقديرية (ر.س)">
+                <Input
+                  type="number"
+                  value={estVal}
+                  onChange={(e) => setEstVal(e.target.value)}
+                  placeholder="0"
+                />
+              </Field>
+            </div>
+            <Field label="آخر موعد لتقديم العطاء">
+              <Input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+              />
+            </Field>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setNewOpen(false)}>
+              إلغاء
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => addMut.mutate()}
+              disabled={addMut.isPending}
+            >
+              {addMut.isPending ? "جاري الحفظ…" : "تسجيل المنافسة"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Tender Status Transition Dialog */}
+      <Dialog
+        open={Boolean(transitionTender)}
+        onOpenChange={(o) => {
+          if (!o) setTransitionTender(null);
+        }}
+      >
+        <DialogContent dir="rtl" className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>تغيير مرحلة المنافسة وتوثيق القرار</DialogTitle>
+            <DialogDescription className="text-xs">
+              منافسة: {transitionTender?.title} ({transitionTender?.reference_no})
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2 text-xs">
+            <Field label="المرحلة الجديدة">
+              <Select
+                value={newStatus}
+                onValueChange={(v) => setNewStatus(v as TenderStatus)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(TENDER_STATUS_META) as TenderStatus[]).map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {TENDER_STATUS_META[s].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="مبررات / سبب الانتقال وتوثيق القرار">
+              <Textarea
+                rows={3}
+                value={decisionReason}
+                onChange={(e) => setDecisionReason(e.target.value)}
+                placeholder="اكتب أسباب أو مبررات هذا القرار (مثال: تم اكتمال العرض الفني والمالي والتقديم، فوز بالعطاء بأفضل سعر…)"
+              />
+            </Field>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setTransitionTender(null)}
+            >
+              إلغاء
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleApplyTransition}
+              disabled={isTransitioning}
+            >
+              {isTransitioning ? "جاري التوثيق…" : "تأكيد وتوثيق القرار"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+

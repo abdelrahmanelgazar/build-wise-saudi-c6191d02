@@ -16,6 +16,9 @@ const defaults = {
   price_analysis_items: { quantity: 0, unit_price: 0, sort_order: 0 },
   price_analysis_markup: { indirect_pct: 5, overhead_pct: 8, risk_pct: 3, profit_pct: 10 },
   project_files: {},
+  clients: { status: "active", type: "government" },
+  tenders: { status: "studying", estimated_value: 0 },
+  tender_transitions: {},
 };
 export type Table = keyof typeof defaults;
 export type LocalQueryRequest = {
@@ -56,6 +59,9 @@ function deleteRelatedRows(database: Tables, table: Table, rows: Row[]) {
     for (const item of database.price_analysis_items ?? []) {
       if (ids.has(item["resource_id"])) item["resource_id"] = null;
     }
+  }
+  if (table === "tenders") {
+    remove("tender_transitions", "tender_id", ids);
   }
 }
 
