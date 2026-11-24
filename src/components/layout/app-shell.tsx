@@ -252,7 +252,7 @@ function AppShellInner({ children }: { children: ReactNode }) {
     queryFn: async () => {
       const { data, error } = await estimationClient
         .from("projects")
-        .select("id, name, client_id, client_name, created_at")
+        .select("id, name, client_id, client_name, company_name, created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data as SidebarProject[]) ?? [];
@@ -279,7 +279,7 @@ function AppShellInner({ children }: { children: ReactNode }) {
     >();
 
     for (const p of projects) {
-      const rawCompany = (p.company_name || p.client_name || "").trim();
+      const rawCompany = (p.company_name || "").trim();
       const companyName = rawCompany || "شركة غير محددة";
       if (!companyMap.has(companyName)) {
         companyMap.set(companyName, {
