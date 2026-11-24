@@ -1,8 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useMemo } from "react";
 import { z } from "zod";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
+import { CompaniesManager } from "@/components/clients/companies-manager";
 import {
   Building2,
   Search,
@@ -47,6 +48,8 @@ import { useLanguage } from "@/lib/i18n";
 const clientsSearchSchema = z.object({
   company: z.string().optional(),
   owner: z.string().optional(),
+  newCompany: z.union([z.string(), z.number()]).optional(),
+  editCompany: z.union([z.string(), z.number()]).optional(),
 });
 
 export const Route = createFileRoute("/_authenticated/clients/")({
@@ -66,7 +69,8 @@ export const Route = createFileRoute("/_authenticated/clients/")({
 function ClientsIndexPage() {
   const { t, language } = useLanguage();
   const qc = useQueryClient();
-  const { company: urlCompany, owner: urlOwner } = Route.useSearch();
+  const navigate = useNavigate();
+  const { company: urlCompany, owner: urlOwner, newCompany: urlNewCompany, editCompany: urlEditCompany } = Route.useSearch();
   const initialSearch = urlOwner || (urlCompany && urlCompany !== "شركة غير محددة" ? urlCompany : "");
   const [search, setSearch] = useState(initialSearch);
   const [typeFilter, setTypeFilter] = useState<ClientType | "all">("all");
@@ -80,9 +84,10 @@ function ClientsIndexPage() {
   useRegisterPageActions({
     pageKey: "clients",
     hasEditableState: true,
-    queryKeys: [["clients"]],
+    queryKeys: [["clients"], ["companies"], ["projects"]],
     onSave: async () => {
       await qc.invalidateQueries({ queryKey: ["clients"] });
+      await qc.invalidateQueries({ queryKey: ["companies"] });
     },
   });
 
@@ -199,6 +204,15 @@ function ClientsIndexPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Companies CRUD & Client/Project Linking Panel */}
+      <CompaniesManager
+        clients={clients}
+        {...(urlCompany ? { selectedCompanyName: urlCompany } : {})}
+        openNewCompany={Boolean(urlNewCompany)}
+        openEditForSelected={Boolean(urlEditCompany)}
+        onClearCompanyFilter={() => void navigate({ to: "/clients" })}
+      />
 
       {/* Filter and Search Bar */}
       <div className="flex flex-wrap items-center gap-3">

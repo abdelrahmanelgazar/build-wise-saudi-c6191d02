@@ -85,11 +85,11 @@ function buildTree(
         n.rolledTotal = sheetTotals[n.description_ar] ?? 0;
         n.unitRate = Number(n.quantity) ? n.rolledTotal / Number(n.quantity) : n.rolledTotal;
       } else {
-        // Prefer the unit selling price computed from price analysis when present;
+        // Prefer the unit selling price computed from price analysis when present (even if 0);
         // otherwise fall back to the per-row cost breakdown columns.
         const fromPa = paSellingRates.get(n.id);
         n.unitRate =
-          typeof fromPa === "number" && fromPa > 0
+          typeof fromPa === "number"
             ? fromPa
             : Number(n.material_cost ?? 0) +
               Number(n.labor_cost ?? 0) +
@@ -289,7 +289,7 @@ function BoqPage() {
       .reduce((sum, r) => {
         const paDirect = paRates.direct.get(r.id);
         const unitCost =
-          typeof paDirect === "number" && paDirect > 0
+          typeof paDirect === "number"
             ? paDirect
             : Number(r.material_cost ?? 0) +
               Number(r.labor_cost ?? 0) +

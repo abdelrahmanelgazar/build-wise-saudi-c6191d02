@@ -29,6 +29,7 @@ import {
   Boxes,
   Hammer,
   Truck,
+  Pencil,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { estimationClient } from "@/lib/estimation-client";
@@ -259,6 +260,18 @@ function AppShellInner({ children }: { children: ReactNode }) {
     },
   });
 
+  const { data: companiesList = [] } = useQuery({
+    queryKey: ["companies"],
+    queryFn: async () => {
+      const { data, error } = await estimationClient
+        .from("companies")
+        .select("id, name, code")
+        .order("name", { ascending: true });
+      if (error) return [] as Array<{ id: string; name: string; code: string | null }>;
+      return ((data as unknown) as Array<{ id: string; name: string; code: string | null }> | null) ?? [];
+    },
+  });
+
   // Build hierarchical Company -> Owner -> Projects index
   const companyTree = useMemo(() => {
     const companyMap = new Map<
@@ -277,6 +290,16 @@ function AppShellInner({ children }: { children: ReactNode }) {
         projects: SidebarProject[];
       }
     >();
+
+    for (const comp of companiesList) {
+      if (!companyMap.has(comp.name)) {
+        companyMap.set(comp.name, {
+          companyName: comp.name,
+          owners: new Map(),
+          projects: [],
+        });
+      }
+    }
 
     for (const p of projects) {
       const rawCompany = (p.company_name || "").trim();
@@ -309,7 +332,7 @@ function AppShellInner({ children }: { children: ReactNode }) {
       projects: c.projects,
       owners: Array.from(c.owners.values()),
     }));
-  }, [projects]);
+  }, [projects, companiesList]);
 
   const recentProjects = useMemo(() => projects.slice(0, 5), [projects]);
 
@@ -581,12 +604,22 @@ function AppShellInner({ children }: { children: ReactNode }) {
                       عام
                     </button>
                   </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => guardedNavigate("/clients?newCompany=1", "إضافة شركة جديدة")}
+                      className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-start text-[11px] text-primary hover:bg-sidebar-accent font-medium"
+                    >
+                      <Plus className="h-3 w-3 shrink-0" />
+                      <span>إضافة / إدارة شركة</span>
+                    </button>
+                  </li>
                   {companyTree.map((c) => {
                     const compKey = `clients:company:${c.companyName}`;
                     const compOpen = Boolean(expanded[compKey]);
                     return (
                       <li key={c.companyName}>
-                        <div className="flex items-center justify-between rounded px-2 py-1 hover:bg-sidebar-accent">
+                        <div className="flex items-center justify-between gap-0.5 rounded px-2 py-1 hover:bg-sidebar-accent">
                           <button
                             type="button"
                             onClick={() =>
@@ -602,6 +635,20 @@ function AppShellInner({ children }: { children: ReactNode }) {
                           >
                             <Building2 className="h-3 w-3 shrink-0" />
                             <span className="truncate">{c.companyName}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              guardedNavigate(
+                                `/clients?company=${encodeURIComponent(c.companyName)}&editCompany=1`,
+                                `تعديل ${c.companyName}`,
+                              );
+                            }}
+                            title={`تعديل شركة ${c.companyName}`}
+                            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-primary"
+                          >
+                            <Pencil className="h-3 w-3" />
                           </button>
                           <TreeToggleArrow
                             isOpen={compOpen}

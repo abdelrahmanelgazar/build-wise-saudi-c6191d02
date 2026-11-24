@@ -33,6 +33,7 @@ import { fmtNumber, fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
 import { useActiveProjectId } from "@/lib/active-project";
 import { computeDirectUnitCost, computePricingPhase2 } from "@/lib/estimation-calc";
+import { syncBoqItemBreakdownFromPa } from "@/lib/pa-sync";
 import type { Database } from "@/integrations/supabase/types";
 import { ImportPaDialog } from "./import-pa-dialog";
 import { SelectQuoteDialog } from "./select-quote-dialog";
@@ -204,8 +205,13 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
       const { error } = await estimationClient
         .from("price_analysis_items").update(vars.patch).eq("id", vars.id);
       if (error) throw error;
+      await syncBoqItemBreakdownFromPa(boqItem.id);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] });
+      qc.invalidateQueries({ queryKey: ["pa_items_project", projectId] });
+      qc.invalidateQueries({ queryKey: ["boq_items"] });
+    },
     onError:   (e: Error) => toast.error(e.message),
   });
 
@@ -255,8 +261,13 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     mutationFn: async (id: string) => {
       const { error } = await estimationClient.from("price_analysis_items").delete().eq("id", id);
       if (error) throw error;
+      await syncBoqItemBreakdownFromPa(boqItem.id);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] });
+      qc.invalidateQueries({ queryKey: ["pa_items_project", projectId] });
+      qc.invalidateQueries({ queryKey: ["boq_items"] });
+    },
   });
 
   const addMut = useMutation({
@@ -282,8 +293,13 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
         cell_styles:   (type === "material" ? { material_category: cat ?? "primary" } : null) as any,
       });
       if (error) throw error;
+      await syncBoqItemBreakdownFromPa(boqItem.id);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] });
+      qc.invalidateQueries({ queryKey: ["pa_items_project", projectId] });
+      qc.invalidateQueries({ queryKey: ["boq_items"] });
+    },
     onError:   (e: Error) => toast.error(e.message),
   });
 
@@ -383,6 +399,40 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
           </Button>
         </div>
       </div>
+
+      {/* Sync warning if breakdown is empty (0) while BOQ still holds a stale stored cost */}
+      {items.length === 0 &&
+        (Number(boqItem.material_cost ?? 0) +
+          Number(boqItem.labor_cost ?? 0) +
+          Number(boqItem.equipment_cost ?? 0) +
+          Number(boqItem.subcontractor_cost ?? 0)) > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs">
+            <span className="text-amber-700 dark:text-amber-300 font-medium">
+              البريك داون لهذا البند فارغ (0.00)، بينما يحتوي جدول الكميات على تكلفة سابقة (
+              {fmtSAR(
+                Number(boqItem.material_cost ?? 0) +
+                  Number(boqItem.labor_cost ?? 0) +
+                  Number(boqItem.equipment_cost ?? 0) +
+                  Number(boqItem.subcontractor_cost ?? 0),
+                language,
+              )}
+              ).
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-amber-500/40"
+              onClick={async () => {
+                await syncBoqItemBreakdownFromPa(boqItem.id);
+                await qc.invalidateQueries({ queryKey: ["boq_items"] });
+                await qc.invalidateQueries({ queryKey: ["pa_items_project", projectId] });
+                toast.success("تم تصفير ومزامنة تكلفة البند في جدول الكميات بنجاح");
+              }}
+            >
+              تصفير تكلفة البند في جدول الكميات
+            </Button>
+          </div>
+        )}
 
       {/* ══ Sheet ════════════════════════════════════════════════════════════ */}
       <div className="flex-1 overflow-auto">
@@ -936,8 +986,13 @@ function MarkupLine({
         });
         if (error) throw error;
       }
+      await syncBoqItemBreakdownFromPa(boqItemId);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["pa_markup", boqItemId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pa_markup", boqItemId] });
+      qc.invalidateQueries({ queryKey: ["pa_markup_project", projectId] });
+      qc.invalidateQueries({ queryKey: ["boq_items"] });
+    },
     onError:   (e: Error) => toast.error(e.message),
   });
 

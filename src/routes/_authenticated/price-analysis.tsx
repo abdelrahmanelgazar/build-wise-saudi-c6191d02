@@ -44,6 +44,7 @@ import { useLanguage } from "@/lib/i18n";
 import { fmtNumber, fmtSAR } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
+import { syncBoqItemBreakdownFromPa } from "@/lib/pa-sync";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
@@ -88,9 +89,13 @@ function PriceAnalysisPage() {
   useRegisterPageActions({
     pageKey: "price-analysis",
     hasEditableState: true,
-    queryKeys: [["pa_items", selectedId], ["pa_markup", selectedId], ["boq_items", projectId]],
+    queryKeys: [["pa_items", selectedId], ["pa_markup", selectedId], ["pa_items_project", projectId], ["boq_items", projectId]],
     onSave: async () => {
+      if (selectedId) {
+        await syncBoqItemBreakdownFromPa(selectedId);
+      }
       await qc.invalidateQueries({ queryKey: ["pa_items"] });
+      await qc.invalidateQueries({ queryKey: ["pa_items_project", projectId] });
       await qc.invalidateQueries({ queryKey: ["pa_markup"] });
       await qc.invalidateQueries({ queryKey: ["boq_items", projectId] });
     },
