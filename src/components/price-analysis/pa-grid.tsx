@@ -12,13 +12,18 @@ import {
   ChevronDown,
   ChevronRight,
   Calculator,
+  ShoppingBag,
+  Layers,
+  ArrowLeftRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -29,8 +34,10 @@ import { toast } from "sonner";
 import { useActiveProjectId } from "@/lib/active-project";
 import type { Database } from "@/integrations/supabase/types";
 import { ImportPaDialog } from "./import-pa-dialog";
+import { SelectQuoteDialog } from "./select-quote-dialog";
 import { exportPriceAnalysis } from "@/lib/pa-export";
 import { useLanguage } from "@/lib/i18n";
+import { roundTo } from "@/lib/estimation-calc";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 type PaItem = Database["public"]["Tables"]["price_analysis_items"]["Row"];
@@ -82,29 +89,32 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     localStorage.setItem(storageKey, JSON.stringify(colWidths));
   }, [colWidths, storageKey]);
 
-  // Unified single "التوصيف (Description)" column + dedicated "الملاحظات (Notes)" column
+  // Unified single "التوصيف (Description)" column + dedicated "الملاحظات (Notes)" as LAST logical column after amount
   const cols = useMemo(() => {
     const rawCols: Col[] = [
       { key: "level",          label: t("pa.colItemNo", "رقم البند"),             defaultW: 75,  align: "center" },
-      { key: "description",    label: "التوصيف (Description)",                    defaultW: 380, align: "right"  },
-      { key: "notes",          label: "الملاحظات (Notes)",                        defaultW: 200, align: "right"  },
+      { key: "description",    label: "التوصيف (Description)",                    defaultW: 360, align: "right"  },
       { key: "qty",            label: t("common.quantity", "الكمية"),             defaultW: 75,  align: "center" },
       { key: "uom",            label: t("common.unit", "وحدة القياس"),            defaultW: 75,  align: "center" },
       { key: "rate",           label: t("common.directCost", "التكلفة المباشرة"), defaultW: 120, align: "center" },
       { key: "amount",         label: "إجمالي التكلفة المباشرة",                   defaultW: 140, align: "center" },
-      { key: "__actions",      label: "",                                         defaultW: 48,  align: "center" },
+      { key: "notes",          label: "الملاحظات (Notes)",                        defaultW: 220, align: "right"  },
+      { key: "__actions",      label: "",                                         defaultW: 64,  align: "center" },
     ];
     return rawCols.map((c) => ({ ...c, w: colWidths[c.key] ?? c.defaultW }));
   }, [colWidths, t]);
   const totalW = cols.reduce((s, c) => s + c.w, 0);
 
-  const [collapsed, setCollapsed] = useState<Set<ResourceType>>(new Set());
-  const toggleCollapse = (t: ResourceType) =>
+  const [collapsed, setCollapsed] = useState<Set<ResourceType | string>>(new Set());
+  const toggleCollapse = (t: ResourceType | string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
       next.has(t) ? next.delete(t) : next.add(t);
       return next;
     });
+
+  const [quoteDialogOpen, setQuoteDialogOpen] = useState(false);
+  const [quoteDialogType, setQuoteDialogType] = useState<ResourceType>("material");
 
   const { data: items = [] } = useQuery({
     queryKey: ["pa_items", boqItem.id],
@@ -138,14 +148,17 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   const overhead    = Number(markup?.overhead_pct ?? 0);
   const risk        = Number(markup?.risk_pct ?? 0);
   const profit      = Number(markup?.profit_pct ?? 0);
+
+  // Phase 2 Pricing Engine: 4 independent markups calculated on direct cost (§2 & §7)
   const indirectVal = (directCost * indirect) / 100;
-  const s1          = directCost + indirectVal;
-  const overheadVal = (s1 * overhead) / 100;
-  const s2          = s1 + overheadVal;
-  const riskVal     = (s2 * risk) / 100;
-  const s3          = s2 + riskVal;
-  const profitVal   = (s3 * profit) / 100;
-  const selling     = s3 + profitVal;
+  const overheadVal = (directCost * overhead) / 100;
+  const riskVal     = (directCost * risk) / 100;
+  const profitVal   = (directCost * profit) / 100;
+  const totalAdditions = indirectVal + overheadVal + riskVal + profitVal;
+  const rawSellingPrice = directCost + totalAdditions;
+  const approvedRate = rawSellingPrice > 0 ? Math.ceil(rawSellingPrice) : 0;
+  const roundingDifference = approvedRate - rawSellingPrice;
+  const selling     = approvedRate;
 
   const resizeRef = useRef<{ key: string; startX: number; startW: number } | null>(null);
   const onColResizeStart = (key: string, startW: number) => (e: React.MouseEvent) => {
@@ -174,6 +187,25 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] }),
     onError:   (e: Error) => toast.error(e.message),
+  });
+
+  const toggleMaterialCategoryMut = useMutation({
+    mutationFn: async ({ id, currentCat }: { id: string; currentCat: string }) => {
+      const item = items.find((i) => i.id === id);
+      const cellStyles = ((item?.cell_styles ?? {}) as Record<string, unknown>);
+      const nextCat = currentCat === "accessory" ? "primary" : "accessory";
+      const nextStyles = { ...cellStyles, material_category: nextCat };
+      const { error } = await estimationClient
+        .from("price_analysis_items")
+        .update({ cell_styles: nextStyles as any })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("تم تحديث تصنيف المادة بنجاح");
+      qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] });
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const updateBoqItemMut = useMutation({
@@ -205,21 +237,25 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   });
 
   const addMut = useMutation({
-    mutationFn: async (type: ResourceType) => {
+    mutationFn: async (opts: ResourceType | { type: ResourceType; materialCategory?: "primary" | "accessory" }) => {
+      const type = typeof opts === "string" ? opts : opts.type;
+      const cat = typeof opts === "object" ? opts.materialCategory : "primary";
       const { data: u } = await estimationClient.auth.getUser();
       const userId = u.user?.id;
       if (!userId) throw new Error("غير مسجل دخول");
       const maxSort = items.reduce((m, i) => Math.max(m, i.sort_order ?? 0), 0);
+      const isAccessory = type === "material" && cat === "accessory";
       const { error } = await estimationClient.from("price_analysis_items").insert({
         boq_item_id:   boqItem.id,
         user_id:       userId,
         project_id:    projectId,
         resource_type: type,
-        description_ar: `مكوّن جديد (${TYPE_LABEL[type]})`,
-        unit:          type === "material" ? "م³" : type === "labor" ? "يومية" : type === "equipment" ? "ساعة" : "مقطوعية",
+        description_ar: isAccessory ? "إكسسوار / مستهلك جديد" : `مكوّن جديد (${TYPE_LABEL[type]})`,
+        unit:          type === "material" ? (isAccessory ? "عدد" : "م³") : type === "labor" ? "يومية" : type === "equipment" ? "ساعة" : "مقطوعية",
         quantity:      1,
         unit_price:    0,
         sort_order:    maxSort + 1,
+        cell_styles:   (type === "material" ? { material_category: cat } : null) as any,
       });
       if (error) throw error;
     },
@@ -261,6 +297,19 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
         </div>
 
         <div className="flex items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => {
+              setQuoteDialogType("material");
+              setQuoteDialogOpen(true);
+            }}
+          >
+            <ShoppingBag className="h-3.5 w-3.5" />
+            اختيار من عروض الأسعار
+          </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" className="gap-1.5">
@@ -269,17 +318,31 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              {TYPES.map((t) => (
-                <DropdownMenuItem key={t} onClick={() => addMut.mutate(t)}>
-                  <span className={cn("mr-2 h-2 w-2 rounded-full", {
-                    "bg-chart-2":  t === "material",
-                    "bg-chart-3":  t === "labor",
-                    "bg-primary":  t === "equipment",
-                    "bg-chart-4":  t === "subcontractor",
-                  })} />
-                  {TYPE_LABEL[t]}
-                </DropdownMenuItem>
-              ))}
+              <DropdownMenuItem onClick={() => addMut.mutate({ type: "material", materialCategory: "primary" })}>
+                <span className="mr-2 h-2 w-2 rounded-full bg-chart-2" />
+                مادة أساسية (Primary Material)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => addMut.mutate({ type: "material", materialCategory: "accessory" })}>
+                <span className="mr-2 h-2 w-2 rounded-full bg-amber-500" />
+                إكسسوار / مستهلك (Accessory)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => addMut.mutate("labor")}>
+                <span className="mr-2 h-2 w-2 rounded-full bg-chart-3" />
+                العمالة (Labor)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => addMut.mutate("equipment")}>
+                <span className="mr-2 h-2 w-2 rounded-full bg-primary" />
+                المعدات (Equipment)
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => addMut.mutate("subcontractor")}>
+                <span className="mr-2 h-2 w-2 rounded-full bg-chart-4" />
+                مقاولو الباطن (Subcontractor)
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setQuoteDialogOpen(true)}>
+                <ShoppingBag className="mr-2 h-3.5 w-3.5 text-primary" />
+                استدعاء من عروض الأسعار…
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -352,19 +415,6 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                 </div>
               </EditableCell>
             </div>
-            {/* Notes (Editable item note) */}
-            <div style={cw("notes")}
-              className={cn(CELL, "border-l-primary-foreground/20 justify-start text-right")}>
-              <EditableCell
-                value={boqNoteValue}
-                onSave={(v) => updateBoqItemMut.mutate({ note: v })}
-                className="flex-1"
-              >
-                <span className="block w-full whitespace-pre-wrap break-words text-[11px] opacity-90 truncate" title={boqNoteValue || "أضف ملاحظة للبند…"}>
-                  {boqNoteValue || "—"}
-                </span>
-              </EditableCell>
-            </div>
             {/* QTY */}
             <div style={cw("qty")}
               className={cn(CELL, "justify-center font-bold border-l-primary-foreground/20")}>
@@ -382,10 +432,23 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
             </div>
             {/* Amount (Total Direct Cost = Qty * Direct Cost) */}
             <div style={cw("amount")}
-              className={cn(CELL, "justify-center border-l-0 font-bold text-[12px]")}
+              className={cn(CELL, "justify-center border-l-primary-foreground/20 font-bold text-[12px]")}
               title="إجمالي التكلفة المباشرة للبند = كمية المقايسة × التكلفة المباشرة للوحدة"
             >
               {fmtNumber(directCost * Number(boqItem.quantity ?? 0), 2)}
+            </div>
+            {/* Notes (Dedicated Notes column as last logical column after amount) */}
+            <div style={cw("notes")}
+              className={cn(CELL, "border-l-primary-foreground/20 justify-start text-right")}>
+              <EditableCell
+                value={boqNoteValue}
+                onSave={(v) => updateBoqItemMut.mutate({ note: v })}
+                className="flex-1"
+              >
+                <span className="block w-full whitespace-pre-wrap break-words text-[11px] opacity-90 truncate" title={boqNoteValue || "أضف ملاحظة للبند…"}>
+                  {boqNoteValue || "—"}
+                </span>
+              </EditableCell>
             </div>
             {/* Actions placeholder */}
             <div style={cw("__actions")} className={cn(CELL, "border-l-0")} />
@@ -404,18 +467,62 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-                {TYPES.map((t) => (
-                  <Button
-                    key={t}
-                    size="sm"
-                    variant="outline"
-                    className="gap-1.5 text-xs font-semibold"
-                    onClick={() => addMut.mutate(t)}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    {TYPE_LABEL[t]}
-                  </Button>
-                ))}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs font-semibold"
+                  onClick={() => addMut.mutate({ type: "material", materialCategory: "primary" })}
+                >
+                  <Plus className="h-3.5 w-3.5 text-chart-2" />
+                  مادة أساسية
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs font-semibold"
+                  onClick={() => addMut.mutate({ type: "material", materialCategory: "accessory" })}
+                >
+                  <Plus className="h-3.5 w-3.5 text-amber-500" />
+                  إكسسوار / مستهلك
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs font-semibold"
+                  onClick={() => addMut.mutate("labor")}
+                >
+                  <Plus className="h-3.5 w-3.5 text-chart-3" />
+                  العمالة
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs font-semibold"
+                  onClick={() => addMut.mutate("equipment")}
+                >
+                  <Plus className="h-3.5 w-3.5 text-primary" />
+                  المعدات
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5 text-xs font-semibold"
+                  onClick={() => addMut.mutate("subcontractor")}
+                >
+                  <Plus className="h-3.5 w-3.5 text-chart-4" />
+                  مقاولو الباطن
+                </Button>
+                <Button
+                  size="sm"
+                  className="gap-1.5 text-xs font-semibold"
+                  onClick={() => {
+                    setQuoteDialogType("material");
+                    setQuoteDialogOpen(true);
+                  }}
+                >
+                  <ShoppingBag className="h-3.5 w-3.5" />
+                  اختيار من عروض الأسعار
+                </Button>
               </div>
             </div>
           )}
@@ -427,6 +534,162 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               (s, i) => s + Number(i.quantity) * Number(i.unit_price), 0,
             );
             const isCollapsed  = collapsed.has(type);
+            const isMaterial   = type === "material";
+
+            // Material subcategories per plan §3 & §7: Primary vs Accessories
+            const primaryItems   = isMaterial ? sectionItems.filter((i) => (i.cell_styles as any)?.material_category !== "accessory") : [];
+            const accessoryItems = isMaterial ? sectionItems.filter((i) => (i.cell_styles as any)?.material_category === "accessory") : [];
+            const primaryTotal   = primaryItems.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0);
+            const accessoryTotal = accessoryItems.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0);
+
+            const renderItemRow = (it: PaItem, idx: number) => {
+              const cellStyles = ((it.cell_styles ?? {}) as CellStyles);
+              const total      = Number(it.quantity) * Number(it.unit_price);
+              const noteVal    = (cellStyles as any)?.note ?? "";
+              const isAccessory = (cellStyles as any)?.material_category === "accessory";
+
+              return (
+                <div
+                  key={it.id}
+                  className="group flex border-b border-border/40 hover:bg-muted/10 transition-colors"
+                  style={{ minWidth: totalW, minHeight: 30 }}
+                >
+                  {/* Level */}
+                  <div style={cw("level")}
+                    className={cn(CELL, "justify-center text-[10px] text-muted-foreground/60 select-none")}>
+                    {idx + 1}
+                  </div>
+
+                  {/* Description (Unified editable cell) */}
+                  <div
+                    className={cn(CELL, "gap-1.5", {
+                      "font-bold": cellStyles["description"]?.bold,
+                      "italic":    cellStyles["description"]?.italic,
+                    })}
+                    style={{
+                      ...cw("description"),
+                      fontSize:  cellStyles["description"]?.fontSize
+                        ? `${cellStyles["description"].fontSize}px` : undefined,
+                      textAlign: cellStyles["description"]?.align ?? "right",
+                    }}
+                  >
+                    <EditableCell
+                      value={it.description_ar}
+                      onSave={(v) =>
+                        updateMut.mutate({ id: it.id, patch: { description_ar: v || "—" } })
+                      }
+                      className="flex-1"
+                    >
+                      <span className="block w-full whitespace-pre-wrap break-words text-[11px]">
+                        {it.description_ar}
+                      </span>
+                    </EditableCell>
+
+                    {/* Inline Material Subcategory Toggle (Plan §3 & §7) */}
+                    {isMaterial && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-1.5 text-[10px] text-muted-foreground hover:text-primary gap-1 shrink-0"
+                        title="نقر للتبديل بين مادة أساسية وإكسسوار"
+                        onClick={() => toggleMaterialCategoryMut.mutate({ id: it.id, currentCat: isAccessory ? "accessory" : "primary" })}
+                      >
+                        <ArrowLeftRight className="h-2.5 w-2.5" />
+                        <span className={cn("text-[9px] px-1 py-0.2 rounded font-medium", isAccessory ? "bg-amber-500/15 text-amber-600" : "bg-primary/10 text-primary")}>
+                          {isAccessory ? "إكسسوار" : "أساسية"}
+                        </span>
+                      </Button>
+                    )}
+
+                    <FormatPopover
+                      styles={cellStyles}
+                      colKey="description"
+                      onChange={(next) =>
+                        updateMut.mutate({ id: it.id, patch: { cell_styles: next as unknown as never } })
+                      }
+                    />
+                  </div>
+
+                  {/* QTY (editable) */}
+                  <EditableCell
+                    value={String(it.quantity)}
+                    onSave={(v) =>
+                      updateMut.mutate({ id: it.id, patch: { quantity: Number(v) || 0 } })
+                    }
+                    className={cn(CELL, "justify-center")}
+                    style={cw("qty")}
+                  >
+                    <span className="text-[11px]">{fmtNumber(it.quantity, 3)}</span>
+                  </EditableCell>
+
+                  {/* UOM (editable) */}
+                  <EditableCell
+                    value={it.unit}
+                    onSave={(v) =>
+                      updateMut.mutate({ id: it.id, patch: { unit: v || "وحدة" } })
+                    }
+                    className={cn(CELL, "justify-center text-muted-foreground")}
+                    style={cw("uom")}
+                  >
+                    <span className="text-[11px]">{it.unit}</span>
+                  </EditableCell>
+
+                  {/* Rate (editable) */}
+                  <EditableCell
+                    value={String(it.unit_price)}
+                    onSave={(v) =>
+                      updateMut.mutate({ id: it.id, patch: { unit_price: Number(v) || 0 } })
+                    }
+                    className={cn(CELL, "justify-center")}
+                    style={cw("rate")}
+                  >
+                    <span className="text-[11px]">{fmtNumber(it.unit_price, 2)}</span>
+                  </EditableCell>
+
+                  {/* Amount (computed, read-only) */}
+                  <div
+                    style={cw("amount")}
+                    className={cn(CELL, "justify-center border-l-border/40 font-semibold text-foreground text-[11px]")}
+                  >
+                    {fmtNumber(total, 2)}
+                  </div>
+
+                  {/* Notes (Dedicated Component Note as LAST logical column after amount) */}
+                  <div
+                    className={cn(CELL, "gap-1")}
+                    style={cw("notes")}
+                  >
+                    <EditableCell
+                      value={noteVal}
+                      onSave={(v) => {
+                        const nextStyles = { ...cellStyles, note: v };
+                        updateMut.mutate({ id: it.id, patch: { cell_styles: nextStyles as unknown as never } });
+                      }}
+                      className="flex-1"
+                    >
+                      <span className="block w-full whitespace-pre-wrap break-words text-[11px] text-muted-foreground truncate" title={noteVal}>
+                        {noteVal || "—"}
+                      </span>
+                    </EditableCell>
+                  </div>
+
+                  {/* Actions */}
+                  <div
+                    style={cw("__actions")}
+                    className={cn(CELL, "justify-center border-l-0 opacity-0 transition-opacity group-hover:opacity-100")}
+                  >
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                      onClick={() => deleteMut.mutate(it.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            };
 
             return (
               <div key={type}>
@@ -450,148 +713,73 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                     <span>{TYPE_LABEL[type]}</span>
                     <span className="text-[11px] font-normal text-muted-foreground">({sectionItems.length})</span>
                   </div>
-                  <div style={cw("notes")} className={cn(CELL, "justify-start")} />
                   <div style={cw("qty")}   className={cn(CELL, "justify-center")} />
                   <div style={cw("uom")}   className={cn(CELL, "justify-center")} />
                   <div style={cw("rate")}  className={cn(CELL, "justify-center")} />
                   <div style={cw("amount")}
-                    className={cn(CELL, "justify-center border-l-0 text-[12px] font-bold")}>
+                    className={cn(CELL, "justify-center border-l-border/40 text-[12px] font-bold")}>
                     {subtotal > 0 ? fmtNumber(subtotal, 2) : ""}
                   </div>
+                  <div style={cw("notes")} className={cn(CELL, "justify-start")} />
                   <div style={cw("__actions")} className={cn(CELL, "border-l-0")} />
                 </div>
 
-                {/* Component rows */}
-                {!isCollapsed && sectionItems.map((it, idx) => {
-                  const cellStyles = ((it.cell_styles ?? {}) as CellStyles);
-                  const total      = Number(it.quantity) * Number(it.unit_price);
-                  const noteVal    = (cellStyles as any)?.note ?? "";
-
-                  return (
-                    <div
-                      key={it.id}
-                      className="group flex border-b border-border/40 hover:bg-muted/10 transition-colors"
-                      style={{ minWidth: totalW, minHeight: 30 }}
-                    >
-                      {/* Level */}
-                      <div style={cw("level")}
-                        className={cn(CELL, "justify-center text-[10px] text-muted-foreground/60 select-none")}>
-                        {idx + 1}
-                      </div>
-
-                      {/* Description (Unified editable cell) */}
-                      <div
-                        className={cn(CELL, "gap-1", {
-                          "font-bold": cellStyles["description"]?.bold,
-                          "italic":    cellStyles["description"]?.italic,
-                        })}
-                        style={{
-                          ...cw("description"),
-                          fontSize:  cellStyles["description"]?.fontSize
-                            ? `${cellStyles["description"].fontSize}px` : undefined,
-                          textAlign: cellStyles["description"]?.align ?? "right",
-                        }}
-                      >
-                        <EditableCell
-                          value={it.description_ar}
-                          onSave={(v) =>
-                            updateMut.mutate({ id: it.id, patch: { description_ar: v || "—" } })
-                          }
-                          className="flex-1"
-                        >
-                          <span className="block w-full whitespace-pre-wrap break-words text-[11px]">
-                            {it.description_ar}
+                {/* Component rows (with material subcategories if material) */}
+                {!isCollapsed && (
+                  <>
+                    {isMaterial ? (
+                      <>
+                        {/* Sub-Group 1: المواد الأساسية (Primary Materials) */}
+                        <div className="flex items-center justify-between px-4 py-1.5 bg-chart-2/10 border-b border-border/40 text-[11px] font-semibold text-chart-2" style={{ minWidth: totalW }}>
+                          <span className="flex items-center gap-1.5">
+                            <Layers className="h-3 w-3" />
+                            مواد أساسية ({primaryItems.length})
                           </span>
-                        </EditableCell>
-                        <FormatPopover
-                          styles={cellStyles}
-                          colKey="description"
-                          onChange={(next) =>
-                            updateMut.mutate({ id: it.id, patch: { cell_styles: next as unknown as never } })
-                          }
-                        />
-                      </div>
+                          <div className="flex items-center gap-3">
+                            <span>المجموع الفرعي: {fmtSAR(primaryTotal)}</span>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              className="h-5 text-[10px] text-chart-2 hover:bg-chart-2/20"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addMut.mutate({ type: "material", materialCategory: "primary" });
+                              }}
+                            >
+                              <Plus className="h-3 w-3 me-1" /> إضافة مادة أساسية
+                            </Button>
+                          </div>
+                        </div>
+                        {primaryItems.map((it, idx) => renderItemRow(it, idx))}
 
-                      {/* Notes (Independent component note) */}
-                      <div
-                        className={cn(CELL, "gap-1")}
-                        style={cw("notes")}
-                      >
-                        <EditableCell
-                          value={noteVal}
-                          onSave={(v) => {
-                            const nextStyles = { ...cellStyles, note: v };
-                            updateMut.mutate({ id: it.id, patch: { cell_styles: nextStyles as unknown as never } });
-                          }}
-                          className="flex-1"
-                        >
-                          <span className="block w-full whitespace-pre-wrap break-words text-[11px] text-muted-foreground truncate" title={noteVal}>
-                            {noteVal || "—"}
+                        {/* Sub-Group 2: إكسسوارات ومستهلكات (Accessories / Consumables) */}
+                        <div className="flex items-center justify-between px-4 py-1.5 bg-amber-500/10 border-b border-border/40 text-[11px] font-semibold text-amber-600" style={{ minWidth: totalW }}>
+                          <span className="flex items-center gap-1.5">
+                            <Layers className="h-3 w-3" />
+                            إكسسوارات ومستهلكات ({accessoryItems.length})
                           </span>
-                        </EditableCell>
-                      </div>
-
-                      {/* QTY (editable) */}
-                      <EditableCell
-                        value={String(it.quantity)}
-                        onSave={(v) =>
-                          updateMut.mutate({ id: it.id, patch: { quantity: Number(v) || 0 } })
-                        }
-                        className={cn(CELL, "justify-center")}
-                        style={cw("qty")}
-                      >
-                        <span className="text-[11px]">{fmtNumber(it.quantity, 3)}</span>
-                      </EditableCell>
-
-                      {/* UOM (editable) */}
-                      <EditableCell
-                        value={it.unit}
-                        onSave={(v) =>
-                          updateMut.mutate({ id: it.id, patch: { unit: v || "وحدة" } })
-                        }
-                        className={cn(CELL, "justify-center text-muted-foreground")}
-                        style={cw("uom")}
-                      >
-                        <span className="text-[11px]">{it.unit}</span>
-                      </EditableCell>
-
-                      {/* Rate (editable) */}
-                      <EditableCell
-                        value={String(it.unit_price)}
-                        onSave={(v) =>
-                          updateMut.mutate({ id: it.id, patch: { unit_price: Number(v) || 0 } })
-                        }
-                        className={cn(CELL, "justify-center")}
-                        style={cw("rate")}
-                      >
-                        <span className="text-[11px]">{fmtNumber(it.unit_price, 2)}</span>
-                      </EditableCell>
-
-                      {/* Amount (computed, read-only) */}
-                      <div
-                        style={cw("amount")}
-                        className={cn(CELL, "justify-center border-l-0 font-semibold text-foreground text-[11px]")}
-                      >
-                        {fmtNumber(total, 2)}
-                      </div>
-
-                      {/* Actions */}
-                      <div
-                        style={cw("__actions")}
-                        className={cn(CELL, "justify-center border-l-0 opacity-0 transition-opacity group-hover:opacity-100")}
-                      >
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 text-muted-foreground hover:text-destructive"
-                          onClick={() => deleteMut.mutate(it.id)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
+                          <div className="flex items-center gap-3">
+                            <span>المجموع الفرعي: {fmtSAR(accessoryTotal)}</span>
+                            <Button
+                              size="xs"
+                              variant="ghost"
+                              className="h-5 text-[10px] text-amber-600 hover:bg-amber-500/20"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addMut.mutate({ type: "material", materialCategory: "accessory" });
+                              }}
+                            >
+                              <Plus className="h-3 w-3 me-1" /> إضافة إكسسوار
+                            </Button>
+                          </div>
+                        </div>
+                        {accessoryItems.map((it, idx) => renderItemRow(it, idx))}
+                      </>
+                    ) : (
+                      sectionItems.map((it, idx) => renderItemRow(it, idx))
+                    )}
+                  </>
+                )}
 
                 {/* Subtotal row */}
                 {!isCollapsed && sectionItems.length > 0 && (
@@ -603,14 +791,14 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                     <div style={cw("description")} className={cn(CELL, "justify-start text-right font-bold")}>
                       مجموع {TYPE_LABEL[type]}
                     </div>
-                    <div style={cw("notes")}       className={cn(CELL, "justify-start")} />
                     <div style={cw("qty")}         className={cn(CELL, "justify-center")} />
                     <div style={cw("uom")}         className={cn(CELL, "justify-center")} />
                     <div style={cw("rate")}        className={cn(CELL, "justify-center")} />
                     <div style={cw("amount")}
-                      className={cn(CELL, "justify-center border-l-0 font-bold")}>
+                      className={cn(CELL, "justify-center border-l-border/40 font-bold")}>
                       {fmtNumber(subtotal, 2)}
                     </div>
+                    <div style={cw("notes")}       className={cn(CELL, "justify-start")} />
                     <div style={cw("__actions")} className={cn(CELL, "border-l-0")} />
                   </div>
                 )}
@@ -627,8 +815,8 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               <div style={cw("level")} className={cn(CELL, "justify-center")} />
               <div
                 style={{
-                  width: (cols[1]?.w ?? 0) + (cols[2]?.w ?? 0) + (cols[3]?.w ?? 0) + (cols[4]?.w ?? 0) + (cols[5]?.w ?? 0),
-                  minWidth: (cols[1]?.w ?? 0) + (cols[2]?.w ?? 0) + (cols[3]?.w ?? 0) + (cols[4]?.w ?? 0) + (cols[5]?.w ?? 0),
+                  width: (cols[1]?.w ?? 0) + (cols[2]?.w ?? 0) + (cols[3]?.w ?? 0) + (cols[4]?.w ?? 0),
+                  minWidth: (cols[1]?.w ?? 0) + (cols[2]?.w ?? 0) + (cols[3]?.w ?? 0) + (cols[4]?.w ?? 0),
                 }}
                 className={cn(CELL, "justify-end text-primary")}
               >
@@ -638,32 +826,43 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                 className={cn(CELL, "justify-center border-l-0 text-primary")}>
                 {fmtSAR(directCost)}
               </div>
+              <div style={cw("notes")} className={cn(CELL, "border-l-0")} />
               <div style={cw("__actions")} className={cn(CELL, "border-l-0")} />
             </div>
           )}
         </div>
       </div>
 
-      {/* ══ Markup footer ════════════════════════════════════════════════════ */}
+      {/* ══ Markup footer (Phase 2 Unified Pricing Contract: 4 independent markups + ROUNDUP rate) ═════════ */}
       <div className="border-t border-border bg-secondary/30 px-4 py-3">
-        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs tabular-nums md:grid-cols-3">
+        <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs tabular-nums md:grid-cols-4">
           <SumLine label={t("pa.directCostLabel", "التكلفة المباشرة")} value={fmtSAR(directCost, language)} />
-          <MarkupLine label={t("pa.indirectLabel", "تكلفة غير مباشرة")}  pct={indirect} value={indirectVal} field="indirect_pct" boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
-          <MarkupLine label={t("pa.overheadLabel", "مصاريف عامة")} pct={overhead}  value={overheadVal} field="overhead_pct"  boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
-          <MarkupLine label={t("pa.riskLabel", "المخاطر")}     pct={risk}      value={riskVal}     field="risk_pct"      boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
-          <MarkupLine label={t("pa.profitLabel", "الربح")}       pct={profit}    value={profitVal}   field="profit_pct"    boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
-          <div className="col-span-2 md:col-span-3 mt-1 flex items-center justify-between rounded-md bg-primary/10 px-3 py-2 ring-1 ring-primary/30">
-            <span className="text-sm font-bold text-primary">{t("pa.sellingPricePer", "سعر البيع لكل")} {boqItem.unit}</span>
-            <span className="text-lg font-bold tabular-nums text-primary">{fmtSAR(selling, language)}</span>
+          <MarkupLine label={t("pa.indirectLabel", "تكلفة غير مباشرة")} pct={indirect} value={indirectVal} field="indirect_pct" boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
+          <MarkupLine label={t("pa.overheadLabel", "مصاريف عامة")} pct={overhead} value={overheadVal} field="overhead_pct" boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
+          <MarkupLine label={t("pa.riskLabel", "المخاطر")} pct={risk} value={riskVal} field="risk_pct" boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
+          <MarkupLine label={t("pa.profitLabel", "الربح")} pct={profit} value={profitVal} field="profit_pct" boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
+          <SumLine label="سعر البيع الخام قبل التقريب" value={fmtSAR(rawSellingPrice, language)} />
+          <SumLine label="أثر تقريب الفئة (ROUNDUP)" value={`+${fmtSAR(roundingDifference, language)}`} />
+          <div className="col-span-2 md:col-span-4 mt-1 flex items-center justify-between rounded-md bg-primary/10 px-3 py-2 ring-1 ring-primary/30">
+            <span className="text-sm font-bold text-primary">فئة البيع المعتمدة لكل {boqItem.unit} (ROUNDUP)</span>
+            <span className="text-lg font-bold tabular-nums text-primary">{fmtSAR(approvedRate, language)}</span>
           </div>
-          <div className="col-span-2 flex items-center justify-between text-muted-foreground md:col-span-3">
+          <div className="col-span-2 flex items-center justify-between text-muted-foreground md:col-span-4">
             <span>{t("pa.totalForQty", "الإجمالي للكمية")} ({fmtNumber(boqItem.quantity, 2)} {boqItem.unit})</span>
             <span className="font-semibold text-foreground">
-              {fmtSAR(selling * Number(boqItem.quantity ?? 0), language)}
+              {fmtSAR(approvedRate * Number(boqItem.quantity ?? 0), language)}
             </span>
           </div>
         </div>
       </div>
+
+      <SelectQuoteDialog
+        open={quoteDialogOpen}
+        onOpenChange={setQuoteDialogOpen}
+        boqItemId={boqItem.id}
+        projectId={projectId}
+        defaultType={quoteDialogType}
+      />
     </div>
   );
 }

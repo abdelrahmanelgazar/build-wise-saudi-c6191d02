@@ -41,6 +41,7 @@ import { useActiveProjectId } from "@/lib/active-project";
 import { ImportExcelDialog } from "@/components/boq/import-excel-dialog";
 import { BoqGrid, type TreeNode } from "@/components/boq/boq-grid";
 import { useLanguage } from "@/lib/i18n";
+import { computeUnitSellingPrice } from "@/lib/estimation-calc";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 
@@ -208,7 +209,7 @@ function BoqPage() {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
       const { data, error } = await estimationClient
         .from("price_analysis_markup")
-        .select("boq_item_id, indirect_pct, overhead_pct, risk_pct, profit_pct")
+        .select("boq_item_id, indirect_pct, overhead_pct, risk_pct, profit_pct, manual_unit_price, round_up_rate, pricing_policy")
         .eq("project_id", projectId);
       if (error) throw error;
       return data as {
@@ -217,6 +218,9 @@ function BoqPage() {
         overhead_pct: number;
         risk_pct: number;
         profit_pct: number;
+        manual_unit_price?: number | null;
+        round_up_rate?: boolean;
+        pricing_policy?: string;
       }[];
     },
   });
@@ -233,14 +237,8 @@ function BoqPage() {
     const selling = new Map<string, number>();
     direct.forEach((cost, id) => {
       const m = markupBy.get(id);
-      const indirect = Number(m?.indirect_pct ?? 0);
-      const overhead = Number(m?.overhead_pct ?? 0);
-      const risk = Number(m?.risk_pct ?? 0);
-      const profit = Number(m?.profit_pct ?? 0);
-      const s1 = cost * (1 + indirect / 100);
-      const s2 = s1 * (1 + overhead / 100);
-      const s3 = s2 * (1 + risk / 100);
-      selling.set(id, s3 * (1 + profit / 100));
+      const res = computeUnitSellingPrice(cost, (m as any) ?? null);
+      selling.set(id, res.unitSellingPrice);
     });
     return { direct, selling };
   }, [paItems, paMarkups]);

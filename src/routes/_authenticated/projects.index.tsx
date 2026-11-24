@@ -99,8 +99,8 @@ function ProjectsIndex() {
   const qc = useQueryClient();
   const { t, language, direction: dir } = useLanguage();
 
-  // View mode: table (default) | cards | tenders | pipeline
-  const [viewMode, setViewMode] = useState<"table" | "cards" | "tenders" | "pipeline">("table");
+  // View mode: cards (default) | table | tenders | pipeline
+  const [viewMode, setViewMode] = useState<"table" | "cards" | "tenders" | "pipeline">("cards");
 
   // Filters
   const [search, setSearch] = useState("");
@@ -277,13 +277,13 @@ function ProjectsIndex() {
       <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as any)} className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
           <TabsList className="bg-muted/60 p-1">
-            <TabsTrigger value="table" className="gap-2 text-xs">
-              <FileText className="h-3.5 w-3.5" />
-              <span>جدول المشاريع (الافتراضي)</span>
-            </TabsTrigger>
             <TabsTrigger value="cards" className="gap-2 text-xs">
               <LayoutGrid className="h-3.5 w-3.5" />
-              <span>تفاصيل المشاريع (بطاقات)</span>
+              <span>بطاقات المشاريع (الافتراضي)</span>
+            </TabsTrigger>
+            <TabsTrigger value="table" className="gap-2 text-xs">
+              <FileText className="h-3.5 w-3.5" />
+              <span>جدول المشاريع</span>
             </TabsTrigger>
             <TabsTrigger value="tenders" className="gap-2 text-xs">
               <Clock className="h-3.5 w-3.5" />
@@ -504,12 +504,17 @@ function ProjectsIndex() {
                         </CardTitle>
                       </Link>
 
-                      {p.client_name && (
-                        <div className="text-xs text-muted-foreground flex items-center gap-1.5">
-                          <Building2 className="h-3.5 w-3.5 text-primary shrink-0" />
-                          <span className="truncate">{p.client_name}</span>
-                        </div>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                        {p.client_name ? (
+                          <div className="flex items-center gap-1">
+                            <Building2 className="h-3.5 w-3.5 text-primary shrink-0" />
+                            <span className="truncate font-medium text-foreground">{p.client_name}</span>
+                          </div>
+                        ) : null}
+                        <Badge variant="outline" className="text-[10px] bg-muted/40 font-normal">
+                          {(p as any).company_name || (p as any).studying_company || "شركة غير محددة"}
+                        </Badge>
+                      </div>
                     </CardHeader>
 
                     <CardContent className="space-y-3 pt-0">
@@ -903,7 +908,7 @@ function NoEditor({ value, onSave }: { value: number | null | undefined; onSave:
   );
 }
 
-function NewProjectDialog({ clients = [] }: { clients?: Client[] }) {
+export function NewProjectDialog({ clients = [] }: { clients?: Client[] }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({

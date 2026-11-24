@@ -24,6 +24,7 @@ export interface BreakdownTemplate {
   description_ar: string;
   description_en: string;
   unit: string;
+  recommended_indirect_pct?: number; // Phase 2: indirect cost % (تكلفة غير مباشرة)
   recommended_overhead_pct: number;
   recommended_profit_pct: number;
   recommended_risk_pct: number;
@@ -342,18 +343,32 @@ export async function deleteCustomTemplate(id: string) {
 
 export function calculateBreakdownCost(
   template: BreakdownTemplate,
-  markups?: { overhead_pct?: number; profit_pct?: number; risk_pct?: number }
+  markups?: {
+    indirect_pct?: number;
+    overhead_pct?: number;
+    profit_pct?: number;
+    risk_pct?: number;
+  }
 ) {
   let materialCost = 0;
+  let primaryMaterialCost = 0;
+  let accessoryMaterialCost = 0;
   let laborCost = 0;
   let equipmentCost = 0;
   let subcontractorCost = 0;
 
   template.items.forEach((item) => {
     const total = (item.quantity || 0) * (item.unit_price || 0);
-    switch (item.resource_type) {
+    const type = item.resource_type || (item as any).cost_type;
+    const cat = (item as any).material_category || (item as any).cell_styles?.material_category;
+    switch (type) {
       case "material":
         materialCost += total;
+        if (cat === "accessory") {
+          accessoryMaterialCost += total;
+        } else {
+          primaryMaterialCost += total;
+        }
         break;
       case "labor":
         laborCost += total;
@@ -369,26 +384,38 @@ export function calculateBreakdownCost(
 
   const directUnitCost = materialCost + laborCost + equipmentCost + subcontractorCost;
 
+  const indirectPct = markups?.indirect_pct ?? template.recommended_indirect_pct ?? 0;
   const overheadPct = markups?.overhead_pct ?? template.recommended_overhead_pct ?? 0;
   const profitPct = markups?.profit_pct ?? template.recommended_profit_pct ?? 0;
   const riskPct = markups?.risk_pct ?? template.recommended_risk_pct ?? 0;
 
-  const totalMarkupPct = overheadPct + profitPct + riskPct;
-  const unitSellingPrice = directUnitCost * (1 + totalMarkupPct / 100);
+  const totalMarkupPct = indirectPct + overheadPct + profitPct + riskPct;
+  const rawSellingPrice = directUnitCost * (1 + totalMarkupPct / 100);
+  const unitSellingPrice = rawSellingPrice > 0 ? Math.ceil(rawSellingPrice) : 0;
+  const roundingDifference = unitSellingPrice - rawSellingPrice;
 
   return {
     materialCost,
+    primaryMaterialCost,
+    accessoryMaterialCost,
     laborCost,
     equipmentCost,
     subcontractorCost,
     directUnitCost,
+    indirectPct,
     overheadPct,
     profitPct,
     riskPct,
     totalMarkupPct,
+    rawSellingPrice,
+    rawUnitSellingRate: rawSellingPrice,
     unitSellingPrice,
+    unitSellingRate: unitSellingPrice,
+    roundingDifference,
   };
 }
+
+export const calculateTemplatePreview = calculateBreakdownCost;
 
 // In-flight guard to prevent duplicate concurrent applications (e.g. double-click)
 const inFlightApplications = new Set<string>();
@@ -460,6 +487,10 @@ export async function applyTemplateToBoqItem({
       quantity: item.quantity,
       unit_price: item.unit_price,
       sort_order: index + 1,
+      cell_styles: {
+        notes: item.notes || null,
+        material_category: (item as any).material_category || "primary",
+      },
     }));
 
     if (inserts.length > 0) {
@@ -467,7 +498,7 @@ export async function applyTemplateToBoqItem({
       if (insErr) throw insErr;
     }
 
-    // 3. Calculate totals
+    // 3. Calculate totals using unified 4 markups
     const calc = calculateBreakdownCost(template);
 
     // 4. Update boq_item cached cost values
@@ -483,11 +514,12 @@ export async function applyTemplateToBoqItem({
 
     if (boqUpdErr) throw boqUpdErr;
 
-    // 5. Ensure markup row exists or update it
+    // 5. Ensure markup row exists or update it with all 4 markup percentages
     if (previousMarkup) {
       const { error: markupErr } = await estimationClient
         .from("price_analysis_markup")
         .update({
+          indirect_pct: calc.indirectPct,
           overhead_pct: calc.overheadPct,
           profit_pct: calc.profitPct,
           risk_pct: calc.riskPct,
@@ -500,6 +532,7 @@ export async function applyTemplateToBoqItem({
         boq_item_id: boqItemId,
         project_id: projectId,
         user_id: userId,
+        indirect_pct: calc.indirectPct,
         overhead_pct: calc.overheadPct,
         profit_pct: calc.profitPct,
         risk_pct: calc.riskPct,

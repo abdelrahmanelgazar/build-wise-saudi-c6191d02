@@ -10,25 +10,35 @@ export interface ResourceCostInput {
   unit_price: number;
   waste_pct?: number; // e.g. 5 for 5%
   productivity?: number; // units per period
+  material_category?: "primary" | "accessory"; // Subcategory for materials per Phase 2
 }
 
 export interface MarkupSettings {
-  indirect_pct?: number; // % on direct cost
-  overhead_pct?: number; // % on loaded cost
-  risk_pct?: number; // % on loaded cost
-  profit_pct?: number; // % profit
+  indirect_pct?: number; // % on direct cost (تكلفة غير مباشرة)
+  overhead_pct?: number; // % on direct cost (مصاريف عامة)
+  risk_pct?: number; // % on direct cost (المخاطر)
+  profit_pct?: number; // % profit on direct cost (الربح)
   margin_mode?: "markup" | "margin"; // "markup" = cost-plus, "margin" = % of selling price
   custom_factor?: number; // optional direct factor e.g. 1.10
+  round_up_rate?: boolean; // Phase 2 contract: ROUNDUP to integer
+  pricing_policy?: "additive_v2" | "cascaded_v1";
 }
 
 export interface LineItemFinancials {
   materialCost: number;
+  primaryMaterialCost?: number;
+  accessoryMaterialCost?: number;
   laborCost: number;
   equipmentCost: number;
   subcontractorCost: number;
   directUnitCost: number;
   loadedUnitCost: number;
+  rawUnitSellingPrice: number;
   unitSellingPrice: number;
+  roundingDiffPerUnit: number;
+  lineRoundingDiff: number;
+  lineAdditions: number;
+  lineManualAdjustment: number;
   effectiveMarkupPct: number;
   quantity: number;
   lineDirectCost: number;
@@ -49,6 +59,9 @@ export interface ProjectFinancialSummary {
   overheadTotal: number;
   riskTotal: number;
   profitTotal: number;
+  totalAdditions: number;
+  totalRoundingDifference: number;
+  totalManualAdjustment: number;
   netSellingPrice: number;
   totalMarkupAmount: number;
   totalMarkupPercentage: number;
@@ -61,6 +74,24 @@ export interface ProjectFinancialSummary {
   unpricedItemsCount: number;
   missingPriceItems: Array<{ id: string; item_no: string; description_ar: string }>;
   canIssueTender: boolean;
+}
+
+export interface Phase2PricingResult {
+  directUnitCost: number;
+  indirectVal: number;
+  overheadVal: number;
+  riskVal: number;
+  profitVal: number;
+  totalAdditions: number;
+  rawUnitSellingPrice: number;
+  approvedUnitRate: number; // ROUNDUP(rawUnitSellingPrice, 0)
+  roundingDifferencePerUnit: number;
+  quantity: number;
+  lineDirectCost: number;
+  lineAdditions: number;
+  lineRoundingDifference: number;
+  lineManualAdjustment: number;
+  lineSellingPrice: number;
 }
 
 /**
@@ -87,17 +118,25 @@ export function roundTo(value: number, decimals = 2): number {
   return Math.round((value + Number.EPSILON) * factor) / factor;
 }
 
+export function roundCurrency(value: number): number {
+  return roundTo(value, 2);
+}
+
 /**
  * Compute unit direct cost from a list of resource breakdown lines
  */
 export function computeDirectUnitCost(items: ResourceCostInput[]): {
   materialCost: number;
+  primaryMaterialCost: number;
+  accessoryMaterialCost: number;
   laborCost: number;
   equipmentCost: number;
   subcontractorCost: number;
   directUnitCost: number;
 } {
   let materialCost = 0;
+  let primaryMaterialCost = 0;
+  let accessoryMaterialCost = 0;
   let laborCost = 0;
   let equipmentCost = 0;
   let subcontractorCost = 0;
@@ -107,21 +146,28 @@ export function computeDirectUnitCost(items: ResourceCostInput[]): {
     const price = Number(item.unit_price) || 0;
     const waste = Number(item.waste_pct) || 0;
     const productivity = Number(item.productivity) || 0;
+    const resType = item.resource_type || (item as any).cost_type;
+    const cat = item.material_category || (item as any).cell_styles?.material_category;
 
     let cost = 0;
-    if (item.resource_type === "material") {
+    if (resType === "material") {
       // Net consumption * (1 + waste%) * price
       cost = qty * (1 + waste / 100) * price;
       materialCost += cost;
-    } else if (item.resource_type === "labor" || item.resource_type === "equipment") {
+      if (cat === "accessory") {
+        accessoryMaterialCost += cost;
+      } else {
+        primaryMaterialCost += cost;
+      }
+    } else if (resType === "labor" || resType === "equipment") {
       if (productivity > 0) {
         cost = price / productivity;
       } else {
         cost = qty * price;
       }
-      if (item.resource_type === "labor") laborCost += cost;
+      if (resType === "labor") laborCost += cost;
       else equipmentCost += cost;
-    } else if (item.resource_type === "subcontractor") {
+    } else if (resType === "subcontractor") {
       cost = qty * price;
       subcontractorCost += cost;
     }
@@ -131,10 +177,126 @@ export function computeDirectUnitCost(items: ResourceCostInput[]): {
 
   return {
     materialCost: roundTo(materialCost, 4),
+    primaryMaterialCost: roundTo(primaryMaterialCost, 4),
+    accessoryMaterialCost: roundTo(accessoryMaterialCost, 4),
     laborCost: roundTo(laborCost, 4),
     equipmentCost: roundTo(equipmentCost, 4),
     subcontractorCost: roundTo(subcontractorCost, 4),
     directUnitCost: roundTo(directUnitCost, 4),
+  };
+}
+
+/**
+ * Phase 2 Rounding Contract: ROUNDUP to the next whole integer rate.
+ * Standard boundary checks:
+ * 6.25 -> 7
+ * 6.0001 -> 7
+ * 7 -> 7
+ * 0 -> 0
+ */
+export function roundUpRate(val: number): number {
+  if (!Number.isFinite(val) || val <= 0) return 0;
+  const rounded = Math.round(val);
+  if (Math.abs(val - rounded) < 1e-9) return rounded;
+  return Math.ceil(val);
+}
+
+/**
+ * Phase 2 Unified Pricing Engine Contract (§2 & §7 of TENDER_PRICING_PHASE_2_PLAN.md)
+ * 1. 4 independent markups calculated on direct unit cost:
+ *    indirect = direct * indirect_pct / 100
+ *    overhead = direct * overhead_pct / 100
+ *    risk     = direct * risk_pct / 100
+ *    profit   = direct * profit_pct / 100
+ * 2. Total Additions = indirect + overhead + risk + profit
+ * 3. Raw Unit Selling Price = direct + Total Additions
+ * 4. Approved Unit Selling Rate = ROUNDUP(raw, 0)
+ * 5. Rounding difference = approved - raw
+ * 6. Financial Reconciliation: direct + additions + roundingDiff + manualAdjustment === sellingPrice
+ */
+export function computePricingPhase2(
+  paramsOrDirect:
+    | {
+        directUnitCost: number;
+        quantity?: number;
+        markups?: MarkupSettings;
+        manualSellingPrice?: number | null;
+      }
+    | number,
+  maybeMarkups?: MarkupSettings,
+  maybeQty?: number,
+  maybeManual?: number | null
+): Phase2PricingResult {
+  let directUnitCost = 0;
+  let qty = 1;
+  let m: MarkupSettings | undefined = undefined;
+  let manualSellingPrice: number | null | undefined = undefined;
+
+  if (typeof paramsOrDirect === "number") {
+    directUnitCost = roundTo(Math.max(0, paramsOrDirect || 0), 4);
+    m = maybeMarkups;
+    qty = Number(maybeQty ?? 1);
+    manualSellingPrice = maybeManual ?? (m as any)?.manual_unit_price;
+  } else {
+    directUnitCost = roundTo(Math.max(0, paramsOrDirect.directUnitCost || 0), 4);
+    qty = Number(paramsOrDirect.quantity ?? 1);
+    m = paramsOrDirect.markups;
+    manualSellingPrice = paramsOrDirect.manualSellingPrice ?? (m as any)?.manual_unit_price;
+  }
+
+  const indirect_pct = Number(m?.indirect_pct ?? 0);
+  const overhead_pct = Number(m?.overhead_pct ?? 0);
+  const risk_pct = Number(m?.risk_pct ?? 0);
+  const profit_pct = Number(m?.profit_pct ?? 0);
+
+  const indirectVal = roundTo((directUnitCost * indirect_pct) / 100, 4);
+  const overheadVal = roundTo((directUnitCost * overhead_pct) / 100, 4);
+  const riskVal = roundTo((directUnitCost * risk_pct) / 100, 4);
+  const profitVal = roundTo((directUnitCost * profit_pct) / 100, 4);
+  const totalAdditions = roundTo(indirectVal + overheadVal + riskVal + profitVal, 4);
+
+  const rawUnitSellingPrice = roundTo(directUnitCost + totalAdditions, 4);
+
+  let approvedUnitRate = 0;
+  let roundingDifferencePerUnit = 0;
+  let lineManualAdjustment = 0;
+
+  const hasManual =
+    manualSellingPrice !== null &&
+    manualSellingPrice !== undefined &&
+    manualSellingPrice > 0;
+
+  if (hasManual) {
+    const manual = Number(manualSellingPrice);
+    approvedUnitRate = roundUpRate(manual);
+    roundingDifferencePerUnit = roundTo(approvedUnitRate - manual, 4);
+    lineManualAdjustment = roundTo(qty * (manual - rawUnitSellingPrice), 2);
+  } else {
+    approvedUnitRate = roundUpRate(rawUnitSellingPrice);
+    roundingDifferencePerUnit = roundTo(approvedUnitRate - rawUnitSellingPrice, 4);
+  }
+
+  const lineDirectCost = roundTo(qty * directUnitCost, 2);
+  const lineAdditions = roundTo(qty * totalAdditions, 2);
+  const lineRoundingDifference = roundTo(qty * roundingDifferencePerUnit, 2);
+  const lineSellingPrice = roundTo(qty * approvedUnitRate, 2);
+
+  return {
+    directUnitCost,
+    indirectVal,
+    overheadVal,
+    riskVal,
+    profitVal,
+    totalAdditions,
+    rawUnitSellingPrice,
+    approvedUnitRate,
+    roundingDifferencePerUnit,
+    quantity: qty,
+    lineDirectCost,
+    lineAdditions,
+    lineRoundingDifference,
+    lineManualAdjustment,
+    lineSellingPrice,
   };
 }
 
@@ -148,17 +310,32 @@ export function computeUnitSellingPrice(
 ): {
   loadedUnitCost: number;
   unitSellingPrice: number;
+  rawUnitSellingPrice?: number;
+  roundingDifference?: number;
   effectiveMarkupPct: number;
 } {
   if (directUnitCost <= 0) {
-    return { loadedUnitCost: 0, unitSellingPrice: 0, effectiveMarkupPct: 0 };
+    return { loadedUnitCost: 0, unitSellingPrice: 0, rawUnitSellingPrice: 0, roundingDifference: 0, effectiveMarkupPct: 0 };
   }
 
   // If a simple direct factor is supplied (e.g. 1.10)
   if (markup?.custom_factor !== undefined && markup.custom_factor > 0) {
     const unitSellingPrice = roundTo(directUnitCost * markup.custom_factor, tenderDecimals);
     const effectiveMarkupPct = roundTo((markup.custom_factor - 1) * 100, 2);
-    return { loadedUnitCost: directUnitCost, unitSellingPrice, effectiveMarkupPct };
+    return { loadedUnitCost: directUnitCost, unitSellingPrice, rawUnitSellingPrice: unitSellingPrice, roundingDifference: 0, effectiveMarkupPct };
+  }
+
+  // Phase 2 additive contract if round_up_rate is explicitly requested or policy is additive_v2
+  if (markup?.round_up_rate || markup?.pricing_policy === "additive_v2") {
+    const p2 = computePricingPhase2({ directUnitCost, markups: markup });
+    const effectiveMarkupPct = directUnitCost > 0 ? roundTo(((p2.approvedUnitRate - directUnitCost) / directUnitCost) * 100, 2) : 0;
+    return {
+      loadedUnitCost: p2.rawUnitSellingPrice,
+      rawUnitSellingPrice: p2.rawUnitSellingPrice,
+      unitSellingPrice: p2.approvedUnitRate,
+      roundingDifference: p2.roundingDifferencePerUnit,
+      effectiveMarkupPct,
+    };
   }
 
   const indirect = Number(markup?.indirect_pct ?? 0);
@@ -202,6 +379,8 @@ export function computeUnitSellingPrice(
   return {
     loadedUnitCost: roundTo(loadedCost, tenderDecimals),
     unitSellingPrice: roundedSellingPrice,
+    rawUnitSellingPrice: roundedSellingPrice,
+    roundingDifference: 0,
     effectiveMarkupPct,
   };
 }
@@ -214,6 +393,8 @@ export function computeLineItemFinancials(params: {
   directUnitCost?: number;
   manualUnitSellingPrice?: number | null;
   materialCost?: number;
+  primaryMaterialCost?: number;
+  accessoryMaterialCost?: number;
   laborCost?: number;
   equipmentCost?: number;
   subcontractorCost?: number;
@@ -235,12 +416,19 @@ export function computeLineItemFinancials(params: {
   if (isGroup) {
     return {
       materialCost: 0,
+      primaryMaterialCost: 0,
+      accessoryMaterialCost: 0,
       laborCost: 0,
       equipmentCost: 0,
       subcontractorCost: 0,
       directUnitCost: 0,
       loadedUnitCost: 0,
+      rawUnitSellingPrice: 0,
       unitSellingPrice: 0,
+      roundingDiffPerUnit: 0,
+      lineRoundingDiff: 0,
+      lineAdditions: 0,
+      lineManualAdjustment: 0,
       effectiveMarkupPct: 0,
       quantity: 0,
       lineDirectCost: 0,
@@ -255,12 +443,19 @@ export function computeLineItemFinancials(params: {
   if (isIncludedElsewhere) {
     return {
       materialCost: 0,
+      primaryMaterialCost: 0,
+      accessoryMaterialCost: 0,
       laborCost: 0,
       equipmentCost: 0,
       subcontractorCost: 0,
       directUnitCost: 0,
       loadedUnitCost: 0,
+      rawUnitSellingPrice: 0,
       unitSellingPrice: 0,
+      roundingDiffPerUnit: 0,
+      lineRoundingDiff: 0,
+      lineAdditions: 0,
+      lineManualAdjustment: 0,
       effectiveMarkupPct: 0,
       quantity,
       lineDirectCost: 0,
@@ -287,11 +482,32 @@ export function computeLineItemFinancials(params: {
   }
 
   let unitSellingPrice = 0;
+  let rawUnitSellingPrice = directUnitCost;
   let loadedUnitCost = directUnitCost;
   let effectiveMarkupPct = 0;
+  let roundingDiffPerUnit = 0;
+  let lineAdditions = 0;
+  let lineManualAdjustment = 0;
 
-  if (isManualPrice) {
+  if (params.markup?.round_up_rate || params.markup?.pricing_policy === "additive_v2") {
+    const p2 = computePricingPhase2({
+      directUnitCost,
+      quantity,
+      markups: params.markup,
+      manualSellingPrice: isManualPrice ? manualUnitSellingPrice : null,
+    });
+    unitSellingPrice = p2.approvedUnitRate;
+    rawUnitSellingPrice = p2.rawUnitSellingPrice;
+    loadedUnitCost = p2.rawUnitSellingPrice;
+    roundingDiffPerUnit = p2.roundingDifferencePerUnit;
+    lineAdditions = p2.lineAdditions;
+    lineManualAdjustment = p2.lineManualAdjustment;
+    effectiveMarkupPct = directUnitCost > 0 ? roundTo(((unitSellingPrice - directUnitCost) / directUnitCost) * 100, 2) : 0;
+  } else if (isManualPrice) {
     unitSellingPrice = roundTo(manualUnitSellingPrice!, tenderDecimals);
+    rawUnitSellingPrice = unitSellingPrice;
+    roundingDiffPerUnit = 0;
+    lineManualAdjustment = roundTo(quantity * (unitSellingPrice - directUnitCost), currencyDecimals);
     effectiveMarkupPct =
       directUnitCost > 0
         ? roundTo(((unitSellingPrice - directUnitCost) / directUnitCost) * 100, 2)
@@ -299,22 +515,33 @@ export function computeLineItemFinancials(params: {
   } else {
     const calc = computeUnitSellingPrice(directUnitCost, params.markup, tenderDecimals);
     unitSellingPrice = calc.unitSellingPrice;
+    rawUnitSellingPrice = calc.rawUnitSellingPrice ?? unitSellingPrice;
     loadedUnitCost = calc.loadedUnitCost;
+    roundingDiffPerUnit = calc.roundingDifference ?? 0;
     effectiveMarkupPct = calc.effectiveMarkupPct;
+    lineAdditions = roundTo(quantity * (rawUnitSellingPrice - directUnitCost), currencyDecimals);
   }
 
   const isUnpriced = directUnitCost <= 0 && unitSellingPrice <= 0;
   const lineDirectCost = roundTo(quantity * directUnitCost, currencyDecimals);
   const lineSellingPrice = roundTo(quantity * unitSellingPrice, currencyDecimals);
+  const lineRoundingDiff = roundTo(quantity * roundingDiffPerUnit, currencyDecimals);
 
   return {
     materialCost: params.materialCost ?? 0,
+    primaryMaterialCost: params.primaryMaterialCost ?? params.materialCost ?? 0,
+    accessoryMaterialCost: params.accessoryMaterialCost ?? 0,
     laborCost: params.laborCost ?? 0,
     equipmentCost: params.equipmentCost ?? 0,
     subcontractorCost: params.subcontractorCost ?? 0,
     directUnitCost: roundTo(directUnitCost, tenderDecimals),
     loadedUnitCost: roundTo(loadedUnitCost, tenderDecimals),
+    rawUnitSellingPrice: roundTo(rawUnitSellingPrice, tenderDecimals),
     unitSellingPrice: roundTo(unitSellingPrice, tenderDecimals),
+    roundingDiffPerUnit: roundTo(roundingDiffPerUnit, 4),
+    lineRoundingDiff,
+    lineAdditions,
+    lineManualAdjustment,
     effectiveMarkupPct,
     quantity,
     lineDirectCost,
@@ -367,6 +594,9 @@ export function computeProjectFinancials(params: {
   let overheadTotal = 0;
   let riskTotal = 0;
   let profitTotal = 0;
+  let totalAdditions = 0;
+  let totalRoundingDifference = 0;
+  let totalManualAdjustment = 0;
   let netSellingPrice = 0;
 
   const missingPriceItems: Array<{ id: string; item_no: string; description_ar: string }> = [];
@@ -414,20 +644,38 @@ export function computeProjectFinancials(params: {
     if (!line.isGroup && !line.isIncludedElsewhere && line.directUnitCost > 0) {
       if (markup?.custom_factor !== undefined && markup.custom_factor > 0) {
         profitTotal += roundTo(line.lineSellingPrice - line.lineDirectCost, currencyDecimals);
+        totalAdditions += roundTo(line.lineSellingPrice - line.lineDirectCost, currencyDecimals);
       } else {
         const directU = line.directUnitCost;
-        const indVal = (directU * Number(markup?.indirect_pct ?? 0)) / 100;
-        const s1 = directU + indVal;
-        const ovVal = (s1 * Number(markup?.overhead_pct ?? 0)) / 100;
-        const s2 = s1 + ovVal;
-        const rskVal = (s2 * Number(markup?.risk_pct ?? 0)) / 100;
-        const loadedU = s2 + rskVal;
-        const profitU = line.unitSellingPrice - loadedU;
+        if (markup?.pricing_policy === "additive_v2" || markup?.round_up_rate) {
+          const indVal = (directU * Number(markup?.indirect_pct ?? 0)) / 100;
+          const ovVal = (directU * Number(markup?.overhead_pct ?? 0)) / 100;
+          const rskVal = (directU * Number(markup?.risk_pct ?? 0)) / 100;
+          const prfVal = (directU * Number(markup?.profit_pct ?? 0)) / 100;
 
-        indirectTotal += roundTo(qty * indVal, currencyDecimals);
-        overheadTotal += roundTo(qty * ovVal, currencyDecimals);
-        riskTotal += roundTo(qty * rskVal, currencyDecimals);
-        profitTotal += roundTo(qty * profitU, currencyDecimals);
+          indirectTotal += roundTo(qty * indVal, currencyDecimals);
+          overheadTotal += roundTo(qty * ovVal, currencyDecimals);
+          riskTotal += roundTo(qty * rskVal, currencyDecimals);
+          profitTotal += roundTo(qty * prfVal, currencyDecimals);
+
+          totalAdditions += roundTo(qty * (indVal + ovVal + rskVal + prfVal), currencyDecimals);
+          totalRoundingDifference += line.lineRoundingDiff;
+          totalManualAdjustment += line.lineManualAdjustment;
+        } else {
+          const indVal = (directU * Number(markup?.indirect_pct ?? 0)) / 100;
+          const s1 = directU + indVal;
+          const ovVal = (s1 * Number(markup?.overhead_pct ?? 0)) / 100;
+          const s2 = s1 + ovVal;
+          const rskVal = (s2 * Number(markup?.risk_pct ?? 0)) / 100;
+          const loadedU = s2 + rskVal;
+          const profitU = line.unitSellingPrice - loadedU;
+
+          indirectTotal += roundTo(qty * indVal, currencyDecimals);
+          overheadTotal += roundTo(qty * ovVal, currencyDecimals);
+          riskTotal += roundTo(qty * rskVal, currencyDecimals);
+          profitTotal += roundTo(qty * profitU, currencyDecimals);
+          totalAdditions += roundTo(line.lineSellingPrice - line.lineDirectCost, currencyDecimals);
+        }
       }
     }
 
@@ -440,6 +688,9 @@ export function computeProjectFinancials(params: {
   overheadTotal = roundTo(overheadTotal, currencyDecimals);
   riskTotal = roundTo(riskTotal, currencyDecimals);
   profitTotal = roundTo(profitTotal, currencyDecimals);
+  totalAdditions = roundTo(totalAdditions, currencyDecimals);
+  totalRoundingDifference = roundTo(totalRoundingDifference, currencyDecimals);
+  totalManualAdjustment = roundTo(totalManualAdjustment, currencyDecimals);
   netSellingPrice = roundTo(netSellingPrice, currencyDecimals);
 
   const totalMarkupAmount = roundTo(netSellingPrice - totalDirectCost, currencyDecimals);
@@ -462,6 +713,9 @@ export function computeProjectFinancials(params: {
     overheadTotal,
     riskTotal,
     profitTotal,
+    totalAdditions,
+    totalRoundingDifference,
+    totalManualAdjustment,
     netSellingPrice,
     totalMarkupAmount,
     totalMarkupPercentage,
