@@ -332,13 +332,15 @@ function AppShellInner({ children }: { children: ReactNode }) {
   };
 
   return (
-    // Outer container uses dir="ltr" so the sidebar is consistently positioned on the LEFT side per spec §4,
-    // while inner panels keep dir={direction} for Arabic RTL / English LTR text flow.
-    <div dir="ltr" className="flex min-h-screen w-full bg-background text-foreground">
-      {/* Left Hierarchical Sidebar */}
+    // Sidebar automatically aligns with active reading direction: Right in Arabic (RTL), Left in English (LTR).
+    <div dir={direction} className="flex min-h-screen w-full bg-background text-foreground">
+      {/* Directional Hierarchical Sidebar */}
       <aside
         dir={direction}
-        className="sticky top-0 flex h-screen w-68 shrink-0 flex-col border-r border-sidebar-border bg-sidebar"
+        className={cn(
+          "sticky top-0 flex h-screen w-68 shrink-0 flex-col bg-sidebar",
+          direction === "rtl" ? "border-l border-sidebar-border" : "border-r border-sidebar-border",
+        )}
       >
         <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border px-4">
           <img src={taqdiriMark} alt="" width={32} height={32} />
