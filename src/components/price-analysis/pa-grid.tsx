@@ -648,7 +648,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
       <div className="border-t border-border bg-secondary/30 px-4 py-3">
         <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs tabular-nums md:grid-cols-3">
           <SumLine label={t("pa.directCostLabel", "التكلفة المباشرة")} value={fmtSAR(directCost, language)} />
-          <MarkupLine label={t("pa.indirectLabel", "غير مباشرة")}  pct={indirect} value={indirectVal} field="indirect_pct" boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
+          <MarkupLine label={t("pa.indirectLabel", "تكلفة غير مباشرة")}  pct={indirect} value={indirectVal} field="indirect_pct" boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
           <MarkupLine label={t("pa.overheadLabel", "مصاريف عامة")} pct={overhead}  value={overheadVal} field="overhead_pct"  boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
           <MarkupLine label={t("pa.riskLabel", "المخاطر")}     pct={risk}      value={riskVal}     field="risk_pct"      boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />
           <MarkupLine label={t("pa.profitLabel", "الربح")}       pct={profit}    value={profitVal}   field="profit_pct"    boqItemId={boqItem.id} markup={markup} projectId={projectId} lang={language} />

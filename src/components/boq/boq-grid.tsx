@@ -188,7 +188,13 @@ export function BoqGrid({
       const { error } = await estimationClient.from("boq_items").update(vars.patch).eq("id", vars.id);
       if (error) throw error;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["boq_items"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["boq_items"] });
+      qc.invalidateQueries({ queryKey: ["project_stats"] });
+      qc.invalidateQueries({ queryKey: ["pa_rates"] });
+      qc.invalidateQueries({ queryKey: ["project"] });
+      toast.success("تم حفظ التعديل بنجاح");
+    },
     onError: (e: Error) => toast.error(e.message),
   });
 

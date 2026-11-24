@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -20,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FolderPlus, Plus, Download, Layers } from "lucide-react";
+import { FolderPlus, Plus, Download, Layers, RefreshCw, Trash2, AlertTriangle } from "lucide-react";
 import { CSI_DIVISIONS } from "@/lib/csi-divisions";
 import {
   DropdownMenu,
@@ -315,6 +316,51 @@ function BoqPage() {
   }, [tree, expanded]);
 
   const [isInitializingCsi, setIsInitializingCsi] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await qc.invalidateQueries();
+      toast.success("تم تحديث البيانات وتطبيق التعديلات بنجاح");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const handleClearCurrentBoq = async () => {
+    if (!projectId) return;
+    setIsClearing(true);
+    try {
+      const { error } = await estimationClient
+        .from("boq_items")
+        .delete()
+        .eq("project_id", projectId);
+      if (error) throw error;
+
+      await estimationClient
+        .from("projects")
+        .update({
+          excel_headers: {} as unknown as never,
+          excel_pre_headers: {} as unknown as never,
+          excel_sheets_order: [] as unknown as never,
+        })
+        .eq("id", projectId);
+
+      toast.success("تم إفراغ جدول الكميات بالكامل بنجاح");
+      setClearDialogOpen(false);
+      qc.invalidateQueries({ queryKey: ["boq_items"] });
+      qc.invalidateQueries({ queryKey: ["project_stats"] });
+      qc.invalidateQueries({ queryKey: ["pa_rates"] });
+      qc.invalidateQueries({ queryKey: ["project", projectId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setIsClearing(false);
+    }
+  };
 
   async function handleInitCsiDivisions() {
     if (!projectId) {
@@ -427,6 +473,30 @@ function BoqPage() {
             <Button
               variant="outline"
               size="sm"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="gap-1.5"
+              title="تحديث البيانات وحفظ التعديلات"
+            >
+              <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+              {isRefreshing ? "جاري التحديث..." : "تحديث وحفظ"}
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setClearDialogOpen(true)}
+              disabled={rows.length === 0 || !projectId}
+              className="gap-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 hover:border-destructive/30"
+              title="تفريغ أو إزالة جدول الكميات الحالي لهذا المشروع"
+            >
+              <Trash2 className="h-4 w-4" />
+              إزالة الجدول الحالي
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
               onClick={handleInitCsiDivisions}
               disabled={isInitializingCsi || !projectId}
               className="gap-1.5"
@@ -502,6 +572,44 @@ function BoqPage() {
           grandTotal={grandTotal}
         />
       </div>
+
+      {/* Clear BOQ Confirmation Dialog */}
+      <Dialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
+        <DialogContent dir="rtl" className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5" />
+              إفراغ جدول الكميات الحالي
+            </DialogTitle>
+            <DialogDescription className="leading-relaxed text-xs pt-2">
+              هل أنت متأكد من حذف كافة بنود جدول الكميات لمشروع ({project?.name || "المشروع"})؟
+              <br />
+              <span className="font-semibold text-foreground mt-1 inline-block">
+                سيتم حذف {rows.length} بند ومجموعة مع كافة تحليلات الأسعار المرتبطة بها.
+              </span>
+              <br />
+              <span className="text-[11px] text-muted-foreground mt-1 block">
+                لا يمكن التراجع عن هذا الإجراء. يمكنك بعد ذلك إضافة بنود جديدة أو استيراد ملف إكسل نظيف.
+              </span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 mt-4">
+            <Button variant="outline" size="sm" onClick={() => setClearDialogOpen(false)}>
+              إلغاء
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={isClearing}
+              onClick={handleClearCurrentBoq}
+              className="gap-1.5 font-semibold"
+            >
+              <Trash2 className="h-4 w-4" />
+              {isClearing ? "جاري الحذف..." : "تأكيد إفراغ الجدول"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

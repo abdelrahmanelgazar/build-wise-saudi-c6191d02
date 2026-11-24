@@ -75,6 +75,9 @@ function headerKeyOf(cell: unknown): HeaderKey | null {
 }
 
 const MARKUP_KEYS: Record<string, keyof ParsedMarkup> = {
+  "تكلفة غير مباشرة": "indirect_pct",
+  "تكاليف غير مباشرة": "indirect_pct",
+  "غير مباشر": "indirect_pct",
   "غير مباشرة": "indirect_pct",
   indirect: "indirect_pct",
   "مصاريف عامة": "overhead_pct",

@@ -646,6 +646,7 @@ export function ImportExcelDialog() {
   const [activeSheet, setActiveSheet] = useState<string>("");
   const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
   const [importScope, setImportScope] = useState<"all" | "single">("all");
+  const [replaceExisting, setReplaceExisting] = useState(false);
   const [showColumnMapper, setShowColumnMapper] = useState(false);
   const [manualHeaderIdx, setManualHeaderIdx] = useState<number | null>(null);
   const [customColMap, setCustomColMap] = useState<Record<number, FieldKey>>({});
@@ -676,6 +677,7 @@ export function ImportExcelDialog() {
     setActiveSheet("");
     setWorkbook(null);
     setImportScope("all");
+    setReplaceExisting(false);
     setShowColumnMapper(false);
     setManualHeaderIdx(null);
     setCustomColMap({});
@@ -785,6 +787,14 @@ export function ImportExcelDialog() {
       const allHeaders: Record<string, ExcelHeader[]> = {};
       const allPreHeaders: Record<string, unknown[][]> = {};
       let totalImported = 0;
+
+      if (replaceExisting) {
+        const { error: delErr } = await estimationClient
+          .from("boq_items")
+          .delete()
+          .eq("project_id", projectId);
+        if (delErr) throw delErr;
+      }
 
       const sheetsToProcess = importScope === "all" ? workbook.SheetNames : [activeSheet];
 
@@ -1048,6 +1058,24 @@ export function ImportExcelDialog() {
                 </div>
               </div>
             )}
+
+            {/* Replace Existing Option */}
+            <div className="rounded-md border border-destructive/25 bg-destructive/5 p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <label className="flex items-center gap-2 cursor-pointer font-medium text-destructive">
+                <input
+                  type="checkbox"
+                  checked={replaceExisting}
+                  onChange={(e) => setReplaceExisting(e.target.checked)}
+                  className="accent-destructive h-4 w-4 rounded"
+                />
+                <span>استبدال جدول الكميات الحالي بالكامل (حذف البنود السابقة لهذا المشروع قبل الاستيراد)</span>
+              </label>
+              {replaceExisting && (
+                <Badge variant="destructive" className="text-[10px]">
+                  سيتم تفريغ البنود السابقة واستبدالها بالملف
+                </Badge>
+              )}
+            </div>
 
             {/* Sheets selector tabs */}
             {sheetNames.length > 1 && (

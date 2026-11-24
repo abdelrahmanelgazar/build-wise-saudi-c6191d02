@@ -14,7 +14,7 @@ const defaults = {
     sort_order: 0,
   },
   price_analysis_items: { quantity: 0, unit_price: 0, sort_order: 0 },
-  price_analysis_markup: { indirect_pct: 5, overhead_pct: 8, risk_pct: 3, profit_pct: 10 },
+  price_analysis_markup: { indirect_pct: 0, overhead_pct: 0, risk_pct: 0, profit_pct: 0 },
   project_files: {},
   clients: { status: "active", type: "government" },
   tenders: { status: "studying", estimated_value: 0 },
