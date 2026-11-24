@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { exportBoq } from "@/lib/boq-export";
+import { separateCategoryAndRate } from "@/lib/boq-header-mapping";
 import { PageHeader } from "./resources";
 import { fmtSAR } from "@/lib/format";
 import { Link } from "@tanstack/react-router";
@@ -170,8 +171,11 @@ function BoqPage() {
   const extraHeaders = useMemo(() => {
     const h = (project?.excel_headers as any);
     if (!h) return [];
-    if (Array.isArray(h)) return h;
-    return Array.isArray(h[activeSheet]) ? h[activeSheet] : [];
+    const headers = Array.isArray(h) ? h : Array.isArray(h[activeSheet]) ? h[activeSheet] : [];
+    const storedPreHeaders = project?.excel_pre_headers as any;
+    const preHeaders = Array.isArray(storedPreHeaders) ? storedPreHeaders : storedPreHeaders?.[activeSheet] ?? [];
+    if (!headers.every((header: any) => typeof header === "object" && header !== null)) return headers;
+    return separateCategoryAndRate(headers, preHeaders);
   }, [project, activeSheet]);
 
   const extraPreHeaders = useMemo(() => {

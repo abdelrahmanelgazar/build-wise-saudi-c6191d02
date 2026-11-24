@@ -532,6 +532,15 @@ function CellRenderer({
     }
     default: {
       const v = col.rawIdx !== null ? raw?.[col.rawIdx] : "";
+      if (/^(الفئة|الفئه|فئة|فئه)$/.test(col.label.trim()) && !node.is_group) {
+        return (
+          <div className={baseClass} style={styleAttr}>
+            <Link to="/price-analysis" search={{ item: node.id }} className="block w-full whitespace-pre-wrap break-words text-primary hover:underline" title="تحليل أسعار البند">
+              {v === null || v === undefined || v === "" ? "تحليل السعر" : String(v)}
+            </Link>
+          </div>
+        );
+      }
       return (
         <div className={baseClass} style={styleAttr}>
           <span className="block w-full whitespace-pre-wrap break-words text-foreground/80">

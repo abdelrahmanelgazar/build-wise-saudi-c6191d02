@@ -34,6 +34,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useActiveProjectId } from "@/lib/active-project";
 import { csiDivisionCode, csiDivisionLabel, CSI_DIVISIONS } from "@/lib/csi-divisions";
+import { separateCategoryAndRate } from "@/lib/boq-header-mapping";
 
 // Field keys (broader than ParsedRow — includes computed columns)
 export type FieldKey =
@@ -494,11 +495,17 @@ export function parseSheet(
   }
 
   const rawHeaders = (rows[headerIdx] as unknown[]).map((c) => String(c ?? ""));
-  const headers: ExcelHeader[] = rawHeaders.map((label, idx) => ({
+  let headers: ExcelHeader[] = rawHeaders.map((label, idx) => ({
     label,
     field: colMap[idx] ?? null,
   }));
   const preHeaders = rows.slice(0, headerIdx);
+  if (!forcedColMap) {
+    headers = separateCategoryAndRate(headers, preHeaders) as ExcelHeader[];
+    colMap = Object.fromEntries(headers.flatMap((header, index) =>
+      header.field ? [[index, header.field]] : [],
+    )) as Record<number, FieldKey>;
+  }
   const data: ParsedRow[] = [];
 
   const divCode = sheetName ? csiDivisionCode(sheetName) : undefined;

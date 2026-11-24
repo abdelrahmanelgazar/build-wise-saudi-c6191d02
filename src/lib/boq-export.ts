@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import type { Database } from "@/integrations/supabase/types";
 import { roundTo } from "./estimation-calc";
+import { separateCategoryAndRate } from "./boq-header-mapping";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 export type TreeNode = BoqRow & { children: TreeNode[]; rolledTotal: number; unitRate: number };
@@ -109,7 +110,9 @@ export function exportBoq(
       });
     }
 
-    const headerLabels = headers.map((h) => h.label);
+    const preHeadersForMapping = excelPreHeadersRaw?.[sheetName] ?? (Array.isArray(excelPreHeadersRaw) ? excelPreHeadersRaw : []);
+    const mappedHeaders = separateCategoryAndRate(headers, preHeadersForMapping);
+    const headerLabels = mappedHeaders.map((h) => h.label);
     aoaData.push(headerLabels);
 
     flatRows.forEach((node) => {
@@ -120,7 +123,7 @@ export function exportBoq(
         resultRow[i] = rawRow[i];
       }
 
-      headers.forEach((h, idx) => {
+      mappedHeaders.forEach((h, idx) => {
         const f = h.field;
         if (f === "item_no") resultRow[idx] = node.item_no;
         if (f === "description" || f === "description_ar" || f === "description_en") {
