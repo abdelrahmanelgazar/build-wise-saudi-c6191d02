@@ -42,6 +42,7 @@ import { ImportExcelDialog } from "@/components/boq/import-excel-dialog";
 import { BoqGrid, type TreeNode } from "@/components/boq/boq-grid";
 import { useLanguage } from "@/lib/i18n";
 import { computeDirectUnitCost, computeUnitSellingPrice, type ResourceCostInput } from "@/lib/estimation-calc";
+import { computeProjectCoverageStats } from "@/lib/csi-assemblies-engine";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
@@ -315,6 +316,28 @@ function BoqPage() {
 
   const markupMargin = totalDirectCost > 0 ? ((grandTotal - totalDirectCost) / totalDirectCost) * 100 : 0;
 
+  const boqCoverage = useMemo(
+    () =>
+      computeProjectCoverageStats(
+        activeRows.map((b) => ({
+          id: b.id,
+          item_no: b.item_no,
+          description_ar: b.description_ar,
+          quantity: Number(b.quantity ?? 0),
+          is_group: b.is_group,
+          csi_division: b.sheet_name ?? b.item_no ?? null,
+          pricing_status: b.pricing_status ?? null,
+          rate_source: b.rate_source ?? null,
+          material_cost: Number(b.material_cost ?? 0),
+          labor_cost: Number(b.labor_cost ?? 0),
+          equipment_cost: Number(b.equipment_cost ?? 0),
+          subcontractor_cost: Number(b.subcontractor_cost ?? 0),
+          selling_unit_rate: paRates.selling.get(b.id) ?? Number(b.manual_unit_price ?? 0),
+        })),
+      ),
+    [activeRows, paRates.selling],
+  );
+
   const delMut = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await estimationClient.from("boq_items").delete().eq("id", id);
@@ -584,6 +607,18 @@ function BoqPage() {
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground uppercase tracking-wider">{t("common.rows", "الصفوف")}:</span>
               <span className="font-medium tabular-nums text-sm">{itemsCount + groupsCount}</span>
+            </div>
+            <div className="w-px h-6 bg-border/60 hidden sm:block"></div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">التغطية:</span>
+              <span className="font-bold tabular-nums text-sm text-primary">{boqCoverage.countCoveragePct}%</span>
+              {boqCoverage.gapItems > 0 && (
+                <Link to="/item-breakdown-library">
+                  <span className="text-[11px] font-semibold text-amber-600 hover:underline">
+                    ({boqCoverage.gapItems} فجوة ← المكتبة)
+                  </span>
+                </Link>
+              )}
             </div>
           </div>
         </div>

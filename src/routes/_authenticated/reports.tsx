@@ -12,15 +12,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Download, Printer, FileSpreadsheet, FolderKanban, Calculator, Database as DatabaseIcon, FileBarChart } from "lucide-react";
+import { Download, Printer, FileSpreadsheet, FolderKanban, Calculator, Database as DatabaseIcon, FileBarChart, BarChart3 } from "lucide-react";
 import { fmtSAR } from "@/lib/format";
 import {
   computeDirectUnitCost,
+  computeProjectFinancials,
   computeUnitSellingPrice,
   roundTo,
   type MarkupSettings,
   type ResourceCostInput,
 } from "@/lib/estimation-calc";
+import { computeProjectCoverageStats } from "@/lib/csi-assemblies-engine";
+import { getAllBreakdownTemplates } from "@/lib/breakdown-library";
+import { csiDivisionCode } from "@/lib/csi-divisions";
 import { getSubmittedTenderSnapshots } from "@/lib/client-tender-service";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 import * as XLSX from "xlsx";
@@ -76,12 +80,14 @@ function ReportsPage() {
           <TabsTrigger value="projects" className="gap-1.5"><FolderKanban className="h-4 w-4" /> المشاريع</TabsTrigger>
           <TabsTrigger value="boq" className="gap-1.5"><Calculator className="h-4 w-4" /> BOQ التفصيلي</TabsTrigger>
           <TabsTrigger value="resources" className="gap-1.5"><DatabaseIcon className="h-4 w-4" /> عروض الأسعار</TabsTrigger>
+          <TabsTrigger value="coverage" className="gap-1.5"><BarChart3 className="h-4 w-4" /> التغطية والفجوات CSI</TabsTrigger>
           <TabsTrigger value="summary" className="gap-1.5"><FileBarChart className="h-4 w-4" /> الملخص التنفيذي</TabsTrigger>
         </TabsList>
 
         <TabsContent value="projects" className="mt-4"><ProjectsReport /></TabsContent>
         <TabsContent value="boq" className="mt-4"><BoqReport /></TabsContent>
         <TabsContent value="resources" className="mt-4"><ResourcesReport /></TabsContent>
+        <TabsContent value="coverage" className="mt-4"><CoverageAnalysisReport /></TabsContent>
         <TabsContent value="summary" className="mt-4"><ExecutiveSummary /></TabsContent>
       </Tabs>
     </div>
@@ -587,22 +593,38 @@ function ExecutiveSummary() {
     queryKey: ["report-stats", projectId],
     enabled: !!projectId,
     queryFn: async () => {
-      const [boq, res] = await Promise.all([
-        estimationClient.from("boq_items").select("quantity,material_cost,labor_cost,equipment_cost,subcontractor_cost,is_group").eq("project_id", projectId),
+      const [boq, res, pa, mk] = await Promise.all([
+        estimationClient.from("boq_items").select("*").eq("project_id", projectId),
         estimationClient.from("resources").select("type").eq("project_id", projectId),
+        estimationClient.from("price_analysis_items").select("boq_item_id,resource_type,quantity,unit_price,waste_pct,productivity").eq("project_id", projectId),
+        estimationClient.from("price_analysis_markup").select("*").eq("project_id", projectId),
       ]);
-      const items = (boq.data ?? []).filter((b) => !b.is_group);
-      const total = items.reduce(
-        (s, b) => s + Number(b.quantity ?? 0) *
-          (Number(b.material_cost ?? 0) + Number(b.labor_cost ?? 0)
-            + Number(b.equipment_cost ?? 0) + Number(b.subcontractor_cost ?? 0)),
-        0,
-      );
+      const boqRows = (boq.data ?? []) as BoqItem[];
+      const paByBoq = new Map<string, ResourceCostInput[]>();
+      for (const p of (pa.data ?? []) as any[]) {
+        const list = paByBoq.get(p.boq_item_id) ?? [];
+        list.push(p);
+        paByBoq.set(p.boq_item_id, list);
+      }
+      const mkByBoq = new Map<string, MarkupSettings>();
+      for (const m of (mk.data ?? []) as any[]) {
+        if (m.boq_item_id) mkByBoq.set(m.boq_item_id, m);
+      }
+      const summary = computeProjectFinancials({
+        boqItems: boqRows as any,
+        paItemsByItemId: paByBoq,
+        markupsByItemId: mkByBoq,
+        defaultMarkup: { pricing_policy: "additive_v2", round_up_rate: true },
+        vatRate: 15,
+      });
       const resByType: Record<string, number> = { material: 0, labor: 0, equipment: 0 };
       (res.data ?? []).forEach((r: any) => { resByType[r.type] = (resByType[r.type] ?? 0) + 1; });
       return {
-        boqCount: items.length, boqTotal: total,
-        resourcesCount: (res.data ?? []).length, resByType,
+        boqCount: summary.totalItemsCount,
+        boqTotal: summary.netSellingPrice,
+        boqDirect: summary.totalDirectCost,
+        resourcesCount: (res.data ?? []).length,
+        resByType,
       };
     },
   });
@@ -689,6 +711,149 @@ function ExecutiveSummary() {
 }
 
 /* ============== Helpers ============== */
+function CoverageAnalysisReport() {
+  const [projectId, setProjectId] = useState<string>("");
+  const { data: projects = [] } = useQuery({
+    queryKey: ["report-cov-projects"],
+    queryFn: async () => {
+      const { data, error } = await estimationClient
+        .from("projects")
+        .select("id,name,project_no")
+        .order("project_no", { ascending: false });
+      if (error) throw error;
+      return data as Array<{ id: string; name: string; project_no: number | null }>;
+    },
+  });
+
+  useEffect(() => {
+    if (!projectId && projects.length > 0) setProjectId(projects[0]?.id ?? "");
+  }, [projectId, projects]);
+
+  const { data: items = [] } = useQuery({
+    queryKey: ["report-cov-boq", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await estimationClient
+        .from("boq_items")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("sort_order");
+      if (error) throw error;
+      return data as BoqItem[];
+    },
+  });
+
+  const { data: records = [] } = useQuery({
+    queryKey: ["report-cov-rec", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await estimationClient
+        .from("assembly_coverage_records")
+        .select("*")
+        .eq("project_id", projectId);
+      if (error) return [];
+      return data ?? [];
+    },
+  });
+
+  const report = useMemo(() => {
+    const recMap = new Map(records.map((r) => [r.boq_item_id, r]));
+    const availDivs = new Set(
+      getAllBreakdownTemplates()
+        .map((t) => csiDivisionCode(t.division))
+        .filter((d): d is string => Boolean(d)),
+    );
+    return computeProjectCoverageStats(
+      items.map((b) => {
+        const rec = recMap.get(b.id);
+        return {
+          id: b.id,
+          item_no: b.item_no,
+          description_ar: b.description_ar,
+          quantity: Number(b.quantity ?? 0),
+          is_group: b.is_group,
+          csi_division: rec?.csi_division ?? b.sheet_name ?? b.item_no ?? null,
+          pricing_status: b.pricing_status ?? null,
+          rate_source: b.rate_source ?? null,
+          material_cost: Number(b.material_cost ?? 0),
+          labor_cost: Number(b.labor_cost ?? 0),
+          equipment_cost: Number(b.equipment_cost ?? 0),
+          subcontractor_cost: Number(b.subcontractor_cost ?? 0),
+          selling_unit_rate: Number(b.manual_unit_price ?? b.imported_unit_rate ?? 0),
+          assembly_id: rec?.assembly_id ?? null,
+          quote_status: rec?.coverage_status === "reference_only" ? "reference" : null,
+        };
+      }),
+      availDivs,
+    );
+  }, [items, records]);
+
+  const exportExcel = () => {
+    const rows = report.byDivision.map((d) => ({
+      "القسم CSI": `القسم ${d.divisionCode}`,
+      "إجمالي البنود": d.totalItems,
+      "المغطاة": d.coveredItems,
+      "الفجوات": d.gapItems,
+      "نسبة العدد %": d.countCoveragePct,
+      "نسبة القيمة %": d.valueCoveragePct,
+      "إجمالي القيمة (ر.س)": d.totalValue,
+    }));
+    downloadXlsx(rows, "csi-coverage-report", "التغطية والفجوات");
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-5 space-y-4">
+      <Toolbar title="تقرير تغطية المقايسات والفجوات (CSI 01–33)" onExcel={exportExcel} />
+      <div className="print:hidden">
+        <Select value={projectId} onValueChange={setProjectId}>
+          <SelectTrigger className="h-9 w-80"><SelectValue placeholder="اختر مشروعاً…" /></SelectTrigger>
+          <SelectContent>
+            {projects.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.project_no ? `#${p.project_no} — ` : ""}{p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-4">
+        <Stat label="تغطية العدد" value={`${report.countCoveragePct}%`} sub={`${report.coveredItems} / ${report.totalItems}`} hl />
+        <Stat label="تغطية القيمة" value={`${report.valueCoveragePct}%`} sub={fmtSAR(report.coveredValue)} />
+        <Stat label="بنود الفجوات" value={String(report.gapItems)} />
+        <Stat label="مرجعي / غير مسعر" value={`${report.referenceOnlyItems} / ${report.unpricedItems}`} />
+      </div>
+      {report.byDivision.length > 0 && (
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/40">
+              <tr>
+                <th className="p-2 text-start">القسم CSI</th>
+                <th className="p-2 text-center">إجمالي البنود</th>
+                <th className="p-2 text-center">المغطاة</th>
+                <th className="p-2 text-center">الفجوات</th>
+                <th className="p-2 text-center">نسبة العدد</th>
+                <th className="p-2 text-center">نسبة القيمة</th>
+              </tr>
+            </thead>
+            <tbody>
+              {report.byDivision.map((row) => (
+                <tr key={row.divisionCode} className="border-t">
+                  <td className="p-2 font-mono font-semibold">القسم {row.divisionCode}</td>
+                  <td className="p-2 text-center">{row.totalItems}</td>
+                  <td className="p-2 text-center text-emerald-600">{row.coveredItems}</td>
+                  <td className="p-2 text-center text-amber-600">{row.gapItems}</td>
+                  <td className="p-2 text-center">{row.countCoveragePct}%</td>
+                  <td className="p-2 text-center">{row.valueCoveragePct}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Stat({ label, value, sub, hl }: { label: string; value: string; sub?: string; hl?: boolean }) {
   return (
     <div className={`rounded-lg border p-4 ${hl ? "border-primary/30 bg-primary/5" : "border-border bg-card"}`}>

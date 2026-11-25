@@ -1,32 +1,38 @@
 import { estimationClient } from "./estimation-client";
-import { toast } from "sonner";
 
 export interface ProjectBackupSnapshot {
-  version: "1.0.0";
+  version: "1.0.0" | "2.0.0";
   exported_at: string;
   project: any;
   boq_items: any[];
   price_analysis_items: any[];
   price_analysis_markup: any[];
   resources: any[];
+  supplier_quotes?: any[];
+  supplier_quote_items?: any[];
+  assembly_coverage_records?: any[];
   metadata: {
     totalItems: number;
     totalAnalyses: number;
+    totalSupplierQuotes?: number;
+    totalCoverageRecords?: number;
     estimatedValue: number;
     checksum?: string;
   };
 }
 
 /**
- * Export a complete consistent JSON snapshot of the active project
+ * Export a complete consistent JSON snapshot of the active project (including supplier quotes & CSI coverage records).
  */
 export async function exportProjectBackup(projectId: string): Promise<ProjectBackupSnapshot> {
-  const [projectRes, boqRes, paRes, markupRes, resRes] = await Promise.all([
+  const [projectRes, boqRes, paRes, markupRes, resRes, sqRes, covRes] = await Promise.all([
     estimationClient.from("projects").select("*").eq("id", projectId).single(),
     estimationClient.from("boq_items").select("*").eq("project_id", projectId),
     estimationClient.from("price_analysis_items").select("*").eq("project_id", projectId),
     estimationClient.from("price_analysis_markup").select("*").eq("project_id", projectId),
     estimationClient.from("resources").select("*").eq("project_id", projectId),
+    estimationClient.from("supplier_quotes").select("*").eq("project_id", projectId),
+    estimationClient.from("assembly_coverage_records").select("*").eq("project_id", projectId),
   ]);
 
   if (projectRes.error) throw projectRes.error;
@@ -36,18 +42,32 @@ export async function exportProjectBackup(projectId: string): Promise<ProjectBac
   const price_analysis_items = (paRes.data as any[]) ?? [];
   const price_analysis_markup = (markupRes.data as any[]) ?? [];
   const resources = (resRes.data as any[]) ?? [];
+  const supplier_quotes = (sqRes.data as any[]) ?? [];
+  const assembly_coverage_records = (covRes.data as any[]) ?? [];
+
+  let supplier_quote_items: any[] = [];
+  if (supplier_quotes.length > 0) {
+    const qIds = new Set(supplier_quotes.map((q) => q.id));
+    const { data: sqItemsData } = await estimationClient.from("supplier_quote_items").select("*");
+    supplier_quote_items = ((sqItemsData as any[]) ?? []).filter((it) => qIds.has(it.quote_id));
+  }
 
   const snapshot: ProjectBackupSnapshot = {
-    version: "1.0.0",
+    version: "2.0.0",
     exported_at: new Date().toISOString(),
     project,
     boq_items,
     price_analysis_items,
     price_analysis_markup,
     resources,
+    supplier_quotes,
+    supplier_quote_items,
+    assembly_coverage_records,
     metadata: {
       totalItems: boq_items.length,
       totalAnalyses: price_analysis_items.length,
+      totalSupplierQuotes: supplier_quotes.length,
+      totalCoverageRecords: assembly_coverage_records.length,
       estimatedValue: Number(project.estimated_value ?? 0),
     },
   };
@@ -72,7 +92,7 @@ export async function exportProjectBackup(projectId: string): Promise<ProjectBac
 }
 
 /**
- * Restore a project snapshot into the workspace
+ * Restore a project snapshot into the workspace (backward compatible with v1.0.0 and v2.0.0 snapshots).
  */
 export async function restoreProjectBackup(
   snapshot: ProjectBackupSnapshot,
@@ -82,6 +102,8 @@ export async function restoreProjectBackup(
   itemsRestored: number;
   analysesRestored: number;
   resourcesRestored: number;
+  quotesRestored: number;
+  coverageRestored: number;
 }> {
   if (!snapshot.version || !snapshot.project) {
     throw new Error("ملف النسخة الاحتياطية غير صالح أو تالف.");
@@ -106,7 +128,22 @@ export async function restoreProjectBackup(
     await estimationClient.from("resources").upsert(resPayload, { onConflict: "id" });
   }
 
-  // 3. Restore BOQ items
+  // 3. Restore Supplier Quotes & Quote Line Items
+  if (snapshot.supplier_quotes?.length) {
+    const quotesPayload = snapshot.supplier_quotes.map((q) => ({
+      ...q,
+      project_id: targetProjectId,
+    }));
+    await estimationClient.from("supplier_quotes").upsert(quotesPayload, { onConflict: "id" });
+
+    if (snapshot.supplier_quote_items?.length) {
+      await estimationClient
+        .from("supplier_quote_items")
+        .upsert(snapshot.supplier_quote_items, { onConflict: "id" });
+    }
+  }
+
+  // 4. Restore BOQ items
   if (snapshot.boq_items?.length > 0) {
     const boqPayload = snapshot.boq_items.map((b) => ({
       ...b,
@@ -115,7 +152,7 @@ export async function restoreProjectBackup(
     await estimationClient.from("boq_items").upsert(boqPayload, { onConflict: "id" });
   }
 
-  // 4. Restore Price Analysis items
+  // 5. Restore Price Analysis items
   if (snapshot.price_analysis_items?.length > 0) {
     const paPayload = snapshot.price_analysis_items.map((p) => ({
       ...p,
@@ -124,7 +161,7 @@ export async function restoreProjectBackup(
     await estimationClient.from("price_analysis_items").upsert(paPayload, { onConflict: "id" });
   }
 
-  // 5. Restore Price Analysis Markup
+  // 6. Restore Price Analysis Markup
   if (snapshot.price_analysis_markup?.length > 0) {
     const markupPayload = snapshot.price_analysis_markup.map((m) => ({
       ...m,
@@ -133,10 +170,23 @@ export async function restoreProjectBackup(
     await estimationClient.from("price_analysis_markup").upsert(markupPayload, { onConflict: "boq_item_id" });
   }
 
+  // 7. Restore Assembly Coverage Records
+  if (snapshot.assembly_coverage_records?.length) {
+    const covPayload = snapshot.assembly_coverage_records.map((c) => ({
+      ...c,
+      project_id: targetProjectId,
+    }));
+    await estimationClient
+      .from("assembly_coverage_records")
+      .upsert(covPayload, { onConflict: "project_id,boq_item_id" });
+  }
+
   return {
     projectId: targetProjectId,
     itemsRestored: snapshot.boq_items?.length ?? 0,
     analysesRestored: snapshot.price_analysis_items?.length ?? 0,
     resourcesRestored: snapshot.resources?.length ?? 0,
+    quotesRestored: snapshot.supplier_quotes?.length ?? 0,
+    coverageRestored: snapshot.assembly_coverage_records?.length ?? 0,
   };
 }
