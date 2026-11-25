@@ -33,7 +33,12 @@ import { fmtNumber, fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
 import { useActiveProjectId } from "@/lib/active-project";
 import { computeDirectUnitCost, computePricingPhase2, roundTo } from "@/lib/estimation-calc";
-import { analyzeAssemblyScopes, type ScopedAnalysisLine } from "@/lib/csi-assemblies-engine";
+import {
+  analyzeAssemblyScopes,
+  SCOPE_LABELS_AR,
+  type AssemblyScopeTag,
+  type ScopedAnalysisLine,
+} from "@/lib/csi-assemblies-engine";
 import { syncBoqItemBreakdownFromPa, clearManualPriceForBoqItem, restoreImportedRateForBoqItem } from "@/lib/pa-sync";
 import type { Database } from "@/integrations/supabase/types";
 import { ImportPaDialog } from "./import-pa-dialog";
@@ -148,9 +153,17 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   const directBreakdown = useMemo(() => computeDirectUnitCost(items as any), [items]);
   const scopeAudit = useMemo(
     () =>
-      analyzeAssemblyScopes(items as ScopedAnalysisLine[], {
-        boqQuantity: Number(boqItem.quantity ?? 0),
-      }),
+      analyzeAssemblyScopes(
+        items.map((it) => {
+          const cs = (it.cell_styles ?? {}) as Record<string, unknown>;
+          return {
+            ...(it as unknown as ScopedAnalysisLine),
+            is_split_pour: Boolean(cs["is_split_pour"]),
+            allocated_qty: typeof cs["allocated_qty"] === "number" ? cs["allocated_qty"] : null,
+          };
+        }),
+        { boqQuantity: Number(boqItem.quantity ?? 0) },
+      ),
     [items, boqItem.quantity],
   );
   const directCost = directBreakdown.directUnitCost;
@@ -734,6 +747,19 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                         {it.description_ar}
                       </span>
                     </EditableCell>
+
+                    {/* Scope & Quote Provenance Chip */}
+                    {((it as any).scope_tag || (cellStyles as any)?.scope_tag) && (
+                      <Badge variant="outline" className="text-[9px] px-1 py-0 shrink-0 text-muted-foreground">
+                        {SCOPE_LABELS_AR[((it as any).scope_tag || (cellStyles as any)?.scope_tag) as AssemblyScopeTag] ??
+                          ((it as any).scope_tag || (cellStyles as any)?.scope_tag)}
+                      </Badge>
+                    )}
+                    {(cellStyles as any)?.quote_status === "expired" && (
+                      <Badge variant="destructive" className="text-[9px] px-1 py-0 shrink-0">
+                        منتهي
+                      </Badge>
+                    )}
 
                     {/* Inline Material Subcategory Toggle (Plan §3 & §7) */}
                     {isMaterial && (

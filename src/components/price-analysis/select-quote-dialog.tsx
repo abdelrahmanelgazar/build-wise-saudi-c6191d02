@@ -120,6 +120,8 @@ export function SelectQuoteDialog({
   const [wastePct, setWastePct] = useState<number>(0);
   const [pourVolume, setPourVolume] = useState<number>(0);
   const [minOrderCharge, setMinOrderCharge] = useState<number>(0);
+  const [isSplitPour, setIsSplitPour] = useState<boolean>(false);
+  const [allocatedQty, setAllocatedQty] = useState<number>(0);
   const [note, setNote] = useState("");
 
   const { data: resources = [], isLoading: loadingRes } = useQuery({
@@ -303,6 +305,8 @@ export function SelectQuoteDialog({
         package_size: packageSize,
         package_price: packagePrice,
         min_order_charge: minOrderCharge > 0 ? minOrderCharge : undefined,
+        is_split_pour: isSplitPour || undefined,
+        allocated_qty: isSplitPour && allocatedQty > 0 ? allocatedQty : undefined,
         note: note.trim() || undefined,
       };
 
@@ -635,6 +639,30 @@ export function SelectQuoteDialog({
                   placeholder="ملاحظات المواصفة أو التوريد…"
                   className="h-8 text-xs mt-1"
                 />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-4 pt-1 border-t border-primary/10">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isSplitPour}
+                    onChange={(e) => setIsSplitPour(e.target.checked)}
+                  />
+                  <span>تجزئة التوريد/الصب بين أكثر من مورد (Split-Pour)</span>
+                </label>
+                {isSplitPour && (
+                  <div className="flex items-center gap-2">
+                    <Label className="text-[11px] text-muted-foreground">الكمية المخصصة لهذا المورد:</Label>
+                    <Input
+                      type="number"
+                      step="0.5"
+                      value={allocatedQty || ""}
+                      onChange={(e) => setAllocatedQty(Number(e.target.value) || 0)}
+                      placeholder="مثلاً 60"
+                      className="h-7 w-28 text-xs"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Calculated Preview */}

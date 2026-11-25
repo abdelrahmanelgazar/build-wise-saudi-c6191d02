@@ -33,16 +33,17 @@ import { useDivisions } from "@/lib/divisions";
 import { CSI_DIVISIONS, csiDivisionCode, csiDivisionLabel } from "@/lib/csi-divisions";
 import { useLanguage } from "@/lib/i18n";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
+import { SupplierQuotesPanel } from "@/components/resources/supplier-quotes-panel";
 
 type ResourceRow = Database["public"]["Tables"]["resources"]["Row"] & {
   name_en?: string | null;
   division?: string | null;
 };
 type ResourceType = Database["public"]["Enums"]["resource_type"];
-type QuotationTab = "all" | "subcontractor" | "equipment" | "labor" | "material" | "general_requirements";
+type QuotationTab = "all" | "supplier_quotes" | "subcontractor" | "equipment" | "labor" | "material" | "general_requirements";
 
 const resourcesSearchSchema = z.object({
-  tab: z.enum(["all", "subcontractor", "equipment", "labor", "material", "general_requirements"]).optional(),
+  tab: z.enum(["all", "supplier_quotes", "subcontractor", "equipment", "labor", "material", "general_requirements"]).optional(),
 });
 
 export const Route = createFileRoute("/_authenticated/resources")({
@@ -53,6 +54,7 @@ export const Route = createFileRoute("/_authenticated/resources")({
 
 const TAB_CONFIG: Record<QuotationTab, { labelKey: string; defaultLabel: string; icon: typeof Boxes; color: string; resourceType: ResourceType }> = {
   all: { labelKey: "resources.tabAll", defaultLabel: "عام (الكل)", icon: Boxes, color: "text-foreground", resourceType: "material" },
+  supplier_quotes: { labelKey: "resources.tabSupplierQuotes", defaultLabel: "عروض الموردين الموثّقة", icon: FileText, color: "text-emerald-500", resourceType: "material" },
   subcontractor: { labelKey: "resources.tabSubcontractor", defaultLabel: "مقاولو الباطن", icon: Truck, color: "text-chart-4", resourceType: "subcontractor" },
   equipment: { labelKey: "resources.tabEquipment", defaultLabel: "المعدات", icon: Truck, color: "text-primary", resourceType: "equipment" },
   labor: { labelKey: "resources.tabLabour", defaultLabel: "العمالة", icon: Hammer, color: "text-chart-3", resourceType: "labor" },
@@ -193,9 +195,11 @@ function ResourcesPage() {
               const Icon = cfg.icon;
               const count = tKey === "all"
                 ? resources.length
-                : tKey === "general_requirements"
-                  ? resources.filter((r) => r.division === "01" || r.code?.startsWith("01-")).length
-                  : resources.filter((r) => r.type === tKey).length;
+                : tKey === "supplier_quotes"
+                  ? "عروض"
+                  : tKey === "general_requirements"
+                    ? resources.filter((r) => r.division === "01" || r.code?.startsWith("01-")).length
+                    : resources.filter((r) => r.type === tKey).length;
 
               return (
                 <TabsTrigger key={tKey} value={tKey} className="gap-2 text-xs font-medium">
@@ -243,7 +247,13 @@ function ResourcesPage() {
           </div>
         </div>
 
-        {(Object.keys(TAB_CONFIG) as QuotationTab[]).map((tKey) => (
+        <TabsContent value="supplier_quotes" className="space-y-4">
+          <SupplierQuotesPanel projectId={projectId} resources={resources} />
+        </TabsContent>
+
+        {(Object.keys(TAB_CONFIG) as QuotationTab[])
+          .filter((k) => k !== "supplier_quotes")
+          .map((tKey) => (
           <TabsContent key={tKey} value={tKey} className="space-y-4">
             {isLoading && (
               <div className="rounded-lg border border-border bg-card p-8 text-center text-muted-foreground">

@@ -756,3 +756,105 @@ export function computeProjectCoverageStats(
     gapItemIds,
   };
 }
+
+// ── 7. 50-Template Legacy Inventory & Idempotent Migration Ledger (§5 #1) ──────
+
+export type LegacyTemplateDisposition =
+  | "keep_executable"
+  | "split_by_scope"
+  | "reference_composite"
+  | "purchase_package_only";
+
+export interface LegacyTemplateLedgerEntry {
+  legacyId: string;
+  code: string;
+  title_ar: string;
+  division: string;
+  disposition: LegacyTemplateDisposition;
+  replacementCode: string;
+  rationale_ar: string;
+}
+
+export interface LegacyMigrationPreviewResult {
+  totalAudited: number;
+  byDisposition: Record<LegacyTemplateDisposition, number>;
+  entries: LegacyTemplateLedgerEntry[];
+  signatureHash: string;
+}
+
+export function buildLegacyTemplateDispositionLedger(
+  templates: Array<{
+    id: string;
+    legacy_id?: string | undefined;
+    code: string;
+    title_ar: string;
+    division: string;
+    assembly_kind?: "executable" | "reference_composite" | undefined;
+    is_custom?: boolean | undefined;
+    items: Array<{ resource_type: string; description_ar: string }>;
+  }>,
+): LegacyMigrationPreviewResult {
+  const entries: LegacyTemplateLedgerEntry[] = [];
+  const byDisposition: Record<LegacyTemplateDisposition, number> = {
+    keep_executable: 0,
+    split_by_scope: 0,
+    reference_composite: 0,
+    purchase_package_only: 0,
+  };
+
+  // Deduplicate deterministically by stable legacy id so running migration twice stays idempotent
+  const seenIds = new Set<string>();
+  const sorted = [...templates]
+    .filter((t) => !t.id.startsWith("csi-"))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  for (const t of sorted) {
+    const stableId = t.legacy_id ?? t.id;
+    if (seenIds.has(stableId)) continue;
+    seenIds.add(stableId);
+
+    let disposition: LegacyTemplateDisposition = "keep_executable";
+    let replacementCode = t.code;
+    let rationale_ar = "قالب تنفيذي متوازن الموارد — جاهز للاستخدام المباشر مع تحديث الأسعار.";
+
+    if (stableId === "tmpl-conc-c35" || t.assembly_kind === "reference_composite") {
+      disposition = "reference_composite";
+      replacementCode = "03-30-13-COL / 03-30-20-SLAB";
+      rationale_ar = "يجمع التوريد والضخ والصب بدون حديد أو شدة؛ يُحفظ كمرجع مركّب ويُستبدل بقوالب القسم 03.";
+    } else if (stableId === "tmpl-rc-foundations" || (t.division.includes("03") && t.items.length >= 4)) {
+      disposition = "split_by_scope";
+      replacementCode = "03-30-11-FTG / 03-21-00-REBAR / 03-11-00-FORM";
+      rationale_ar = "يُتاح كعمل متكامل أو يُفكك عند فصل الشدة والحديد في جدول الكميات.";
+    } else if (t.items.length === 1 && t.items[0]?.resource_type === "material") {
+      disposition = "purchase_package_only";
+      replacementCode = `${t.code}-PKG`;
+      rationale_ar = "يمثل حزمة شراء مادة مفردة ويُربط بعرض مورد أو استهلاك مباشر.";
+    } else if (t.division.includes("01") && t.title_ar.includes("إيجار")) {
+      disposition = "split_by_scope";
+      replacementCode = "01-50-00-MOB + 01-45-00-QA";
+      rationale_ar = "فصل كلفة التأسيس المقطوعة عن التشغيل الشهري بالمدة.";
+    }
+
+    byDisposition[disposition]++;
+    entries.push({
+      legacyId: stableId,
+      code: t.code,
+      title_ar: t.title_ar,
+      division: t.division,
+      disposition,
+      replacementCode,
+      rationale_ar,
+    });
+  }
+
+  const signatureHash = entries
+    .map((e) => `${e.legacyId}:${e.disposition}:${e.replacementCode}`)
+    .join("|");
+
+  return {
+    totalAudited: entries.length,
+    byDisposition,
+    entries,
+    signatureHash,
+  };
+}

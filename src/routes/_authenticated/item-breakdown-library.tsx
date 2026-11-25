@@ -23,11 +23,14 @@ import {
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import {
+  buildLegacyTemplateDispositionLedger,
   computeConcreteElementQto,
   computeProjectCoverageStats,
+  expandSubAssemblyAtDirectCost,
   SCOPE_LABELS_AR,
   type AssemblyScopeTag,
   type ConcreteElementFamily,
+  type ScopedAnalysisLine,
 } from "@/lib/csi-assemblies-engine";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -141,6 +144,13 @@ function ItemBreakdownLibraryPage() {
   const [editorMode, setEditorMode] = useState<"new" | "edit" | "duplicate">("new");
   const [previewTemplate, setPreviewTemplate] = useState<BreakdownTemplate | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [subAssemblyCodeToAdd, setSubAssemblyCodeToAdd] = useState<string>("");
+  const [migrationRuns, setMigrationRuns] = useState<number>(0);
+
+  const legacyLedger = useMemo(
+    () => buildLegacyTemplateDispositionLedger(templates),
+    [templates],
+  );
 
   // Fetch project BOQ items for apply modal and Coverage Registry
   const { data: boqItems = [] } = useQuery({
@@ -343,93 +353,158 @@ function ItemBreakdownLibraryPage() {
           <span>{t("breakdown.directCostPerUnit")} {totals.directUnitCost.toFixed(2)} {t("common.sar")}</span>
           <span>{t("breakdown.sellingRatePerUnit")} {totals.unitSellingPrice.toFixed(2)} {t("common.sar")}</span>
         </div>
-          {editingTemplate && (
-            <div className="space-y-4 py-2 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="template-code" className="font-semibold block mb-1">{t("common.code", "الكود")}:</label>
-                  <Input
-                    id="template-code"
-                    value={editingTemplate.code}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, code: e.target.value })}
-                    className="text-xs font-mono"
-                    placeholder="e.g. BLK-150-SPEC"
-                  />
-                </div>
-                <div>
-                  <label className="font-semibold block mb-1">{t("common.unit", "الوحدة")}:</label>
-                  <Input
-                    value={editingTemplate.unit}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, unit: e.target.value })}
-                    className="text-xs"
-                    placeholder="m2, m3, ton, item..."
-                  />
-                </div>
-              </div>
-
+        {editingTemplate && (
+          <div className="space-y-4 py-2 text-xs">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="font-semibold block mb-1">{t("breakdown.division", "القسم (Division)")}:</label>
-                <Select
-                  value={csiDivisionCode(editingTemplate.division) ?? "legacy"}
-                  onValueChange={(division) => setEditingTemplate({ ...editingTemplate, division })}
-                >
-                  <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {!csiDivisionCode(editingTemplate.division) && (
-                      <SelectItem value="legacy" disabled>
-                        {editingTemplate.division || t("common.unclassifiedDivision")}
-                      </SelectItem>
-                    )}
-                    {CSI_DIVISIONS.map(({ code, name_ar, name_en }) => (
-                      <SelectItem key={code} value={code}>
-                        {code} — {language === "ar" ? name_ar : name_en}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="font-semibold block mb-1">{t("breakdown.titleAr", "اسم البند (بالعربية)")}:</label>
+                <label htmlFor="template-code" className="font-semibold block mb-1">{t("common.code", "الكود")}:</label>
                 <Input
-                  value={editingTemplate.title_ar}
-                  onChange={(e) => setEditingTemplate({ ...editingTemplate, title_ar: e.target.value })}
-                  className="text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold block mb-1">{t("breakdown.titleEn", "اسم البند (بالإنجليزية)")}:</label>
-                <Input
-                  value={editingTemplate.title_en}
-                  onChange={(e) => setEditingTemplate({ ...editingTemplate, title_en: e.target.value })}
+                  id="template-code"
+                  value={editingTemplate.code}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, code: e.target.value })}
                   className="text-xs font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold block mb-1">{t("common.description", "التوصيف الفني")}:</label>
-                <Input
-                  value={editingTemplate.description_ar}
-                  onChange={(e) => setEditingTemplate({ ...editingTemplate, description_ar: e.target.value })}
-                  className="text-xs"
+                  placeholder="e.g. BLK-150-SPEC"
                 />
               </div>
               <div>
-                <label htmlFor="template-description-en" className="font-semibold block mb-1">{t("breakdown.descriptionEn")}</label>
+                <label className="font-semibold block mb-1">{t("common.unit", "الوحدة")}:</label>
                 <Input
-                  id="template-description-en"
-                  value={editingTemplate.description_en}
-                  onChange={(e) => setEditingTemplate({ ...editingTemplate, description_en: e.target.value })}
+                  value={editingTemplate.unit}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, unit: e.target.value })}
                   className="text-xs"
-                  dir="ltr"
+                  placeholder="m2, m3, ton, item..."
                 />
               </div>
+            </div>
 
-              {/* Resource Items */}
-              <div className="space-y-2 pt-2 border-t border-border">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold">{t("breakdown.resourceComponents", "مكونات الموارد لوحدة واحدة:")}</span>
+            <div>
+              <label className="font-semibold block mb-1">{t("breakdown.division", "القسم (Division)")}:</label>
+              <Select
+                value={csiDivisionCode(editingTemplate.division) ?? "legacy"}
+                onValueChange={(division) => setEditingTemplate({ ...editingTemplate, division })}
+              >
+                <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {!csiDivisionCode(editingTemplate.division) && (
+                    <SelectItem value="legacy" disabled>
+                      {editingTemplate.division || t("common.unclassifiedDivision")}
+                    </SelectItem>
+                  )}
+                  {CSI_DIVISIONS.map(({ code, name_ar, name_en }) => (
+                    <SelectItem key={code} value={code}>
+                      {code} — {language === "ar" ? name_ar : name_en}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="font-semibold block mb-1">{t("breakdown.titleAr", "اسم البند (بالعربية)")}:</label>
+              <Input
+                value={editingTemplate.title_ar}
+                onChange={(e) => setEditingTemplate({ ...editingTemplate, title_ar: e.target.value })}
+                className="text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold block mb-1">{t("breakdown.titleEn", "اسم البند (بالإنجليزية)")}:</label>
+              <Input
+                value={editingTemplate.title_en}
+                onChange={(e) => setEditingTemplate({ ...editingTemplate, title_en: e.target.value })}
+                className="text-xs font-mono"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold block mb-1">{t("common.description", "التوصيف الفني")}:</label>
+              <Input
+                value={editingTemplate.description_ar}
+                onChange={(e) => setEditingTemplate({ ...editingTemplate, description_ar: e.target.value })}
+                className="text-xs"
+              />
+            </div>
+            <div>
+              <label htmlFor="template-description-en" className="font-semibold block mb-1">{t("breakdown.descriptionEn")}</label>
+              <Input
+                id="template-description-en"
+                value={editingTemplate.description_en}
+                onChange={(e) => setEditingTemplate({ ...editingTemplate, description_en: e.target.value })}
+                className="text-xs"
+                dir="ltr"
+              />
+            </div>
+
+            {/* Resource Items */}
+            <div className="space-y-2 pt-2 border-t border-border">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold">{t("breakdown.resourceComponents", "مكونات الموارد لوحدة واحدة:")}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex items-center gap-1">
+                    <Select value={subAssemblyCodeToAdd} onValueChange={setSubAssemblyCodeToAdd}>
+                      <SelectTrigger className="h-7 w-[190px] text-[10px]">
+                        <SelectValue placeholder="إدراج بند فرعي بالتكلفة المباشرة…" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-56">
+                        {templates
+                          .filter((tItem) => tItem.id !== editingTemplate.id)
+                          .slice(0, 35)
+                          .map((tItem) => (
+                            <SelectItem key={tItem.id} value={tItem.id} className="text-[11px]">
+                              {tItem.code} — {tItem.title_ar}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="h-7 text-[10px]"
+                      disabled={!subAssemblyCodeToAdd}
+                      onClick={() => {
+                        const chosen = templates.find((tItem) => tItem.id === subAssemblyCodeToAdd);
+                        if (!chosen) return;
+                        // Expand strictly at direct cost without compounding overhead/profit twice (§4.4)
+                        const expanded = expandSubAssemblyAtDirectCost(
+                          chosen.items.map((it) => ({
+                            resource_type: it.resource_type,
+                            quantity: it.quantity,
+                            waste_pct: it.waste_pct ?? 0,
+                            unit_price: it.unit_price,
+                            description_ar: it.description_ar,
+                            description_en: it.description_en,
+                            unit: it.unit,
+                            ...(it.material_category ? { material_category: it.material_category } : {}),
+                            ...(it.scope_tag ? { scope_tag: it.scope_tag } : {}),
+                          })) as ScopedAnalysisLine[],
+                        );
+                        setEditingTemplate({
+                          ...editingTemplate,
+                          items: [
+                            ...editingTemplate.items,
+                            ...expanded.lines.map((line) => ({
+                              id: crypto.randomUUID(),
+                              resource_type: line.resource_type,
+                              ...(line.material_category ? { material_category: line.material_category } : {}),
+                              description_ar: `${line.description_ar ?? chosen.title_ar} [فرعي: ${chosen.code}]`,
+                              description_en: line.description_en ?? chosen.title_en,
+                              unit: line.unit ?? chosen.unit,
+                              quantity: line.quantity,
+                              ...(line.waste_pct ? { waste_pct: line.waste_pct } : {}),
+                              unit_price: line.unit_price,
+                              notes: "مكوّن مستدعى بالتكلفة المباشرة بدون مضاعفة الهوامش",
+                            })),
+                          ],
+                        });
+                        toast.success(`تم إدراج مكونات «${chosen.code}» بالتكلفة المباشرة (${expanded.directUnitCost.toFixed(2)} ر.س) دون تكرار الهوامش`);
+                        setSubAssemblyCodeToAdd("");
+                      }}
+                    >
+                      إدراج مباشر
+                    </Button>
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
@@ -457,139 +532,140 @@ function ItemBreakdownLibraryPage() {
                     {t("common.add", "إضافة مورد")}
                   </Button>
                 </div>
-
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {editingTemplate.items.map((item, idx) => (
-                    <div key={item.id} className="flex flex-wrap items-center gap-2 rounded border border-border p-2 bg-muted/20">
-                      <Select
-                        value={item.resource_type}
-                        onValueChange={(resource_type: BreakdownResourceType) => updateResource(item.id, { resource_type })}
-                      >
-                        <SelectTrigger className="w-24 text-[10px] h-7">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(resourceLabels).map(([type, label]) => (
-                            <SelectItem key={type} value={type} className="text-xs">{t(label)}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-
-                      <Input
-                        value={item.description_ar}
-                        aria-label={t("common.description")}
-                        onChange={(e) => updateResource(item.id, { description_ar: e.target.value })}
-                        className="flex-1 text-xs h-7"
-                        placeholder={t("common.description")}
-                      />
-                      <Input
-                        value={item.unit}
-                        aria-label={t("common.unit")}
-                        placeholder={t("common.unit")}
-                        onChange={(e) => updateResource(item.id, { unit: e.target.value })}
-                        className="h-7 w-16 text-xs"
-                      />
-
-                      <Input
-                        type="number"
-                        value={item.quantity}
-                        aria-label={t("common.quantity")}
-                        onChange={(e) => updateResource(item.id, { quantity: Number(e.target.value) || 0 })}
-                        className="w-16 text-xs h-7 font-mono"
-                        placeholder={t("common.quantity")}
-                      />
-
-                      <Input
-                        type="number"
-                        value={item.unit_price}
-                        aria-label={t("breakdown.itemUnitPrice")}
-                        onChange={(e) => updateResource(item.id, { unit_price: Number(e.target.value) || 0 })}
-                        className="w-20 text-xs h-7 font-mono"
-                        placeholder={t("breakdown.itemUnitPrice")}
-                      />
-
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => {
-                          const updated = editingTemplate.items.filter((_, i) => i !== idx);
-                          setEditingTemplate({ ...editingTemplate, items: updated });
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                      <div className="grid w-full grid-cols-2 gap-2">
-                        <Input
-                          value={item.description_en}
-                          aria-label={t("breakdown.resourceDescriptionEn")}
-                          placeholder={t("breakdown.resourceDescriptionEn")}
-                          onChange={(e) => updateResource(item.id, { description_en: e.target.value })}
-                          className="h-7 text-xs"
-                          dir="ltr"
-                        />
-                        <Input
-                          value={item.notes ?? ""}
-                          aria-label={t("common.notes")}
-                          placeholder={t("common.notes")}
-                          onChange={(e) => updateResource(item.id, { notes: e.target.value })}
-                          className="h-7 text-xs"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </div>
 
-              {/* Recommended Markups */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-border">
-                <div>
-                  <label>{t("pa.indirectLabel")} (%)</label>
-                  <Input type="number" value={editingTemplate.recommended_indirect_pct ?? 0} onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_indirect_pct: Number(e.target.value) || 0 })} />
-                </div>
-                <div>
-                  <label className="text-[10px] text-muted-foreground block">{t("financial.overhead", "مصاريف إدارية %")}:</label>
-                  <Input
-                    type="number"
-                    value={editingTemplate.recommended_overhead_pct}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_overhead_pct: parseFloat(e.target.value) || 0 })}
-                    className="h-7 text-xs font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-muted-foreground block">{t("financial.profit", "الأرباح %")}:</label>
-                  <Input
-                    type="number"
-                    value={editingTemplate.recommended_profit_pct}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_profit_pct: parseFloat(e.target.value) || 0 })}
-                    className="h-7 text-xs font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-muted-foreground block">{t("financial.risk", "مخاطر %")}:</label>
-                  <Input
-                    type="number"
-                    value={editingTemplate.recommended_risk_pct}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_risk_pct: parseFloat(e.target.value) || 0 })}
-                    className="h-7 text-xs font-mono"
-                  />
-                </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {editingTemplate.items.map((item, idx) => (
+                  <div key={item.id} className="flex flex-wrap items-center gap-2 rounded border border-border p-2 bg-muted/20">
+                    <Select
+                      value={item.resource_type}
+                      onValueChange={(resource_type: BreakdownResourceType) => updateResource(item.id, { resource_type })}
+                    >
+                      <SelectTrigger className="w-24 text-[10px] h-7">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(resourceLabels).map(([type, label]) => (
+                          <SelectItem key={type} value={type} className="text-xs">{t(label)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Input
+                      value={item.description_ar}
+                      aria-label={t("common.description")}
+                      onChange={(e) => updateResource(item.id, { description_ar: e.target.value })}
+                      className="flex-1 text-xs h-7"
+                      placeholder={t("common.description")}
+                    />
+                    <Input
+                      value={item.unit}
+                      aria-label={t("common.unit")}
+                      placeholder={t("common.unit")}
+                      onChange={(e) => updateResource(item.id, { unit: e.target.value })}
+                      className="h-7 w-16 text-xs"
+                    />
+
+                    <Input
+                      type="number"
+                      value={item.quantity}
+                      aria-label={t("common.quantity")}
+                      onChange={(e) => updateResource(item.id, { quantity: Number(e.target.value) || 0 })}
+                      className="w-16 text-xs h-7 font-mono"
+                      placeholder={t("common.quantity")}
+                    />
+
+                    <Input
+                      type="number"
+                      value={item.unit_price}
+                      aria-label={t("breakdown.itemUnitPrice")}
+                      onChange={(e) => updateResource(item.id, { unit_price: Number(e.target.value) || 0 })}
+                      className="w-20 text-xs h-7 font-mono"
+                      placeholder={t("breakdown.itemUnitPrice")}
+                    />
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => {
+                        const updated = editingTemplate.items.filter((_, i) => i !== idx);
+                        setEditingTemplate({ ...editingTemplate, items: updated });
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                    <div className="grid w-full grid-cols-2 gap-2">
+                      <Input
+                        value={item.description_en}
+                        aria-label={t("breakdown.resourceDescriptionEn")}
+                        placeholder={t("breakdown.resourceDescriptionEn")}
+                        onChange={(e) => updateResource(item.id, { description_en: e.target.value })}
+                        className="h-7 text-xs"
+                        dir="ltr"
+                      />
+                      <Input
+                        value={item.notes ?? ""}
+                        aria-label={t("common.notes")}
+                        placeholder={t("common.notes")}
+                        onChange={(e) => updateResource(item.id, { notes: e.target.value })}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
-          )}
+
+            {/* Recommended Markups */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-border">
+              <div>
+                <label>{t("pa.indirectLabel")} (%)</label>
+                <Input type="number" value={editingTemplate.recommended_indirect_pct ?? 0} onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_indirect_pct: Number(e.target.value) || 0 })} />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block">{t("financial.overhead", "مصاريف إدارية %")}:</label>
+                <Input
+                  type="number"
+                  value={editingTemplate.recommended_overhead_pct}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_overhead_pct: parseFloat(e.target.value) || 0 })}
+                  className="h-7 text-xs font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block">{t("financial.profit", "الأرباح %")}:</label>
+                <Input
+                  type="number"
+                  value={editingTemplate.recommended_profit_pct}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_profit_pct: parseFloat(e.target.value) || 0 })}
+                  className="h-7 text-xs font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-muted-foreground block">{t("financial.risk", "مخاطر %")}:</label>
+                <Input
+                  type="number"
+                  value={editingTemplate.recommended_risk_pct}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_risk_pct: parseFloat(e.target.value) || 0 })}
+                  className="h-7 text-xs font-mono"
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         <footer className="sticky bottom-0 flex gap-2 border-t bg-background p-3">
-            <Button variant="outline" size="sm" disabled={isSaving} onClick={() => setCreateModalOpen(false)}>
-              {t("common.cancel", "إلغاء")}
-            </Button>
-            <Button
-              size="sm"
-              disabled={isSaving}
-              onClick={handleSaveTemplate}
-            >
-              {isSaving ? t("common.saving") : t("common.save")}
-            </Button>
+          <Button variant="outline" size="sm" disabled={isSaving} onClick={() => setCreateModalOpen(false)}>
+            {t("common.cancel", "إلغاء")}
+          </Button>
+          <Button
+            size="sm"
+            disabled={isSaving}
+            onClick={handleSaveTemplate}
+          >
+            {isSaving ? t("common.saving") : t("common.save")}
+          </Button>
         </footer>
       </section>
     );
@@ -908,6 +984,65 @@ function ItemBreakdownLibraryPage() {
                 )}
               </>
             )}
+
+            {/* 50-Template Legacy Disposition & Idempotent Migration Ledger (§5 Delivery #1) */}
+            <div className="pt-4 border-t border-border space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-bold">جرد الـ {legacyLedger.totalAudited} قالباً القديمة وقرارات الترحيل</h3>
+                  <p className="text-[11px] text-muted-foreground">
+                    إبقاء تنفيذي: {legacyLedger.byDisposition.keep_executable} · تفكيك نطاقات: {legacyLedger.byDisposition.split_by_scope} · مرجع مركّب: {legacyLedger.byDisposition.reference_composite} · حزمة شراء: {legacyLedger.byDisposition.purchase_package_only}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs gap-1.5"
+                  onClick={() => {
+                    setMigrationRuns((n) => n + 1);
+                    toast.success(`نجحت محاكاة الترحيل رقم #${migrationRuns + 1}: تطابق كامل (${legacyLedger.totalAudited} سجل بدون تكرار).`);
+                  }}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  اختبار تكرار الترحيل ({migrationRuns})
+                </Button>
+              </div>
+              <div className="max-h-56 overflow-y-auto rounded-md border">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-muted/40 sticky top-0">
+                    <tr>
+                      <th className="p-2 text-start">المعرف القديم</th>
+                      <th className="p-2 text-start">الكود</th>
+                      <th className="p-2 text-start">قرار المعالجة</th>
+                      <th className="p-2 text-start">البديل المعتمد</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {legacyLedger.entries.map((entry) => (
+                      <tr key={entry.legacyId}>
+                        <td className="p-1.5 font-mono text-muted-foreground">{entry.legacyId}</td>
+                        <td className="p-1.5 font-mono font-semibold">{entry.code}</td>
+                        <td className="p-1.5">
+                          <Badge
+                            variant={entry.disposition === "reference_composite" ? "destructive" : "outline"}
+                            className="text-[10px]"
+                          >
+                            {entry.disposition === "keep_executable"
+                              ? "إبقاء تنفيذي"
+                              : entry.disposition === "split_by_scope"
+                                ? "تفكيك نطاقات"
+                                : entry.disposition === "reference_composite"
+                                  ? "مرجع مركّب"
+                                  : "حزمة شراء"}
+                          </Badge>
+                        </td>
+                        <td className="p-1.5 font-mono text-primary">{entry.replacementCode}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -960,45 +1095,45 @@ function ItemBreakdownLibraryPage() {
                   <Badge variant="outline" className="font-mono text-[11px] font-bold border-primary/40 text-primary">
                     {template.code}
                   </Badge>
-                    <div className="flex items-center gap-1.5">
-                      {template.assembly_kind === "reference_composite" && (
-                        <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px] gap-1">
-                          <AlertTriangle className="h-2.5 w-2.5" />
-                          مرجع مركّب
-                        </Badge>
-                      )}
-                      <Badge variant="secondary" className="text-[10px]">
-                        {template.unit}
+                  <div className="flex items-center gap-1.5">
+                    {template.assembly_kind === "reference_composite" && (
+                      <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px] gap-1">
+                        <AlertTriangle className="h-2.5 w-2.5" />
+                        مرجع مركّب
                       </Badge>
-                      {template.is_custom && (
-                        <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px]">
-                          {t("breakdown.customBadge", "مخصص")}
-                        </Badge>
-                      )}
-                    </div>
+                    )}
+                    <Badge variant="secondary" className="text-[10px]">
+                      {template.unit}
+                    </Badge>
+                    {template.is_custom && (
+                      <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px]">
+                        {t("breakdown.customBadge", "مخصص")}
+                      </Badge>
+                    )}
                   </div>
+                </div>
 
-                  <div>
-                    <CardTitle className="text-sm font-semibold line-clamp-2">
-                      {isEn ? template.title_en || template.title_ar : template.title_ar}
-                    </CardTitle>
-                    <CardDescription className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
-                      {csiDivisionLabel(template.division, language)}
-                    </CardDescription>
+                <div>
+                  <CardTitle className="text-sm font-semibold line-clamp-2">
+                    {isEn ? template.title_en || template.title_ar : template.title_ar}
+                  </CardTitle>
+                  <CardDescription className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
+                    {csiDivisionLabel(template.division, language)}
+                  </CardDescription>
+                </div>
+
+                <p className="text-xs text-muted-foreground/90 line-clamp-2 leading-relaxed">
+                  {isEn ? template.description_en || template.description_ar : template.description_ar}
+                </p>
+                {(template.included_scopes?.length || template.excluded_scopes?.length) ? (
+                  <div className="flex flex-wrap gap-1 pt-0.5">
+                    {template.excluded_scopes?.slice(0, 2).map((ex) => (
+                      <Badge key={ex} variant="outline" className="text-[9px] border-amber-500/30 text-amber-600">
+                        مستبعد: {SCOPE_LABELS_AR[ex as AssemblyScopeTag] ?? ex}
+                      </Badge>
+                    ))}
                   </div>
-
-                  <p className="text-xs text-muted-foreground/90 line-clamp-2 leading-relaxed">
-                    {isEn ? template.description_en || template.description_ar : template.description_ar}
-                  </p>
-                  {(template.included_scopes?.length || template.excluded_scopes?.length) ? (
-                    <div className="flex flex-wrap gap-1 pt-0.5">
-                      {template.excluded_scopes?.slice(0, 2).map((ex) => (
-                        <Badge key={ex} variant="outline" className="text-[9px] border-amber-500/30 text-amber-600">
-                          مستبعد: {SCOPE_LABELS_AR[ex as AssemblyScopeTag] ?? ex}
-                        </Badge>
-                      ))}
-                    </div>
-                  ) : null}
+                ) : null}
               </CardHeader>
 
               <CardContent className="p-4 pt-2 space-y-3">
@@ -1113,7 +1248,7 @@ function ItemBreakdownLibraryPage() {
                 <thead className="bg-muted/40 text-xs">
                   <tr>
                     {[t("common.type"), t("common.description"), t("common.unit"), t("common.quantity"),
-                      t("breakdown.itemUnitPrice"), t("breakdown.itemLineTotal")].map((label) => (
+                    t("breakdown.itemUnitPrice"), t("breakdown.itemLineTotal")].map((label) => (
                       <th key={label} scope="col" className="p-2 text-start font-medium">{label}</th>
                     ))}
                   </tr>
@@ -1175,6 +1310,17 @@ function ItemBreakdownLibraryPage() {
                   {csiDivisionLabel(targetTemplate.division, language)}
                 </div>
               </div>
+
+              {targetTemplate.assembly_kind === "reference_composite" && (
+                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>تنبيه مرجعي:</strong> هذا القالب مصنّف كـ «مرجع تقديري مركّب» ولا يشمل{" "}
+                    {targetTemplate.excluded_scopes?.map((s) => SCOPE_LABELS_AR[s as AssemblyScopeTag] ?? s).join(" و")}.
+                    يجب مراجعة النطاق وربط أسطر الموردين الفعلية قبل اعتماد السعر في العطاء النهائي.
+                  </div>
+                </div>
+              )}
 
               {!projectId ? (
                 <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-500">

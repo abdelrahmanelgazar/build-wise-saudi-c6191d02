@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   analyzeAssemblyScopes,
+  buildLegacyTemplateDispositionLedger,
   computeConcreteElementQto,
   computeProjectCoverageStats,
   convertQuoteToAnalysisLine,
@@ -218,5 +219,42 @@ describe("CSI 01–10 Assemblies, Concrete QTO, and Scope Audit (§1–§5)", ()
     expect(report.coveredValue).toBe(160000);
     expect(report.totalValue).toBe(200000);
     expect(report.valueCoveragePct).toBe(80);
+  });
+
+  it("covers all 11 concrete families (§2) and runs 50-template disposition ledger idempotently (§5 #1)", () => {
+    const all = getAllBreakdownTemplates();
+    const concreteCodes = [
+      "03-30-01-LEAN",
+      "03-30-11-FTG",
+      "03-30-13-COL",
+      "03-30-14-NECK",
+      "03-30-15-WALL",
+      "03-30-16-BEAM",
+      "03-30-17-TIE",
+      "03-30-20-SLAB",
+      "03-30-22-FLAT",
+      "03-30-24-HORDI",
+      "03-38-00-PT",
+      "03-30-28-STAIR",
+      "03-21-00-REBAR",
+      "03-11-00-FORM",
+      "03-01-30-REPR",
+    ];
+    for (const code of concreteCodes) {
+      expect(all.some((t) => t.code === code)).toBe(true);
+    }
+
+    // Hollow-block slab excludes voids volume (net ribs+topping 0.14 m³/m² rather than full 0.32m gross slab)
+    const hordi = all.find((t) => t.code === "03-30-24-HORDI");
+    const mixItem = hordi?.items.find((it) => it.scope_tag === "concrete_supply");
+    expect(mixItem?.quantity).toBe(0.14);
+
+    // 50-template legacy disposition ledger is deterministic across repeated runs
+    const run1 = buildLegacyTemplateDispositionLedger(all);
+    const run2 = buildLegacyTemplateDispositionLedger(all);
+    expect(run1.totalAudited).toBe(50);
+    expect(run2.totalAudited).toBe(50);
+    expect(run1.signatureHash).toBe(run2.signatureHash);
+    expect(run1.byDisposition.reference_composite).toBeGreaterThanOrEqual(1);
   });
 });
