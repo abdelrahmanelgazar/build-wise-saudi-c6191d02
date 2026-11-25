@@ -54,6 +54,7 @@ import { useActiveProjectId, setActiveProjectId } from "@/lib/active-project";
 import { useLanguage } from "@/lib/i18n";
 import { LanguageSwitcher } from "@/components/ui/language-switcher";
 import { WorkspaceActionsProvider, useWorkspaceActions } from "@/lib/workspace-page-actions";
+import { queryKnowledgeTemplatesTree, type KnowledgeTemplateCategory } from "@/lib/knowledge-library-service";
 
 type SidebarProject = {
   id: string;
@@ -67,15 +68,27 @@ type SidebarProject = {
 const SECONDARY_NAV_ITEMS = [
   { to: "/boq", translationKey: "nav.boq", defaultLabel: "جدول الكميات", icon: Calculator },
   { to: "/price-analysis", translationKey: "nav.priceAnalysis", defaultLabel: "تحليل الأسعار", icon: TrendingUp },
-  { to: "/item-breakdown-library", translationKey: "nav.itemBreakdownLibrary", defaultLabel: "مكتبة نماذج البنود", icon: Layers },
+  { to: "/tender-assurance", translationKey: "nav.tenderAssurance", defaultLabel: "جاهزية العطاء والتعليقات", icon: ShieldCheck },
   { to: "/financial", translationKey: "nav.financial", defaultLabel: "المراجعة المالية", icon: ShieldCheck },
   { to: "/reports", translationKey: "nav.reports", defaultLabel: "التقارير", icon: BarChart3 },
   { to: "/ai-assistant", translationKey: "nav.aiAssistant", defaultLabel: "مساعد الذكاء الاصطناعي", icon: Sparkles },
   { to: "/settings", translationKey: "nav.settings", defaultLabel: "الإعدادات والصلاحيات", icon: Settings },
 ] as const;
 
+const TEMPLATE_LIBRARY_SUB_ITEMS: Array<{ view: KnowledgeTemplateCategory; labelKey: string; defaultLabel: string }> = [
+  { view: "overview", labelKey: "knowledge.viewOverview", defaultLabel: "عام" },
+  { view: "by_section", labelKey: "knowledge.viewBySection", defaultLabel: "نماذج البنود حسب الأقسام" },
+  { view: "by_project", labelKey: "knowledge.viewByProject", defaultLabel: "نماذج البنود حسب المشاريع" },
+  { view: "indirect_cost", labelKey: "knowledge.viewIndirectCost", defaultLabel: "التكلفة غير المباشرة" },
+  { view: "typical_assemblies", labelKey: "knowledge.viewTypicalAssemblies", defaultLabel: "نماذج تسعير نمطية" },
+];
+
 const RESOURCE_SUB_ITEMS = [
   { tab: "all", label: "عام", icon: Database },
+  { tab: "supplier_quotes", label: "عروض الموردين الفعلية", icon: FileText },
+  { tab: "price_evidence", label: "الأسعار المرجعية (من تحليل)", icon: TrendingUp },
+  { tab: "by_project", label: "عروض حسب المشروع", icon: FolderKanban },
+  { tab: "typical_assembly_offers", label: "عروض النماذج النمطية", icon: Layers },
   { tab: "material", label: "مواد", icon: Boxes },
   { tab: "labor", label: "العمالة", icon: Hammer },
   { tab: "equipment", label: "المعدات", icon: Truck },
@@ -215,6 +228,7 @@ function AppShellInner({ children }: { children: ReactNode }) {
   const searchParams = useMemo(() => new URLSearchParams(searchStr), [searchStr]);
   const urlCompany = searchParams.get("company") ?? "";
   const urlTab = searchParams.get("tab") ?? "";
+  const urlView = searchParams.get("view") ?? "";
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     dashboard: false,
@@ -222,8 +236,14 @@ function AppShellInner({ children }: { children: ReactNode }) {
     clients: false,
     projects: false,
     resources: false,
+    libraries: false,
   });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const templateLibrarySummary = useMemo(
+    () => queryKnowledgeTemplatesTree({ view: "overview" }),
+    [pathname, urlView],
+  );
 
   // Restore active branch & open ancestors automatically from URL
   useEffect(() => {
@@ -243,6 +263,7 @@ function AppShellInner({ children }: { children: ReactNode }) {
         if (urlCompany) next[`projects:company:${urlCompany}`] = true;
       }
       if (pathname.startsWith("/resources")) next["resources"] = true;
+      if (pathname.startsWith("/item-breakdown-library")) next["libraries"] = true;
       return next;
     });
   }, [pathname, urlCompany]);
@@ -988,6 +1009,65 @@ function AppShellInner({ children }: { children: ReactNode }) {
                         >
                           <SubIcon className="h-3 w-3 shrink-0" />
                           <span>{sub.label}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
+
+            {/* 5. مكتبة نماذج البنود (M-03 / M-04 Hierarchical Knowledge Library) */}
+            <li>
+              <div
+                className={cn(
+                  "flex items-center justify-between gap-1 rounded-md px-2 py-1.5 transition-colors",
+                  pathname.startsWith("/item-breakdown-library")
+                    ? "bg-primary/15 text-primary ring-1 ring-primary/20 font-medium"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent",
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => guardedNavigate("/item-breakdown-library", t("nav.itemBreakdownLibrary", "مكتبة نماذج البنود"))}
+                  className="flex flex-1 items-center gap-2 text-start text-sm"
+                >
+                  <Layers className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{t("nav.itemBreakdownLibrary", "مكتبة نماذج البنود")}</span>
+                </button>
+                <TreeToggleArrow
+                  isOpen={Boolean(expanded["libraries"])}
+                  onToggle={() => toggleNode("libraries")}
+                  direction={direction}
+                  label="توسيع مكتبة نماذج البنود"
+                />
+              </div>
+
+              {expanded["libraries"] && (
+                <ul className="mt-1 space-y-0.5 border-s border-border/60 ms-3 ps-2">
+                  {TEMPLATE_LIBRARY_SUB_ITEMS.map((sub) => {
+                    const isSubActive =
+                      pathname.startsWith("/item-breakdown-library") &&
+                      (urlView === sub.view || (sub.view === "overview" && !urlView));
+                    return (
+                      <li key={sub.view}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            guardedNavigate(
+                              `/item-breakdown-library?view=${sub.view}`,
+                              t(sub.labelKey as any, sub.defaultLabel),
+                            )
+                          }
+                          className={cn(
+                            "flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-start hover:bg-sidebar-accent",
+                            isSubActive ? "text-primary font-medium" : "text-muted-foreground hover:text-foreground",
+                          )}
+                        >
+                          <span className="truncate">{t(sub.labelKey as any, sub.defaultLabel)}</span>
+                          <Badge variant="secondary" className="h-4 px-1 text-[9px] font-mono">
+                            {templateLibrarySummary.countsByView[sub.view]}
+                          </Badge>
                         </button>
                       </li>
                     );

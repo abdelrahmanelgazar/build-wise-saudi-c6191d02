@@ -2,7 +2,11 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { estimationClient } from "@/lib/estimation-client";
-import { useActiveProjectId } from "@/lib/active-project";
+import { supabase } from "@/integrations/supabase/client";
+import { isLocalDevelopment } from "@/lib/local-development";
+import { useActiveProjectId, useActiveTenderId } from "@/lib/active-project";
+import { scopeRowsByTender } from "@/lib/tender-pricing-scope";
+import { askAiEstimationServer, type AiEstimationRequest, type AiEstimationResponse } from "@/lib/ai-estimation-fn";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,12 +42,14 @@ interface Message {
   id: string;
   sender: "ai" | "user";
   text: string;
+  provider?: string;
   timestamp: string;
 }
 
 function AiAssistantPage() {
   const { t, language } = useLanguage();
   const projectId = useActiveProjectId();
+  const activeTenderId = useActiveTenderId();
   const [input, setInput] = useState("");
 
   useRegisterPageActions({
@@ -68,8 +74,8 @@ function AiAssistantPage() {
     },
   });
 
-  const { data: boqItems = [] } = useQuery({
-    queryKey: ["ai_boq_items", projectId],
+  const { data: allBoqItems = [] } = useQuery({
+    queryKey: ["ai_boq_items", projectId, activeTenderId],
     enabled: !!projectId,
     queryFn: async () => {
       const { data, error } = await estimationClient
@@ -81,8 +87,8 @@ function AiAssistantPage() {
     },
   });
 
-  const { data: paItems = [] } = useQuery({
-    queryKey: ["ai_pa_items", projectId],
+  const { data: allPaItems = [] } = useQuery({
+    queryKey: ["ai_pa_items", projectId, activeTenderId],
     enabled: !!projectId,
     queryFn: async () => {
       const { data, error } = await estimationClient
@@ -93,6 +99,9 @@ function AiAssistantPage() {
       return data;
     },
   });
+
+  const boqItems = useMemo(() => scopeRowsByTender(allBoqItems as any[], activeTenderId), [allBoqItems, activeTenderId]);
+  const paItems = useMemo(() => scopeRowsByTender(allPaItems as any[], activeTenderId), [allPaItems, activeTenderId]);
 
   const unpricedCount = useMemo(() => {
     const pricedIds = new Set(paItems.map((p) => p.boq_item_id));
@@ -129,27 +138,67 @@ function AiAssistantPage() {
     if (!customText) setInput("");
     setLoading(true);
 
-    // Simulate intelligent analysis based on active project state
-    setTimeout(() => {
-      let reply = "";
-      const lower = msgText.toLowerCase();
+    try {
+      const pricedIds = new Set(paItems.map((p: any) => p.boq_item_id));
+      const billableItems = boqItems.filter((b: any) => !b.is_group);
+      const totalDirectCost = billableItems.reduce((sum: number, b: any) => {
+        const unitDirect =
+          Number(b.material_cost ?? 0) +
+          Number(b.labor_cost ?? 0) +
+          Number(b.equipment_cost ?? 0) +
+          Number(b.subcontractor_cost ?? 0);
+        return sum + unitDirect * Number(b.quantity ?? 0);
+      }, 0);
 
-      if (lower.includes("غير المسعرة") || lower.includes("ناقص") || lower.includes("unpriced") || lower.includes("missing")) {
-        reply = language === "en"
-          ? `Analysis for project "${project?.name || "Current Project"}":\n- Total BOQ items: ${boqItems.length}\n- Unpriced items without cost breakdown: ${unpricedCount} items.\n- Recommendation: Focus on DIV 04 (Masonry) and finishes to finalize the direct cost before tender closure.`
-          : `تقرير فحص بنود المشروع "${project?.name || "المشروع الحالي"}":\n- إجمالي بنود جدول الكميات: ${boqItems.length} بنداً.\n- البنود التي لم يتم إعداد تحليل سعر لها بعد: ${unpricedCount} بنداً.\n- التوصية: يُنصح بالبدء بتسعير بنود المباني والتشطيبات الأساسية في قسم DIV 04 لإكمال التكلفة المباشرة قبل موعد تقديم العطاء.`;
-      } else if (lower.includes("بلوك") || lower.includes("خرسانة") || lower.includes("masonry") || lower.includes("concrete")) {
-        reply = language === "en"
-          ? `Saudi Market Benchmark (Riyadh & Western Region - Q4 2026):\n1. Concrete Masonry Block 200mm (Solid, 2hr fire rated): 52 - 62 SAR / m² (including mortar, labor & scaffolding).\n2. Block 150mm: 44 - 50 SAR / m².\n3. Reinforced Concrete (C35 Ready-mix): 280 - 320 SAR / m³.\n* Values are direct cost without overhead and profit markups.`
-          : `مؤشرات أسعار السوق السعودي المعتمدة (الرياض والغربية):\n1. مباني بلوك إسمنتي مصمت 200 مم (مقاوم للحريق ساعتين): 52 - 62 ر.س / م2 (شاملاً المونة والعمالة والسقالات).\n2. مباني بلوك 150 مم: 44 - 50 ر.س / م2.\n3. خرسانة مسلحة جاهزة C35: 280 - 320 ر.س / م3.\n* الأسعار أعلاه تمثل التكلفة المباشرة قبل إضافة الهوامش الإدارية والأرباح.`;
-      } else if (lower.includes("ربح") || lower.includes("مخاطر") || lower.includes("margin") || lower.includes("profit")) {
-        reply = language === "en"
-          ? `Recommended markup strategy for government/commercial tenders in Saudi Arabia:\n- Site Indirect Costs: 8% - 12%\n- General Overhead: 4% - 6%\n- Risk Contingency: 3% - 5%\n- Net Profit: 10% - 14%\nTotal multiplier: 1.25x to 1.37x on Direct Cost.`
-          : `استراتيجية نسب الهوامش المقترحة لمشاريع المقاولات في المملكة:\n- التكاليف غير المباشرة للموقع: 8% - 12%\n- المصاريف الإدارية والعمومية: 4% - 6%\n- مخصص المخاطر والطوارئ: 3% - 5%\n- صافي هامش الربح: 10% - 14%\nمما يعطي معامل تسعير إجمالي يتراوح بين 1.25x إلى 1.37x من التكلفة المباشرة.`;
+      const payload: AiEstimationRequest = {
+        projectId: projectId!,
+        language: language === "en" ? "en" : "ar",
+        projectName: project?.name || "Current Project",
+        clientName: project?.client_name ?? null,
+        prompt: msgText,
+        unpricedCount,
+        totalDirectCost,
+        boqItems: billableItems.slice(0, 150).map((b: any) => ({
+          item_no: b.item_no,
+          description_ar: b.description_ar,
+          unit: b.unit,
+          quantity: Number(b.quantity ?? 0),
+          hasAnalysis: pricedIds.has(b.id),
+        })),
+      };
+
+      const executionMode = (import.meta.env["VITE_AI_EXECUTION_MODE"] as string | undefined) || "auto";
+      let response: AiEstimationResponse;
+
+      if (executionMode === "edge" && !isLocalDevelopment()) {
+        const { data: edgeData, error: edgeErr } = await supabase.functions.invoke("ai-estimation", {
+          body: payload,
+        });
+        if (edgeErr || !edgeData?.reply) {
+          throw new Error(edgeErr?.message || "تعذر استدعاء دالة Supabase Edge للمساعد الذكي.");
+        }
+        response = edgeData as AiEstimationResponse;
       } else {
-        reply = language === "en"
-          ? `I have reviewed your inquiry regarding "${msgText}". In project "${project?.name || "Current"}", we have ${boqItems.length} BOQ items loaded. Would you like me to suggest specific rates, audit the markup percentages, or export a tender summary?`
-          : `تمت مراجعة استفسارك بخصوص: "${msgText}". في مشروع "${project?.name || "الحالي"}"، يوجد ${boqItems.length} بند كميات مسجل. هل ترغب في اقتراح أسعار تحليلية محددة لأي بند، أو تدقيق نسب المصاريف الإدارية، أو تجهيز مسودة العطاء؟`;
+        try {
+          response = await askAiEstimationServer({ data: payload });
+        } catch (serverErr: any) {
+          const msg = String(serverErr?.message || "");
+          // Never silently bypass explicit 401/403 authorization errors
+          if (msg.includes("Unauthorized") || msg.includes("Forbidden")) {
+            throw serverErr;
+          }
+          if (executionMode === "auto" && !isLocalDevelopment()) {
+            const { data: edgeData, error: edgeErr } = await supabase.functions.invoke("ai-estimation", {
+              body: payload,
+            });
+            if (edgeErr || !edgeData?.reply) {
+              throw serverErr;
+            }
+            response = edgeData as AiEstimationResponse;
+          } else {
+            throw serverErr;
+          }
+        }
       }
 
       setMessages((prev) => [
@@ -157,12 +206,28 @@ function AiAssistantPage() {
         {
           id: String(Date.now()),
           sender: "ai",
-          text: reply,
+          text: response.reply,
+          provider: response.provider,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ]);
+    } catch (err: any) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: String(Date.now()),
+          sender: "ai",
+          text:
+            language === "en"
+              ? `Server analysis request failed: ${err?.message || "Unknown error"}`
+              : `تعذّر إتمام التحليل الخادمي: ${err?.message || "خطأ غير معروف"}`,
+          provider: "error",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        },
+      ]);
+    } finally {
       setLoading(false);
-    }, 600);
+    }
   }
 
   const QUICK_PROMPTS = [
@@ -272,11 +337,16 @@ function AiAssistantPage() {
             >
               {m.text}
               <div
-                className={`mt-1.5 text-[9px] ${
+                className={`mt-1.5 flex items-center justify-between gap-2 text-[9px] ${
                   m.sender === "user" ? "text-primary-foreground/70" : "text-muted-foreground"
                 }`}
               >
-                {m.timestamp}
+                <span>{m.timestamp}</span>
+                {m.provider && m.sender === "ai" && (
+                  <span className="rounded bg-background/70 px-1.5 py-0.5 font-mono text-[9px]">
+                    {m.provider}
+                  </span>
+                )}
               </div>
             </div>
           </div>

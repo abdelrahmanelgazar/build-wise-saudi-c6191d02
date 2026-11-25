@@ -4,6 +4,8 @@ import { readWorkspaceSetting, writeWorkspaceSetting } from "./workspace-setting
 import { computeDirectUnitCost, computePricingPhase2, type ResourceCostInput } from "./estimation-calc";
 import { CSI_01_10_ASSEMBLIES } from "./csi-01-10-assemblies";
 import { CSI_REMAINING_WORKS_ASSEMBLIES } from "./csi-remaining-works-assemblies";
+import { CSI_V2_EXPANSION_ASSEMBLIES } from "./csi-v2-expansion-assemblies";
+import { CSI_CONCRETE_ELEMENTS_ASSEMBLIES } from "./csi-concrete-elements-assemblies";
 import type { Database } from "@/integrations/supabase/types";
 
 export type BreakdownResourceType = "material" | "labor" | "equipment" | "subcontractor";
@@ -32,7 +34,20 @@ export interface BreakdownTemplate {
   description_ar: string;
   description_en: string;
   unit: string;
-  recommended_indirect_pct?: number; // Phase 2: indirect cost % (تكلفة غير مباشرة)
+  basis?: "direct_cost" | "needs_review";
+  category_type?: "section_item" | "project_item" | "indirect_cost" | "typical_assembly";
+  scope?: "project" | "company";
+  approval_status?: "draft" | "pending_review" | "approved" | "archived";
+  source_project_id?: string | null;
+  source_project_name?: string | null;
+  source_owner_name?: string | null;
+  source_tender_id?: string | null;
+  source_tender_title?: string | null;
+  source_estimate_version?: number | null;
+  source_boq_item_id?: string | null;
+  price_date?: string | null;
+  /** @deprecated Library templates own direct cost only; tender markups live on price_analysis_markup. */
+  recommended_indirect_pct?: number; // Legacy field kept only for backwards compatibility on bundled fixtures
   recommended_overhead_pct: number;
   recommended_profit_pct: number;
   recommended_risk_pct: number;
@@ -342,6 +357,8 @@ const originalTemplates: BreakdownTemplate[] = [
 export const DEFAULT_BREAKDOWN_TEMPLATES: BreakdownTemplate[] = [
   ...CSI_01_10_ASSEMBLIES,
   ...CSI_REMAINING_WORKS_ASSEMBLIES,
+  ...CSI_V2_EXPANSION_ASSEMBLIES,
+  ...CSI_CONCRETE_ELEMENTS_ASSEMBLIES,
   ...originalTemplates.map(template => ({
     ...template,
     items: template.items.map(item => ({
@@ -369,14 +386,71 @@ export function getAllBreakdownTemplates(): BreakdownTemplate[] {
   return [...custom, ...DEFAULT_BREAKDOWN_TEMPLATES.filter(({ id }) => !customIds.has(id))];
 }
 
+/**
+ * Enforces the Direct-Cost Library Contract (TENDER_KNOWLEDGE_IMPLEMENTATION_PLAN.md §1):
+ * - Rejects records attempting to import selling prices or tender markups as direct cost.
+ * - Normalizes custom templates so saved/copied/imported templates store ONLY direct cost (0% markups).
+ */
+export function assertDirectCostTemplatePayload(raw: Record<string, unknown>): void {
+  const basis = String(raw["basis"] ?? "direct_cost");
+  if (basis === "selling_price" || basis === "selling_rate") {
+    throw new Error("مرفوض: المكتبة تقبل التكلفة المباشرة فقط ولا يجوز استيراد سعر بيع المنافسة كسعر مباشر.");
+  }
+  if (
+    raw["selling_unit_price"] !== undefined ||
+    raw["approvedUnitRate"] !== undefined ||
+    raw["unitSellingPrice"] !== undefined
+  ) {
+    throw new Error("مرفوض: بيانات النموذج القابلة للاستدعاء لا يجوز أن تحتوي على حقول سعر البيع.");
+  }
+  if (raw["strictDirectCostOnly"] === true) {
+    const pctSum =
+      Number(raw["recommended_indirect_pct"] ?? 0) +
+      Number(raw["recommended_overhead_pct"] ?? 0) +
+      Number(raw["recommended_profit_pct"] ?? 0) +
+      Number(raw["recommended_risk_pct"] ?? 0);
+    if (pctSum > 0) {
+      throw new Error("مرفوض: حقول تحميل المنافسة ممنوعة في بيانات النموذج القابلة للاستدعاء.");
+    }
+  }
+}
+
+export function sanitizeTemplateToDirectCost(template: BreakdownTemplate): BreakdownTemplate {
+  assertDirectCostTemplatePayload(template as unknown as Record<string, unknown>);
+  return {
+    ...template,
+    basis: template.basis === "needs_review" ? "needs_review" : "direct_cost",
+    recommended_indirect_pct: 0,
+    recommended_overhead_pct: 0,
+    recommended_profit_pct: 0,
+    recommended_risk_pct: 0,
+  };
+}
+
+export function calculateLibraryDirectCost(template: BreakdownTemplate) {
+  const mappedInputs: ResourceCostInput[] = template.items.map((item) => {
+    const matCat = (item as any).material_category || (item as any).cell_styles?.material_category;
+    const wastePct = Number(item.waste_pct ?? 0);
+    return {
+      resource_type: (item.resource_type || (item as any).cost_type) as ResourceCostInput["resource_type"],
+      quantity: Number(item.quantity) || 0,
+      unit_price: Number(item.unit_price) || 0,
+      ...(wastePct > 0 ? { waste_pct: wastePct } : {}),
+      ...(matCat ? { material_category: matCat as "primary" | "accessory" } : {}),
+    };
+  });
+  return computeDirectUnitCost(mappedInputs);
+}
+
 export async function saveCustomTemplate(template: BreakdownTemplate) {
+  const cleanTemplate = sanitizeTemplateToDirectCost(template);
   if (typeof window === "undefined") return;
   const list = getCustomTemplates();
-  const idx = list.findIndex((t) => t.id === template.id);
+  const idx = list.findIndex((t) => t.id === cleanTemplate.id);
   if (idx >= 0) {
-    list[idx] = { ...template, is_custom: true };
+    list[idx] = { ...cleanTemplate, is_custom: true };
   } else {
-    list.unshift({ ...template, is_custom: true, created_at: new Date().toISOString() });
+    list.unshift({ ...cleanTemplate, is_custom: true, created_at: new Date().toISOString() });
   }
   await writeWorkspaceSetting(STORAGE_KEY, JSON.stringify(list));
 }
@@ -385,6 +459,34 @@ export async function deleteCustomTemplate(id: string) {
   if (typeof window === "undefined") return;
   const list = getCustomTemplates().filter((t) => t.id !== id);
   await writeWorkspaceSetting(STORAGE_KEY, JSON.stringify(list));
+}
+
+/** Imports a reviewed batch of custom CSI assemblies from JSON into workspace storage (direct cost only). */
+export async function importCustomTemplatesBatch(templates: BreakdownTemplate[]): Promise<number> {
+  if (typeof window === "undefined") return 0;
+  const list = getCustomTemplates();
+  const byId = new Map(list.map((t) => [t.id, t]));
+  let count = 0;
+  for (const tpl of templates) {
+    assertDirectCostTemplatePayload(tpl as unknown as Record<string, unknown>);
+    const titleAr = tpl.title_ar || (tpl as any).name_ar;
+    if (!tpl.code || !titleAr || !Array.isArray(tpl.items)) continue;
+    const id = tpl.id || `custom-${tpl.code}-${Date.now()}-${count}`;
+    byId.set(
+      id,
+      sanitizeTemplateToDirectCost({
+        ...tpl,
+        title_ar: titleAr,
+        title_en: tpl.title_en || (tpl as any).name_en || titleAr,
+        id,
+        is_custom: true,
+        created_at: tpl.created_at || new Date().toISOString(),
+      }),
+    );
+    count++;
+  }
+  await writeWorkspaceSetting(STORAGE_KEY, JSON.stringify(Array.from(byId.values())));
+  return count;
 }
 
 export function calculateBreakdownCost(
@@ -461,13 +563,24 @@ export async function applyTemplateToBoqItem({
   boqItemId,
   projectId,
   userId,
+  tenderId,
   replaceExisting = true,
+  tenderMarkups,
+  client = estimationClient,
 }: {
   template: BreakdownTemplate;
   boqItemId: string;
   projectId: string;
   userId: string;
+  tenderId?: string | null;
   replaceExisting?: boolean;
+  tenderMarkups?: {
+    indirect_pct?: number;
+    overhead_pct?: number;
+    profit_pct?: number;
+    risk_pct?: number;
+  };
+  client?: typeof estimationClient;
 }): Promise<void> {
   // Prevent double-click or concurrent duplicate requests for the same item
   if (inFlightApplications.has(boqItemId)) {
@@ -482,18 +595,18 @@ export async function applyTemplateToBoqItem({
 
   try {
     const [prevItemsRes, prevMarkupRes, prevBoqRes] = await Promise.all([
-      estimationClient
+      client
         .from("price_analysis_items")
         .select("*")
         .eq("boq_item_id", boqItemId),
-      estimationClient
+      client
         .from("price_analysis_markup")
         .select("*")
         .eq("boq_item_id", boqItemId)
         .maybeSingle(),
-      estimationClient
+      client
         .from("boq_items")
-        .select("material_cost, labor_cost, equipment_cost, subcontractor_cost, updated_at")
+        .select("material_cost, labor_cost, equipment_cost, subcontractor_cost, updated_at, tender_id")
         .eq("id", boqItemId)
         .maybeSingle(),
     ]);
@@ -501,21 +614,27 @@ export async function applyTemplateToBoqItem({
     previousItems = (prevItemsRes.data as any[]) ?? [];
     previousMarkup = prevMarkupRes.data;
     previousBoqItem = prevBoqRes.data;
+    const effectiveTenderId = tenderId ?? previousBoqItem?.tender_id ?? null;
 
     // 1. If replacing existing, delete existing price analysis items
     if (replaceExisting && previousItems.length > 0) {
-      const { error: delErr } = await estimationClient
+      const { error: delErr } = await client
         .from("price_analysis_items")
         .delete()
         .eq("boq_item_id", boqItemId);
       if (delErr) throw delErr;
     }
 
-    // 2. Insert all template items into price_analysis_items
+    const baseSortOrder = replaceExisting
+      ? 0
+      : previousItems.reduce((max, item) => Math.max(max, Number(item.sort_order ?? 0)), 0);
+
+    // 2. Insert template resource rows into price_analysis_items (copy-on-use at direct cost)
     const inserts = template.items.map((item, index) => ({
       boq_item_id: boqItemId,
       user_id: userId,
       project_id: projectId,
+      ...(effectiveTenderId ? { tender_id: effectiveTenderId } : {}),
       resource_type: item.resource_type,
       description_ar: item.description_ar,
       description_en: item.description_en || null,
@@ -523,7 +642,7 @@ export async function applyTemplateToBoqItem({
       quantity: item.quantity,
       waste_pct: Number(item.waste_pct ?? 0),
       unit_price: item.unit_price,
-      sort_order: index + 1,
+      sort_order: baseSortOrder + index + 1,
       material_category: (item as any).material_category || "primary",
       scope_tag: item.scope_tag || null,
       rate_kind: item.rate_kind || template.rate_kind || "reference",
@@ -536,22 +655,26 @@ export async function applyTemplateToBoqItem({
         rate_kind: item.rate_kind || template.rate_kind || "reference",
         assembly_id: template.id,
         assembly_code: template.code,
+        assembly_version: template.version_no ?? 1,
+        source_project_name: template.source_project_name ?? null,
+        price_date: template.price_date ?? null,
       },
     }));
 
     if (inserts.length > 0) {
-      const { error: insErr } = await estimationClient.from("price_analysis_items").insert(inserts);
+      const { error: insErr } = await client.from("price_analysis_items").insert(inserts);
       if (insErr) throw insErr;
     }
 
     // 2b. Persist assembly lineage & coverage record for CSI 01-10 reporting
-    await estimationClient
+    await client
       .from("assembly_coverage_records")
       .upsert(
         {
           project_id: projectId,
           boq_item_id: boqItemId,
           user_id: userId,
+          ...(effectiveTenderId ? { tender_id: effectiveTenderId } : {}),
           assembly_id: template.id,
           assembly_code: template.code,
           assembly_version: template.version_no ?? 1,
@@ -564,46 +687,59 @@ export async function applyTemplateToBoqItem({
         { onConflict: "project_id,boq_item_id" },
       );
 
-    // 3. Calculate totals using unified 4 markups
-    const calc = calculateBreakdownCost(template);
+    // 3. Recompute direct unit cost strictly from actual price_analysis_items after copy/merge
+    const activeLinesForCalc = replaceExisting
+      ? template.items
+      : [
+          ...previousItems.map((it) => ({
+            resource_type: it.resource_type,
+            material_category: it.material_category ?? it.cell_styles?.material_category,
+            quantity: Number(it.quantity) || 0,
+            waste_pct: Number(it.waste_pct ?? 0),
+            unit_price: Number(it.unit_price) || 0,
+          })),
+          ...template.items,
+        ];
+    const direct = computeDirectUnitCost(
+      activeLinesForCalc.map((item) => ({
+        resource_type: item.resource_type as ResourceCostInput["resource_type"],
+        quantity: Number(item.quantity) || 0,
+        unit_price: Number(item.unit_price) || 0,
+        ...(Number(item.waste_pct ?? 0) > 0 ? { waste_pct: Number(item.waste_pct ?? 0) } : {}),
+        ...((item as any).material_category
+          ? { material_category: (item as any).material_category as "primary" | "accessory" }
+          : {}),
+      })),
+    );
 
-    // 4. Update boq_item cached cost values + explicit Section 7 rate_source
-    const { error: boqUpdErr } = await estimationClient
+    // 4. Update boq_item cached direct cost values + explicit rate_source
+    const { error: boqUpdErr } = await client
       .from("boq_items")
       .update({
-        material_cost: calc.materialCost,
-        labor_cost: calc.laborCost,
-        equipment_cost: calc.equipmentCost,
-        subcontractor_cost: calc.subcontractorCost,
+        material_cost: direct.materialCost,
+        labor_cost: direct.laborCost,
+        equipment_cost: direct.equipmentCost,
+        subcontractor_cost: direct.subcontractorCost,
         rate_source: "analysis",
-        pricing_status: calc.directUnitCost > 0 ? "priced" : "unpriced",
+        pricing_status: direct.directUnitCost > 0 ? "priced" : "unpriced",
       })
       .eq("id", boqItemId);
 
     if (boqUpdErr) throw boqUpdErr;
 
-    // 5. Ensure markup row exists or update it with all 4 markup percentages
-    if (previousMarkup) {
-      const { error: markupErr } = await estimationClient
-        .from("price_analysis_markup")
-        .update({
-          indirect_pct: calc.indirectPct,
-          overhead_pct: calc.overheadPct,
-          profit_pct: calc.profitPct,
-          risk_pct: calc.riskPct,
-          project_id: projectId,
-        })
-        .eq("boq_item_id", boqItemId);
-      if (markupErr) throw markupErr;
-    } else {
-      const { error: markupInsErr } = await estimationClient.from("price_analysis_markup").insert({
+    // 5. CONTRACT (§TENDER_KNOWLEDGE_IMPLEMENTATION_PLAN): Library owns direct cost; tender owns markups.
+    // Never overwrite an existing item's markups with template.recommended_*_pct!
+    // Only initialize markups if the target item has NO markup row yet, using explicit tenderMarkups (or 0%).
+    if (!previousMarkup) {
+      const { error: markupInsErr } = await client.from("price_analysis_markup").insert({
         boq_item_id: boqItemId,
         project_id: projectId,
+        ...(effectiveTenderId ? { tender_id: effectiveTenderId } : {}),
         user_id: userId,
-        indirect_pct: calc.indirectPct,
-        overhead_pct: calc.overheadPct,
-        profit_pct: calc.profitPct,
-        risk_pct: calc.riskPct,
+        indirect_pct: Number(tenderMarkups?.indirect_pct ?? 0),
+        overhead_pct: Number(tenderMarkups?.overhead_pct ?? 0),
+        profit_pct: Number(tenderMarkups?.profit_pct ?? 0),
+        risk_pct: Number(tenderMarkups?.risk_pct ?? 0),
       });
       if (markupInsErr) throw markupInsErr;
     }
@@ -612,16 +748,16 @@ export async function applyTemplateToBoqItem({
     console.error("Apply template failed, executing atomic rollback...", error);
     try {
       // Clean up whatever partial inserts may have happened
-      await estimationClient.from("price_analysis_items").delete().eq("boq_item_id", boqItemId);
+      await client.from("price_analysis_items").delete().eq("boq_item_id", boqItemId);
 
       // Restore previous items
       if (previousItems.length > 0) {
-        await estimationClient.from("price_analysis_items").insert(previousItems);
+        await client.from("price_analysis_items").insert(previousItems);
       }
 
       // Restore previous boq item cost columns
       if (previousBoqItem) {
-        await estimationClient
+        await client
           .from("boq_items")
           .update({
             material_cost: previousBoqItem.material_cost,
@@ -634,7 +770,7 @@ export async function applyTemplateToBoqItem({
 
       // Restore previous markup
       if (previousMarkup) {
-        await estimationClient
+        await client
           .from("price_analysis_markup")
           .upsert(previousMarkup, { onConflict: "boq_item_id" });
       }

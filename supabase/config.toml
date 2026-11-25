@@ -1,1 +1,2 @@
-project_id = "uvgisyeqxcuqxxdldhjw"
+# Authoritative Supabase target reference (aligned with .env, client.ts, and CI target)
+project_id = "desjchcthsjaeiplhuls"

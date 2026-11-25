@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
 import {
   Layers,
   Search,
@@ -55,20 +56,34 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { estimationClient } from "@/lib/estimation-client";
-import { useActiveProjectId } from "@/lib/active-project";
+import { useActiveProjectId, useActiveTenderId } from "@/lib/active-project";
+import { scopeRowsByTender } from "@/lib/tender-pricing-scope";
 import { useLanguage } from "@/lib/i18n";
 import { CSI_DIVISIONS, csiDivisionCode, csiDivisionLabel } from "@/lib/csi-divisions";
 import {
   getAllBreakdownTemplates,
   DEFAULT_BREAKDOWN_TEMPLATES,
   saveCustomTemplate,
+  importCustomTemplatesBatch,
   deleteCustomTemplate,
   calculateBreakdownCost,
+  calculateLibraryDirectCost,
   applyTemplateToBoqItem,
   type BreakdownTemplate,
   type BreakdownResourceItem,
   type BreakdownResourceType,
 } from "@/lib/breakdown-library";
+import {
+  queryKnowledgeTemplatesTree,
+  reviewKnowledgeTemplateVersion,
+  type KnowledgeTemplateCategory,
+} from "@/lib/knowledge-library-service";
+import {
+  calculatePlywoodFenceAssembly,
+  calculatePlywoodFenceDiscretePurchase,
+  calculateUndergroundTankAssembly,
+  calculateTimePhasedHistogramCost,
+} from "@/lib/assemblies-and-indirect-engine";
 import type { Database } from "@/integrations/supabase/types";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
@@ -80,6 +95,10 @@ const resourceLabels = {
   subcontractor: "pa.subcontractor",
 } as const;
 
+const librarySearchSchema = z.object({
+  view: z.enum(["overview", "by_section", "by_project", "indirect_cost", "typical_assemblies"]).optional(),
+});
+
 export const Route = createFileRoute("/_authenticated/item-breakdown-library")({
   head: () => ({
     meta: [
@@ -87,6 +106,7 @@ export const Route = createFileRoute("/_authenticated/item-breakdown-library")({
       { name: "description", content: "قوالب التحليل التفصيلي لأسعار بنود المقاولات والإنشاءات وفق الكود والممارسات السعودية." },
     ],
   }),
+  validateSearch: librarySearchSchema,
   component: ItemBreakdownLibraryPage,
 });
 
@@ -95,6 +115,7 @@ function ItemBreakdownLibraryPage() {
   const isEn = language === "en";
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
+  const { view: urlView } = Route.useSearch();
 
   useRegisterPageActions({
     pageKey: "item-breakdown-library",
@@ -104,8 +125,16 @@ function ItemBreakdownLibraryPage() {
 
   const [search, setSearch] = useState("");
   const [selectedDivision, setSelectedDivision] = useState<string>("all");
+  const [libraryView, setLibraryView] = useState<KnowledgeTemplateCategory>(urlView ?? "overview");
   const [activeTab, setActiveTab] = useState<"library" | "qto" | "coverage">("library");
   const [templates, setTemplates] = useState<BreakdownTemplate[]>(() => getAllBreakdownTemplates());
+
+  useEffect(() => {
+    if (urlView) {
+      setLibraryView(urlView);
+      setActiveTab("library");
+    }
+  }, [urlView]);
 
   // Parametric Concrete Division 03 QTO state (defaulting to §2 verification example)
   const [qtoFamily, setQtoFamily] = useState<ConcreteElementFamily>("column");
@@ -177,9 +206,11 @@ function ItemBreakdownLibraryPage() {
     [templates],
   );
 
+  const activeTenderId = useActiveTenderId();
+
   // Fetch project BOQ items for apply modal and Coverage Registry
-  const { data: boqItems = [] } = useQuery({
-    queryKey: ["boq_items_for_apply", projectId],
+  const { data: allBoqItems = [] } = useQuery({
+    queryKey: ["boq_items_for_apply", projectId, activeTenderId],
     enabled: !!projectId && (applyModalOpen || activeTab === "coverage"),
     queryFn: async () => {
       if (!projectId) return [];
@@ -194,6 +225,11 @@ function ItemBreakdownLibraryPage() {
       return data as BoqRow[];
     },
   });
+
+  const boqItems = useMemo(
+    () => scopeRowsByTender(allBoqItems as any[], activeTenderId) as BoqRow[],
+    [allBoqItems, activeTenderId],
+  );
 
   const { data: coverageRecords = [] } = useQuery({
     queryKey: ["assembly_coverage_records", projectId],
@@ -241,20 +277,63 @@ function ItemBreakdownLibraryPage() {
 
   const hasUnclassified = templates.some((template) => !csiDivisionCode(template.division));
 
-  const filteredTemplates = templates.filter((tmpl) => {
-    const q = search.toLowerCase().trim();
-    const matchSearch =
-      !q ||
-      tmpl.code.toLowerCase().includes(q) ||
-      tmpl.title_ar.toLowerCase().includes(q) ||
-      tmpl.title_en.toLowerCase().includes(q) ||
-      tmpl.description_ar.toLowerCase().includes(q) ||
-      tmpl.description_en.toLowerCase().includes(q);
+  const unifiedLibraryQuery = useMemo(
+    () =>
+      queryKnowledgeTemplatesTree({
+        view: libraryView,
+        division: selectedDivision,
+        search,
+      }),
+    [libraryView, selectedDivision, search, templates],
+  );
+  const filteredTemplates = useMemo(
+    () => unifiedLibraryQuery.records.map((r) => r.template),
+    [unifiedLibraryQuery],
+  );
+  const recordMetaById = useMemo(
+    () => new Map(unifiedLibraryQuery.records.map((r) => [r.templateId, r])),
+    [unifiedLibraryQuery],
+  );
 
-    const matchDiv = selectedDivision === "all" ||
-      (csiDivisionCode(tmpl.division) ?? "unclassified") === selectedDivision;
-    return matchSearch && matchDiv;
-  });
+  // Typical standard assemblies interactive calculator preview state (DEV-305 & DEV-306)
+  const [fenceLength, setFenceLength] = useState(100);
+  const [fenceHeight, setFenceHeight] = useState(3);
+  const [fenceGateWidth, setFenceGateWidth] = useState(4);
+  const [tankCapacity, setTankCapacity] = useState(120);
+  const [tankWallThick, setTankWallThick] = useState(0.3);
+  const fenceCalc = useMemo(
+    () =>
+      fenceLength > 0 && fenceHeight > 0 && fenceHeight <= 6
+        ? calculatePlywoodFenceAssembly({ length_m: fenceLength, height_m: fenceHeight, gate_width_m: fenceGateWidth })
+        : null,
+    [fenceLength, fenceHeight, fenceGateWidth],
+  );
+  const fenceDiscreteCalc = useMemo(
+    () =>
+      fenceLength > 0 && fenceHeight > 0
+        ? calculatePlywoodFenceDiscretePurchase({ length_m: fenceLength, height_m: fenceHeight, post_spacing_m: 2.4 })
+        : null,
+    [fenceLength, fenceHeight],
+  );
+  const tankCalc = useMemo(
+    () =>
+      calculateUndergroundTankAssembly({
+        capacity_m3: tankCapacity,
+        internal_depth_m: 3.5,
+        wall_thickness_m: tankWallThick,
+        slab_thickness_m: 0.35,
+      }),
+    [tankCapacity, tankWallThick],
+  );
+  const staffHistogramSample = useMemo(
+    () =>
+      calculateTimePhasedHistogramCost([
+        { label: "أشهر 1-2", months: 2, count: 2, monthlyRate: 15000 },
+        { label: "أشهر 3-10", months: 8, count: 4, monthlyRate: 15000 },
+        { label: "أشهر 11-12", months: 2, count: 2, monthlyRate: 15000 },
+      ]),
+    [],
+  );
 
   const refreshTemplates = () => {
     setTemplates(getAllBreakdownTemplates());
@@ -721,6 +800,33 @@ function ItemBreakdownLibraryPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <label className="cursor-pointer">
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                try {
+                  const text = await file.text();
+                  const parsedJson = JSON.parse(text);
+                  const arr = Array.isArray(parsedJson) ? parsedJson : parsedJson?.templates;
+                  if (!Array.isArray(arr)) throw new Error("ملف JSON يجب أن يحتوي على مصفوفة قوالب");
+                  const importedCount = await importCustomTemplatesBatch(arr);
+                  setTemplates(getAllBreakdownTemplates());
+                  toast.success(`تم استيراد ${importedCount} نموذجاً معتمداً إلى مكتبة الشركة بنجاح.`);
+                } catch (err: any) {
+                  toast.error(err?.message || "تعذر قراءة ملف القوالب JSON");
+                }
+              }}
+            />
+            <span className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium hover:bg-muted">
+              <Copy className="h-3.5 w-3.5 text-primary" />
+              استيراد قوالب (JSON)
+            </span>
+          </label>
           <Button
             onClick={() => {
               setEditorMode("new");
@@ -758,36 +864,140 @@ function ItemBreakdownLibraryPage() {
         </div>
       </div>
 
-      {/* Sub-navigation Tabs: Library vs Parametric Concrete QTO vs Coverage Registry */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-2">
-        <Button
-          size="sm"
-          variant={activeTab === "library" ? "default" : "outline"}
-          className="gap-1.5 text-xs"
-          onClick={() => setActiveTab("library")}
-        >
-          <Layers className="h-3.5 w-3.5" />
-          مكتبة القوالب التنفيذية (CSI 01–33 الشاملة)
-        </Button>
-        <Button
-          size="sm"
-          variant={activeTab === "qto" ? "default" : "outline"}
-          className="gap-1.5 text-xs"
-          onClick={() => setActiveTab("qto")}
-        >
-          <Calculator className="h-3.5 w-3.5" />
-          حاسبة الحصر (الخرسانة + باقي الأعمال)
-        </Button>
-        <Button
-          size="sm"
-          variant={activeTab === "coverage" ? "default" : "outline"}
-          className="gap-1.5 text-xs"
-          onClick={() => setActiveTab("coverage")}
-        >
-          <BarChart3 className="h-3.5 w-3.5" />
-          سجل تغطية المقايسات والفجوات
-        </Button>
+      {/* Sub-navigation Tabs: Library Taxonomy (M-03) vs Parametric Concrete QTO vs Coverage Registry */}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {(
+            [
+              { view: "overview", label: isEn ? "Overview" : "عام" },
+              { view: "by_section", label: isEn ? "By CSI Sections" : "نماذج البنود حسب الأقسام" },
+              { view: "by_project", label: isEn ? "By Projects" : "نماذج البنود حسب المشاريع" },
+              { view: "indirect_cost", label: isEn ? "Indirect Cost" : "التكلفة غير المباشرة" },
+              { view: "typical_assemblies", label: isEn ? "Typical Standard Assemblies" : "نماذج تسعير نمطية" },
+            ] as const
+          ).map((item) => (
+            <Button
+              key={item.view}
+              size="sm"
+              variant={activeTab === "library" && libraryView === item.view ? "default" : "outline"}
+              className="gap-1.5 text-xs"
+              onClick={() => {
+                setActiveTab("library");
+                setLibraryView(item.view);
+              }}
+            >
+              <span>{item.label}</span>
+              <Badge variant="secondary" className="h-4 px-1 text-[10px] font-mono">
+                {unifiedLibraryQuery.countsByView[item.view]}
+              </Badge>
+            </Button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            size="sm"
+            variant={activeTab === "qto" ? "default" : "outline"}
+            className="gap-1.5 text-xs"
+            onClick={() => setActiveTab("qto")}
+          >
+            <Calculator className="h-3.5 w-3.5" />
+            حاسبة الحصر (الخرسانة + باقي الأعمال)
+          </Button>
+          <Button
+            size="sm"
+            variant={activeTab === "coverage" ? "default" : "outline"}
+            className="gap-1.5 text-xs"
+            onClick={() => setActiveTab("coverage")}
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+            سجل تغطية المقايسات والفجوات
+          </Button>
+        </div>
       </div>
+
+      {/* Parametric Typical Standard Assemblies & Indirect Cost Workbench (DEV-305 / DEV-306) */}
+      {activeTab === "library" && libraryView === "typical_assemblies" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="border-primary/25">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">نموذج سور مؤقت Plywood ارتفاع 3 م (معاملي — DEV-305)</CardTitle>
+              <CardDescription className="text-[11px]">
+                التكلفة المباشرة فقط حسب مدخلات الهندسة والهالك وتقريب الشراء
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-xs">
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <Label className="text-[10px]">الطول (م)</Label>
+                  <Input type="number" value={fenceLength} onChange={(e) => setFenceLength(Number(e.target.value) || 0)} className="h-7 text-xs mt-1" />
+                </div>
+                <div>
+                  <Label className="text-[10px]">الارتفاع (م)</Label>
+                  <Input type="number" value={fenceHeight} onChange={(e) => setFenceHeight(Number(e.target.value) || 0)} className="h-7 text-xs mt-1" />
+                </div>
+                <div>
+                  <Label className="text-[10px]">فتحة البوابة (م)</Label>
+                  <Input type="number" value={fenceGateWidth} onChange={(e) => setFenceGateWidth(Number(e.target.value) || 0)} className="h-7 text-xs mt-1" />
+                </div>
+              </div>
+              {fenceCalc && fenceDiscreteCalc && (
+                <div className="rounded-md bg-muted/40 p-2.5 space-y-1 text-[11px]">
+                  <div>مساحة الألواح (مع هالك 5%): <strong className="font-mono">{fenceCalc.claddingAreaM2} م²</strong> · مباشر السور: <strong className="font-mono text-primary">{fenceCalc.totalDirectCost.toLocaleString()} ر.س ({fenceCalc.directUnitCostPerM.toFixed(2)} ر.س/م)</strong></div>
+                  <div>توريد الألواح والأعمدة المنفصلة (تقريب شراء 10%): <strong className="font-mono">{fenceDiscreteCalc.totalSheetsRounded} لوح</strong>، <strong className="font-mono">{fenceDiscreteCalc.totalPosts} عمود</strong> = <strong className="font-mono">{fenceDiscreteCalc.totalDirectCost.toLocaleString()} ر.س</strong></div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border-primary/25">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">نموذج خزان مياه أرضي خرساني (معاملات ونطاق صلاحية)</CardTitle>
+              <CardDescription className="text-[11px]">
+                يتطلب السعة وسماكة العناصر — يظهر «Pending Design Information» عند نقص المعطيات
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-[10px]">السعة المطلوبة (م³)</Label>
+                  <Input type="number" value={tankCapacity} onChange={(e) => setTankCapacity(Number(e.target.value) || 0)} className="h-7 text-xs mt-1" />
+                </div>
+                <div>
+                  <Label className="text-[10px]">سماكة الجدار (م)</Label>
+                  <Input type="number" step="0.05" value={tankWallThick} onChange={(e) => setTankWallThick(Number(e.target.value) || 0)} className="h-7 text-xs mt-1" />
+                </div>
+              </div>
+              {tankCalc.status === "ready" ? (
+                <div className="rounded-md bg-muted/40 p-2.5 space-y-1 text-[11px]">
+                  <div>حجم الخرسانة: <strong className="font-mono">{tankCalc.concrete_volume_m3} م³</strong> · التسليح: <strong className="font-mono">{tankCalc.rebar_kg?.toLocaleString()} كجم</strong></div>
+                  <div>إجمالي التكلفة المباشرة التقديرية: <strong className="font-mono text-primary">{tankCalc.totalDirectCost?.toLocaleString()} ر.س ({tankCalc.directCostPerM3Capacity} ر.س/م³ سعة)</strong></div>
+                </div>
+              ) : (
+                <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 text-[11px] text-amber-600">
+                  {tankCalc.status}: {tankCalc.missingInputs.join(" · ")}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {activeTab === "library" && libraryView === "indirect_cost" && (
+        <Card className="border-primary/25">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">حاسبة التوزيع الزمني للتكاليف غير المباشرة (DEV-306)</CardTitle>
+            <CardDescription className="text-[11px]">
+              تُحفظ التكلفة غير المباشرة بمكوناتها المباشرة ويُختار مسار استرداد واحد فقط (تمهيديات BOQ أو تحميل نسبة) لمنع الازدواج.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-xs">
+            <div className="rounded-md bg-muted/40 p-3 flex flex-wrap items-center justify-between gap-2">
+              <span>مثال التوزيع الزمني لطاقم الإشراف (2 مهندس × شهرين + 4 × 8 أشهر + 2 × شهرين @ 15,000 ر.س):</span>
+              <strong className="font-mono text-primary">{staffHistogramSample.toLocaleString()} ر.س</strong>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {activeTab === "qto" && (
         <Card className="border-primary/20">
@@ -1343,26 +1553,62 @@ function ItemBreakdownLibraryPage() {
                   </div>
                 </div>
 
-                {/* Price Result Banner */}
+                {/* Direct-Cost Price Banner (Library owns Direct Cost ONLY; Tender owns markups) */}
                 <div className="rounded-lg border border-primary/20 bg-primary/5 p-2.5 flex items-center justify-between">
                   <div>
                     <div className="text-[10px] text-muted-foreground font-medium">
-                      {t("breakdown.directCostPerUnit", "التكلفة المباشرة للوحدة")}
+                      {t("breakdown.directCostPerUnit", "التكلفة المباشرة للوحدة")} (Basis: direct_cost)
                     </div>
                     <div className="font-mono text-sm font-bold text-foreground">
-                      {calc.directUnitCost.toFixed(2)} <span className="text-[10px] font-normal text-muted-foreground">ر.س / {template.unit}</span>
+                      {calculateLibraryDirectCost(template).directUnitCost.toFixed(2)}{" "}
+                      <span className="text-[10px] font-normal text-muted-foreground">ر.س / {template.unit}</span>
                     </div>
                   </div>
 
-                  <div className="text-end">
-                    <div className="text-[10px] text-primary font-medium">
-                      {t("breakdown.sellingRatePerUnit", "سعر بيع الوحدة")} ({calc.totalMarkupPct}%)
-                    </div>
-                    <div className="font-mono text-base font-extrabold text-primary">
-                      {calc.unitSellingPrice.toFixed(2)} <span className="text-[10px] font-normal">ر.س / {template.unit}</span>
-                    </div>
+                  <div className="text-end space-y-0.5">
+                    <Badge variant="outline" className="text-[9px] font-mono">
+                      v{recordMetaById.get(template.id)?.versionNo ?? template.version_no ?? 1}
+                      {" · "}
+                      {recordMetaById.get(template.id)?.approvalStatus === "pending_review"
+                        ? "قيد المراجعة"
+                        : recordMetaById.get(template.id)?.approvalStatus === "archived"
+                          ? "مؤرشف"
+                          : "معتمد"}
+                    </Badge>
+                    {template.source_project_name && (
+                      <div className="text-[10px] text-muted-foreground truncate max-w-[140px]">
+                        المصدر: {template.source_project_name}
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                {recordMetaById.get(template.id)?.approvalStatus === "pending_review" && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="w-full h-7 text-[11px] gap-1"
+                    onClick={async () => {
+                      try {
+                        const { data: u } = await estimationClient.auth.getUser();
+                        await reviewKnowledgeTemplateVersion({
+                          templateId: template.id,
+                          decision: "approve",
+                          actorId: u.user?.id || "reviewer-1",
+                          actorRole: "discipline_reviewer",
+                          promoteToCompany: true,
+                        });
+                        refreshTemplates();
+                        toast.success(`تم اعتماد ونشر النموذج «${template.code}» إلى مكتبة الأقسام العامة.`);
+                      } catch (err: any) {
+                        toast.error(err?.message || "تعذر اعتماد النموذج");
+                      }
+                    }}
+                  >
+                    <Check className="h-3 w-3" />
+                    اعتماد وترقية إلى مكتبة الأقسام
+                  </Button>
+                )}
 
                 {/* Card Actions */}
                 <div className="grid grid-cols-2 gap-2 pt-1">

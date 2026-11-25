@@ -40,12 +40,17 @@ import { fmtNumber, fmtSAR } from "@/lib/format";
 import { useLanguage } from "@/lib/i18n";
 import { CSI_DIVISIONS, csiDivisionCode, csiDivisionLabel } from "@/lib/csi-divisions";
 import { SCOPE_LABELS_AR, type AssemblyScopeTag } from "@/lib/csi-assemblies-engine";
+import { computePricingPhase2 } from "@/lib/estimation-calc";
 import {
-  getAllBreakdownTemplates,
-  calculateBreakdownCost,
+  calculateLibraryDirectCost,
   applyTemplateToBoqItem,
   type BreakdownTemplate,
 } from "@/lib/breakdown-library";
+import {
+  queryKnowledgeTemplatesTree,
+  type KnowledgeTemplateCategory,
+  type KnowledgeTemplateRecord,
+} from "@/lib/knowledge-library-service";
 import type { Database } from "@/integrations/supabase/types";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
@@ -68,15 +73,45 @@ export function InPlaceTemplateCaller({
   const qc = useQueryClient();
 
   const [search, setSearch] = useState("");
+  const [libraryView, setLibraryView] = useState<KnowledgeTemplateCategory>("by_section");
   const [selectedDivision, setSelectedDivision] = useState<string>("all");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [applyMode, setApplyMode] = useState<"replace" | "merge">("replace");
   const [confirmReplace, setConfirmReplace] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
 
-  // All templates
-  const templates = useMemo(() => getAllBreakdownTemplates(), [open]);
+  // Unified Knowledge Library query (same single source of truth as Sidebar & Library pages)
+  const libraryQuery = useMemo(
+    () =>
+      queryKnowledgeTemplatesTree({
+        view: libraryView,
+        division: selectedDivision,
+        ...(libraryView === "by_project" && boqItem.project_id ? { projectId: boqItem.project_id } : {}),
+        search,
+      }),
+    [open, libraryView, selectedDivision, boqItem.project_id, search],
+  );
+  const templates = useMemo(() => libraryQuery.records.map((r) => r.template), [libraryQuery]);
+  const recordById = useMemo(
+    () => new Map<string, KnowledgeTemplateRecord>(libraryQuery.records.map((r) => [r.templateId, r])),
+    [libraryQuery],
+  );
 
   const hasUnclassified = templates.some((template) => !csiDivisionCode(template.division));
+
+  // Fetch target item's existing tender markups so preview shows target tender selling price (NOT template markups!)
+  const { data: targetMarkupRow } = useQuery({
+    queryKey: ["pa_markup", boqItem.id],
+    enabled: open,
+    queryFn: async () => {
+      const { data } = await estimationClient
+        .from("price_analysis_markup")
+        .select("*")
+        .eq("boq_item_id", boqItem.id)
+        .maybeSingle();
+      return data as Database["public"]["Tables"]["price_analysis_markup"]["Row"] | null;
+    },
+  });
 
   // Check if item already has price analysis items
   const { data: existingItemsCount = 0 } = useQuery({
@@ -92,9 +127,8 @@ export function InPlaceTemplateCaller({
     },
   });
 
-  // Filter templates
+  // Sort templates with matching units first
   const filteredTemplates = useMemo(() => {
-    const q = search.trim().toLowerCase();
     const cleanUnit = (boqItem.unit ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
     return templates
@@ -108,27 +142,12 @@ export function InPlaceTemplateCaller({
 
         return { ...tmpl, isUnitMatch };
       })
-      .filter((tmpl) => {
-        if (selectedDivision !== "all" &&
-            (csiDivisionCode(tmpl.division) ?? "unclassified") !== selectedDivision) {
-          return false;
-        }
-        if (!q) return true;
-        return (
-          tmpl.code.toLowerCase().includes(q) ||
-          tmpl.title_ar.toLowerCase().includes(q) ||
-          tmpl.title_en.toLowerCase().includes(q) ||
-          tmpl.description_ar.toLowerCase().includes(q) ||
-          tmpl.description_en.toLowerCase().includes(q)
-        );
-      })
       .sort((a, b) => {
-        // Show matching unit templates first
         if (a.isUnitMatch && !b.isUnitMatch) return -1;
         if (!a.isUnitMatch && b.isUnitMatch) return 1;
         return a.code.localeCompare(b.code);
       });
-  }, [templates, search, selectedDivision, boqItem.unit]);
+  }, [templates, boqItem.unit]);
 
   // Auto-select first matching template on load
   const selectedTemplate = useMemo(() => {
@@ -139,11 +158,35 @@ export function InPlaceTemplateCaller({
     return filteredTemplates[0] ?? null;
   }, [selectedTemplateId, templates, filteredTemplates]);
 
-  // Cost calculation of selected template
+  const selectedMeta = selectedTemplate ? recordById.get(selectedTemplate.id) ?? null : null;
+
+  // Compute direct unit cost from library + selling price using TARGET tender markups only
   const calc = useMemo(() => {
     if (!selectedTemplate) return null;
-    return calculateBreakdownCost(selectedTemplate);
-  }, [selectedTemplate]);
+    const direct = calculateLibraryDirectCost(selectedTemplate);
+    const indirectPct = Number(targetMarkupRow?.indirect_pct ?? 0);
+    const overheadPct = Number(targetMarkupRow?.overhead_pct ?? 0);
+    const riskPct = Number(targetMarkupRow?.risk_pct ?? 0);
+    const profitPct = Number(targetMarkupRow?.profit_pct ?? 0);
+    const p2 = computePricingPhase2({
+      directUnitCost: direct.directUnitCost,
+      quantity: 1,
+      markups: {
+        indirect_pct: indirectPct,
+        overhead_pct: overheadPct,
+        risk_pct: riskPct,
+        profit_pct: profitPct,
+        pricing_policy: "additive_v2",
+        round_up_rate: true,
+      },
+    });
+    return {
+      directUnitCost: p2.directUnitCost,
+      totalMarkupPct: indirectPct + overheadPct + riskPct + profitPct,
+      unitSellingPrice: p2.approvedUnitRate,
+      rawSellingPrice: p2.rawUnitSellingPrice,
+    };
+  }, [selectedTemplate, targetMarkupRow]);
 
   // Total for item quantity
   const totalItemAmount = useMemo(() => {
@@ -153,7 +196,7 @@ export function InPlaceTemplateCaller({
 
   const handleApply = async () => {
     if (!selectedTemplate) return;
-    if (existingItemsCount > 0 && !confirmReplace) {
+    if (existingItemsCount > 0 && applyMode === "replace" && !confirmReplace) {
       toast.error(t("pa.replaceWarningDesc", "يرجى تأكيد استبدال التحليل الحالي أولاً"));
       return;
     }
@@ -170,13 +213,14 @@ export function InPlaceTemplateCaller({
         boqItemId: boqItem.id,
         projectId: boqItem.project_id,
         userId,
-        replaceExisting: true,
+        tenderId: boqItem.tender_id ?? null,
+        replaceExisting: applyMode === "replace",
       });
 
       toast.success(
         isEn
-          ? `Template "${selectedTemplate.title_en || selectedTemplate.title_ar}" applied successfully!`
-          : `تم تطبيق نموذج «${selectedTemplate.title_ar}» على البند بنجاح!`
+          ? `Template "${selectedTemplate.title_en || selectedTemplate.title_ar}" applied at direct cost!`
+          : `تم تطبيق مكونات نموذج «${selectedTemplate.title_ar}» بالتكلفة المباشرة مع الحفاظ على تحميلات العطاء!`
       );
 
       // Invalidate queries to refresh the live grid
@@ -237,6 +281,33 @@ export function InPlaceTemplateCaller({
               </div>
             </div>
           </div>
+
+          {/* M-03 / M-04 Matching Library Navigation Tabs inside Item Caller */}
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {(
+              [
+                { id: "overview", label: isEn ? "All" : "عام" },
+                { id: "by_section", label: isEn ? "By CSI Section" : "حسب الأقسام" },
+                { id: "by_project", label: isEn ? "By Project" : "حسب المشاريع" },
+                { id: "indirect_cost", label: isEn ? "Indirect Cost" : "التكلفة غير المباشرة" },
+                { id: "typical_assemblies", label: isEn ? "Typical Assemblies" : "نماذج نمطية" },
+              ] as const
+            ).map((tab) => (
+              <Button
+                key={tab.id}
+                type="button"
+                size="sm"
+                variant={libraryView === tab.id ? "default" : "outline"}
+                className="h-7 text-[11px] gap-1"
+                onClick={() => setLibraryView(tab.id)}
+              >
+                <span>{tab.label}</span>
+                <Badge variant="secondary" className="h-4 px-1 text-[10px] font-mono">
+                  {libraryQuery.countsByView[tab.id]}
+                </Badge>
+              </Button>
+            ))}
+          </div>
         </DialogHeader>
 
         {/* Modal Body: Two Columns */}
@@ -277,24 +348,27 @@ export function InPlaceTemplateCaller({
             <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
               {filteredTemplates.map((tmpl) => {
                 const isSelected = selectedTemplate?.id === tmpl.id;
-                const tmplCost = calculateBreakdownCost(tmpl);
+                const directCost = calculateLibraryDirectCost(tmpl).directUnitCost;
+                const meta = recordById.get(tmpl.id);
 
                 return (
                   <button
                     key={tmpl.id}
                     type="button"
                     onClick={() => setSelectedTemplateId(tmpl.id)}
-                    className={`w-full text-start rounded-lg border p-2.5 transition-all ${
-                      isSelected
-                        ? "border-primary bg-primary/10 shadow-sm"
-                        : "border-border/60 bg-card hover:border-border hover:bg-accent/40"
-                    }`}
+                    className={`w-full text-start rounded-lg border p-2.5 transition-all ${isSelected
+                      ? "border-primary bg-primary/10 shadow-sm"
+                      : "border-border/60 bg-card hover:border-border hover:bg-accent/40"
+                      }`}
                   >
                     <div className="flex items-center justify-between gap-1 mb-1">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono text-[11px] font-bold text-foreground">
                           {tmpl.code}
                         </span>
+                        <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 font-mono">
+                          v{meta?.versionNo ?? tmpl.version_no ?? 1}
+                        </Badge>
                         {tmpl.isUnitMatch && (
                           <Badge
                             variant="secondary"
@@ -303,9 +377,14 @@ export function InPlaceTemplateCaller({
                             {t("pa.matchingTemplateBadge", "مطابق للوحدة")}
                           </Badge>
                         )}
+                        {meta?.freshness === "stale" && (
+                          <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4">
+                            سعر قديم
+                          </Badge>
+                        )}
                       </div>
                       <span className="font-mono text-xs font-semibold text-primary">
-                        {fmtSAR(tmplCost.unitSellingPrice, language)}/{tmpl.unit}
+                        مباشر {fmtSAR(directCost, language)}/{tmpl.unit}
                       </span>
                     </div>
 
@@ -314,7 +393,7 @@ export function InPlaceTemplateCaller({
                     </p>
 
                     <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground border-t border-border/40 pt-1">
-                      <span>{csiDivisionLabel(tmpl.division, language)}</span>
+                      <span>{tmpl.source_project_name ? `المصدر: ${tmpl.source_project_name}` : csiDivisionLabel(tmpl.division, language)}</span>
                       <span>{tmpl.items.length} موارد</span>
                     </div>
                   </button>
@@ -363,22 +442,22 @@ export function InPlaceTemplateCaller({
                   )}
                 </div>
 
-                {/* Rates & Markups summary cards */}
+                {/* Rates & Markups summary cards (Direct Cost owned by Library; Selling Price owned by Target Tender) */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <div className="rounded-lg border border-border bg-card p-2 text-center">
-                    <span className="text-[10px] text-muted-foreground block">التكلفة المباشرة:</span>
+                    <span className="text-[10px] text-muted-foreground block">التكلفة المباشرة (المكتبة):</span>
                     <span className="font-mono text-xs font-bold text-foreground">
                       {fmtSAR(calc.directUnitCost, language)}
                     </span>
                   </div>
                   <div className="rounded-lg border border-border bg-card p-2 text-center">
-                    <span className="text-[10px] text-muted-foreground block">الهوامش والتحميلات:</span>
+                    <span className="text-[10px] text-muted-foreground block">تحميلات العطاء الحالي:</span>
                     <span className="font-mono text-xs font-bold text-amber-500">
                       {calc.totalMarkupPct}%
                     </span>
                   </div>
                   <div className="rounded-lg border border-primary/30 bg-primary/5 p-2 text-center">
-                    <span className="text-[10px] text-primary block font-medium">سعر بيع الوحدة:</span>
+                    <span className="text-[10px] text-primary block font-medium">سعر البيع في العطاء:</span>
                     <span className="font-mono text-xs font-bold text-primary">
                       {fmtSAR(calc.unitSellingPrice, language)}
                     </span>
@@ -390,6 +469,19 @@ export function InPlaceTemplateCaller({
                     </span>
                   </div>
                 </div>
+
+                {selectedMeta && (
+                  <div className="rounded-md border border-border/70 bg-muted/30 p-2 text-[11px] flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      المصدر: <strong>{selectedTemplate.source_project_name || "مكتبة تقديري المعتمدة"}</strong>
+                      {" · "}إصدار <strong className="font-mono">v{selectedMeta.versionNo}</strong>
+                      {selectedMeta.priceDate && <> · تاريخ السعر <strong className="font-mono">{selectedMeta.priceDate}</strong></>}
+                    </span>
+                    <Badge variant={selectedMeta.freshness === "stale" ? "destructive" : "secondary"} className="text-[10px]">
+                      {selectedMeta.freshness === "fresh" ? "أسعار حديثة" : selectedMeta.freshness === "stale" ? "أسعار قديمة — يُنصح بالتحديث" : "سعر غير مؤرخ"}
+                    </Badge>
+                  </div>
+                )}
 
                 {/* Resource breakdown preview table */}
                 <div>
@@ -444,26 +536,47 @@ export function InPlaceTemplateCaller({
                   </div>
                 </div>
 
-                {/* Replacement Warning Banner if item already has price lines */}
+                {/* Merge vs Replace Mode Selector if item already has price lines */}
                 {existingItemsCount > 0 && (
                   <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 space-y-2">
-                    <div className="flex items-center gap-2 text-amber-500 font-semibold text-xs">
-                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                      <span>{t("pa.replaceWarningTitle", "تنبيه: استبدال التحليل الحالي")}</span>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-amber-500 font-semibold text-xs">
+                        <AlertTriangle className="h-4 w-4 shrink-0" />
+                        <span>يحتوي البند حالياً على ({existingItemsCount}) سطور تكلفة — اختر طريقة التطبيق:</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={applyMode === "replace" ? "default" : "outline"}
+                          className="h-6 text-[10px]"
+                          onClick={() => setApplyMode("replace")}
+                        >
+                          استبدال
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={applyMode === "merge" ? "default" : "outline"}
+                          className="h-6 text-[10px]"
+                          onClick={() => setApplyMode("merge")}
+                        >
+                          دمج مع الحالي
+                        </Button>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      هذا البند يحتوي حالياً على ({existingItemsCount}) بند تكلفة. تطبيق هذا النموذج سيحذف المكونات الحالية ويستبدلها بالنموذج الجديد.
-                    </p>
-                    <div className="flex items-center gap-2 pt-1">
-                      <Checkbox
-                        id="confirm-replace"
-                        checked={confirmReplace}
-                        onCheckedChange={(c) => setConfirmReplace(!!c)}
-                      />
-                      <Label htmlFor="confirm-replace" className="text-xs font-medium cursor-pointer">
-                        {t("pa.confirmReplace", "نعم، أؤكد استبدال التحليل الحالي")}
-                      </Label>
-                    </div>
+                    {applyMode === "replace" && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <Checkbox
+                          id="confirm-replace"
+                          checked={confirmReplace}
+                          onCheckedChange={(c) => setConfirmReplace(!!c)}
+                        />
+                        <Label htmlFor="confirm-replace" className="text-xs font-medium cursor-pointer">
+                          {t("pa.confirmReplace", "نعم، أؤكد استبدال التحليل الحالي مع الاحتفاظ بتحميلات العطاء")}
+                        </Label>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -487,7 +600,7 @@ export function InPlaceTemplateCaller({
             disabled={
               !selectedTemplate ||
               isApplying ||
-              (existingItemsCount > 0 && !confirmReplace)
+              (existingItemsCount > 0 && applyMode === "replace" && !confirmReplace)
             }
             className="text-xs gap-1.5 font-semibold"
           >

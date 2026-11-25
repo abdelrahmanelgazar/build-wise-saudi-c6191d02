@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FolderPlus, Plus, Download, Layers, RefreshCw, Trash2, AlertTriangle } from "lucide-react";
+import { FolderPlus, Plus, Download, Layers, RefreshCw, Trash2, AlertTriangle, FileSpreadsheet, Copy } from "lucide-react";
 import { CSI_DIVISIONS } from "@/lib/csi-divisions";
 import {
   DropdownMenu,
@@ -30,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { exportBoq } from "@/lib/boq-export";
+import { exportOriginalWorkbookToFile } from "@/lib/excel-roundtrip";
 import { separateCategoryAndRate } from "@/lib/boq-header-mapping";
 import { PageHeader } from "./resources";
 import { fmtSAR } from "@/lib/format";
@@ -37,11 +38,19 @@ import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { Database } from "@/integrations/supabase/types";
-import { useActiveProjectId } from "@/lib/active-project";
+import { setActiveTenderId, useActiveProjectId, useActiveTenderId } from "@/lib/active-project";
+import { cloneBaselineStudyToTender, scopeRowsByTender } from "@/lib/tender-pricing-scope";
 import { ImportExcelDialog } from "@/components/boq/import-excel-dialog";
 import { BoqGrid, type TreeNode } from "@/components/boq/boq-grid";
 import { useLanguage } from "@/lib/i18n";
-import { computeDirectUnitCost, computeUnitSellingPrice, type ResourceCostInput } from "@/lib/estimation-calc";
+import {
+  computeDirectUnitCost,
+  computeUnitSellingPrice,
+  resolveBoqItemPricing,
+  roundUpRate,
+  type MarkupSettings,
+  type ResourceCostInput,
+} from "@/lib/estimation-calc";
 import { computeProjectCoverageStats } from "@/lib/csi-assemblies-engine";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
@@ -57,7 +66,11 @@ function buildTree(
   rows: BoqRow[],
   paSellingRates: Map<string, number>,
   paItemIdsWithAnalysis: Set<string>,
-  sheetTotals?: Record<string, number>
+  sheetTotals?: Record<string, number>,
+  paContext?: {
+    grouped: Map<string, ResourceCostInput[]>;
+    markupBy: Map<string, MarkupSettings>;
+  },
 ): TreeNode[] {
   const map = new Map<string, TreeNode>();
   rows.forEach((r) =>
@@ -86,26 +99,31 @@ function buildTree(
       if (sheetTotals && n.description_ar && sheetTotals[n.description_ar] !== undefined) {
         n.rolledTotal = sheetTotals[n.description_ar] ?? 0;
         n.unitRate = Number(n.quantity) ? n.rolledTotal / Number(n.quantity) : n.rolledTotal;
+      } else if (paContext) {
+        const resolved = resolveBoqItemPricing({
+          item: n,
+          ...(paContext.grouped.get(n.id) ? { paLines: paContext.grouped.get(n.id)! } : {}),
+          hasAnalysisFlag: paItemIdsWithAnalysis.has(n.id),
+          ...(paContext.markupBy.get(n.id) ? { markup: paContext.markupBy.get(n.id)! } : {}),
+        });
+        n.unitRate = resolved.approvedUnitRate;
+        n.rolledTotal = resolved.lineSellingPrice;
       } else {
-        // Section 7 contract:
-        // 1. Included elsewhere -> 0
-        // 2. Active manual unit price -> manual_unit_price
-        // 3. Analysis source (or has PA lines) -> PA selling rate (0 if empty/unpriced)
-        // 4. Imported / fallback stored costs
         const fromPa = paSellingRates.get(n.id);
         const hasAnalysis = n.rate_source === "analysis" || paItemIdsWithAnalysis.has(n.id);
         if (n.is_included_elsewhere) {
           n.unitRate = 0;
         } else if (Number(n.manual_unit_price ?? 0) > 0) {
-          n.unitRate = Number(n.manual_unit_price);
+          n.unitRate = roundUpRate(Number(n.manual_unit_price));
         } else if (hasAnalysis) {
-          n.unitRate = typeof fromPa === "number" ? fromPa : 0;
+          n.unitRate = roundUpRate(typeof fromPa === "number" ? fromPa : 0);
         } else {
-          n.unitRate =
+          n.unitRate = roundUpRate(
             Number(n.material_cost ?? 0) +
-            Number(n.labor_cost ?? 0) +
-            Number(n.equipment_cost ?? 0) +
-            Number(n.subcontractor_cost ?? 0);
+              Number(n.labor_cost ?? 0) +
+              Number(n.equipment_cost ?? 0) +
+              Number(n.subcontractor_cost ?? 0),
+          );
         }
         n.rolledTotal = n.unitRate * Number(n.quantity ?? 0);
       }
@@ -120,21 +138,49 @@ function BoqPage() {
   const { t, language } = useLanguage();
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
+  const activeTenderId = useActiveTenderId();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [activeSheet, setActiveSheet] = useState<string>("");
+  const [cloningToTender, setCloningToTender] = useState(false);
 
   useRegisterPageActions({
     pageKey: "boq",
     hasEditableState: true,
-    queryKeys: [["boq_items", projectId], ["pa_items_project", projectId], ["pa_markup_project", projectId], ["project", projectId]],
+    queryKeys: [["boq_items", projectId, activeTenderId], ["pa_items_project", projectId, activeTenderId], ["pa_markup_project", projectId, activeTenderId], ["project", projectId]],
     onSave: async () => {
-      await qc.invalidateQueries({ queryKey: ["boq_items", projectId] });
-      await qc.invalidateQueries({ queryKey: ["pa_items_project", projectId] });
+      await qc.invalidateQueries({ queryKey: ["boq_items"] });
+      await qc.invalidateQueries({ queryKey: ["pa_items_project"] });
     },
   });
 
-  const { data: rows = [] } = useQuery({
-    queryKey: ["boq_items", projectId],
+  const { data: projectTenders = [] } = useQuery({
+    queryKey: ["project_tenders_boq", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data } = await estimationClient
+        .from("tenders")
+        .select("id, tender_no, title, status")
+        .eq("project_id", projectId!);
+      return (data as Array<{ id: string; tender_no: string; title: string; status: string }>) ?? [];
+    },
+  });
+
+  const { data: latestExcelVersion } = useQuery({
+    queryKey: ["boq_excel_version", projectId, activeTenderId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data } = await estimationClient
+        .from("boq_excel_versions")
+        .select("id, file_name, file_sha256, original_workbook_b64, created_at, tender_id")
+        .eq("project_id", projectId!);
+      const scoped = scopeRowsByTender((data as any[]) ?? [], activeTenderId);
+      scoped.sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+      return scoped.find((v) => Boolean(v.original_workbook_b64)) ?? scoped[0] ?? null;
+    },
+  });
+
+  const { data: allProjectBoqRows = [] } = useQuery({
+    queryKey: ["boq_items", projectId, activeTenderId],
     enabled: !!projectId,
     queryFn: async () => {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
@@ -146,6 +192,11 @@ function BoqPage() {
       return data as BoqRow[];
     },
   });
+
+  const rows = useMemo(
+    () => scopeRowsByTender(allProjectBoqRows, activeTenderId),
+    [allProjectBoqRows, activeTenderId],
+  );
 
   const { isLoading: isProjLoading, data: project } = useQuery({
     queryKey: ["project", projectId],
@@ -211,28 +262,28 @@ function BoqPage() {
 
   // Pull all price-analysis rows + markup for this project to compute the
   // per-item unit selling price displayed in the BOQ "rate" column.
-  const { data: paItems = [] } = useQuery({
-    queryKey: ["pa_items_project", projectId],
+  const { data: allPaItems = [] } = useQuery({
+    queryKey: ["pa_items_project", projectId, activeTenderId],
     enabled: !!projectId,
     queryFn: async () => {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
       const { data, error } = await estimationClient
         .from("price_analysis_items")
-        .select("boq_item_id, resource_type, quantity, unit_price, waste_pct, productivity, cell_styles")
+        .select("boq_item_id, resource_type, quantity, unit_price, waste_pct, productivity, cell_styles, tender_id")
         .eq("project_id", projectId);
       if (error) throw error;
-      return data as Array<ResourceCostInput & { boq_item_id: string }>;
+      return data as Array<ResourceCostInput & { boq_item_id: string; tender_id?: string | null }>;
     },
   });
 
-  const { data: paMarkups = [] } = useQuery({
-    queryKey: ["pa_markup_project", projectId],
+  const { data: allPaMarkups = [] } = useQuery({
+    queryKey: ["pa_markup_project", projectId, activeTenderId],
     enabled: !!projectId,
     queryFn: async () => {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
       const { data, error } = await estimationClient
         .from("price_analysis_markup")
-        .select("boq_item_id, indirect_pct, overhead_pct, risk_pct, profit_pct, manual_unit_price, round_up_rate, pricing_policy")
+        .select("boq_item_id, indirect_pct, overhead_pct, risk_pct, profit_pct, manual_unit_price, round_up_rate, pricing_policy, tender_id")
         .eq("project_id", projectId);
       if (error) throw error;
       return data as {
@@ -244,9 +295,13 @@ function BoqPage() {
         manual_unit_price?: number | null;
         round_up_rate?: boolean;
         pricing_policy?: string;
+        tender_id?: string | null;
       }[];
     },
   });
+
+  const paItems = useMemo(() => scopeRowsByTender(allPaItems, activeTenderId), [allPaItems, activeTenderId]);
+  const paMarkups = useMemo(() => scopeRowsByTender(allPaMarkups, activeTenderId), [allPaMarkups, activeTenderId]);
 
   const paRates = useMemo(() => {
     const grouped = new Map<string, Array<ResourceCostInput>>();
@@ -259,30 +314,45 @@ function BoqPage() {
     grouped.forEach((list, id) => {
       direct.set(id, computeDirectUnitCost(list).directUnitCost);
     });
-    const markupBy = new Map(paMarkups.map((m) => [m.boq_item_id, m]));
+    const markupBy = new Map<string, MarkupSettings>(
+      paMarkups.map((m) => [
+        m.boq_item_id,
+        {
+          indirect_pct: Number(m.indirect_pct ?? 0),
+          overhead_pct: Number(m.overhead_pct ?? 0),
+          risk_pct: Number(m.risk_pct ?? 0),
+          profit_pct: Number(m.profit_pct ?? 0),
+          pricing_policy: (m.pricing_policy as "additive_v2" | "cascaded_v1") ?? "additive_v2",
+          round_up_rate: m.round_up_rate ?? true,
+        },
+      ]),
+    );
     const selling = new Map<string, number>();
     direct.forEach((cost, id) => {
       const m = markupBy.get(id);
       const res = computeUnitSellingPrice(cost, {
-        ...(m as any),
-        pricing_policy: (m as any)?.pricing_policy ?? "additive_v2",
-        round_up_rate: (m as any)?.round_up_rate ?? true,
+        ...m,
+        pricing_policy: m?.pricing_policy ?? "additive_v2",
+        round_up_rate: m?.round_up_rate ?? true,
       });
       selling.set(id, res.unitSellingPrice);
     });
     const paIds = new Set<string>(grouped.keys());
-    return { direct, selling, paIds };
+    return { direct, selling, paIds, grouped, markupBy };
   }, [paItems, paMarkups]);
 
   const sheetTotals = useMemo(() => {
     const totals: Record<string, number> = {};
     for (const name of sheetNames) {
       const rowsForSheet = rows.filter(r => (r.sheet_name || "Sheet1") === name);
-      const builtTree = buildTree(rowsForSheet, paRates.selling, paRates.paIds);
+      const builtTree = buildTree(rowsForSheet, paRates.selling, paRates.paIds, undefined, {
+        grouped: paRates.grouped,
+        markupBy: paRates.markupBy,
+      });
       totals[name] = builtTree.reduce((s, n) => s + n.rolledTotal, 0);
     }
     return totals;
-  }, [rows, sheetNames, paRates.selling, paRates.paIds]);
+  }, [rows, sheetNames, paRates]);
 
   useMemo(() => {
     if (activeRows.length && expanded.size === 0) {
@@ -291,7 +361,14 @@ function BoqPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRows.length]);
 
-  const tree = useMemo(() => buildTree(activeRows, paRates.selling, paRates.paIds, sheetTotals), [activeRows, paRates.selling, paRates.paIds, sheetTotals]);
+  const tree = useMemo(
+    () =>
+      buildTree(activeRows, paRates.selling, paRates.paIds, sheetTotals, {
+        grouped: paRates.grouped,
+        markupBy: paRates.markupBy,
+      }),
+    [activeRows, paRates, sheetTotals],
+  );
   const grandTotal = tree.reduce((s, n) => s + n.rolledTotal, 0);
   const itemsCount = activeRows.filter((r) => !r.is_group).length;
   const groupsCount = activeRows.filter((r) => r.is_group).length;
@@ -300,42 +377,46 @@ function BoqPage() {
     return activeRows
       .filter((r) => !r.is_group)
       .reduce((sum, r) => {
-        const paDirect = paRates.direct.get(r.id);
-        const unitCost =
-          r.is_included_elsewhere
-            ? 0
-            : r.rate_source === "analysis" || paRates.paIds.has(r.id)
-              ? (typeof paDirect === "number" ? paDirect : 0)
-              : Number(r.material_cost ?? 0) +
-                Number(r.labor_cost ?? 0) +
-                Number(r.equipment_cost ?? 0) +
-                Number(r.subcontractor_cost ?? 0);
-        return sum + unitCost * Number(r.quantity ?? 0);
+        const resolved = resolveBoqItemPricing({
+          item: r,
+          ...(paRates.grouped.get(r.id) ? { paLines: paRates.grouped.get(r.id)! } : {}),
+          hasAnalysisFlag: paRates.paIds.has(r.id),
+          ...(paRates.markupBy.get(r.id) ? { markup: paRates.markupBy.get(r.id)! } : {}),
+        });
+        return sum + resolved.lineDirectCost;
       }, 0);
-  }, [activeRows, paRates.direct]);
+  }, [activeRows, paRates]);
 
   const markupMargin = totalDirectCost > 0 ? ((grandTotal - totalDirectCost) / totalDirectCost) * 100 : 0;
 
   const boqCoverage = useMemo(
     () =>
       computeProjectCoverageStats(
-        activeRows.map((b) => ({
-          id: b.id,
-          item_no: b.item_no,
-          description_ar: b.description_ar,
-          quantity: Number(b.quantity ?? 0),
-          is_group: b.is_group,
-          csi_division: b.sheet_name ?? b.item_no ?? null,
-          pricing_status: b.pricing_status ?? null,
-          rate_source: b.rate_source ?? null,
-          material_cost: Number(b.material_cost ?? 0),
-          labor_cost: Number(b.labor_cost ?? 0),
-          equipment_cost: Number(b.equipment_cost ?? 0),
-          subcontractor_cost: Number(b.subcontractor_cost ?? 0),
-          selling_unit_rate: paRates.selling.get(b.id) ?? Number(b.manual_unit_price ?? 0),
-        })),
+        activeRows.map((b) => {
+          const resolved = resolveBoqItemPricing({
+            item: b,
+            ...(paRates.grouped.get(b.id) ? { paLines: paRates.grouped.get(b.id)! } : {}),
+            hasAnalysisFlag: paRates.paIds.has(b.id),
+            ...(paRates.markupBy.get(b.id) ? { markup: paRates.markupBy.get(b.id)! } : {}),
+          });
+          return {
+            id: b.id,
+            item_no: b.item_no,
+            description_ar: b.description_ar,
+            quantity: Number(b.quantity ?? 0),
+            is_group: b.is_group,
+            csi_division: b.sheet_name ?? b.item_no ?? null,
+            pricing_status: b.pricing_status ?? null,
+            rate_source: b.rate_source ?? null,
+            material_cost: Number(b.material_cost ?? 0),
+            labor_cost: Number(b.labor_cost ?? 0),
+            equipment_cost: Number(b.equipment_cost ?? 0),
+            subcontractor_cost: Number(b.subcontractor_cost ?? 0),
+            selling_unit_rate: resolved.approvedUnitRate,
+          };
+        }),
       ),
-    [activeRows, paRates.selling],
+    [activeRows, paRates],
   );
 
   const delMut = useMutation({
@@ -391,11 +472,17 @@ function BoqPage() {
     if (!projectId) return;
     setIsClearing(true);
     try {
-      const { error } = await estimationClient
-        .from("boq_items")
-        .delete()
-        .eq("project_id", projectId);
-      if (error) throw error;
+      if (activeTenderId) {
+        const scopedIds = rows.map((r) => r.id);
+        for (const id of scopedIds) {
+          await estimationClient.from("boq_items").delete().eq("id", id);
+        }
+      } else {
+        const baselineIds = allProjectBoqRows.filter((r) => !r.tender_id).map((r) => r.id);
+        for (const id of baselineIds) {
+          await estimationClient.from("boq_items").delete().eq("id", id);
+        }
+      }
 
       await estimationClient
         .from("projects")
@@ -451,16 +538,18 @@ function BoqPage() {
 
       const { data: existing } = await estimationClient
         .from("boq_items")
-        .select("item_no")
+        .select("item_no, tender_id")
         .eq("project_id", projectId)
         .eq("is_group", true);
 
-      const existingCodes = new Set((existing || []).map((e) => e.item_no));
+      const scopedExisting = scopeRowsByTender((existing as any[]) || [], activeTenderId);
+      const existingCodes = new Set(scopedExisting.map((e) => e.item_no));
       const toInsert = standardMainDivisions
         .filter((d) => !existingCodes.has(d.code))
         .map((d, idx) => ({
           user_id,
           project_id: projectId,
+          tender_id: activeTenderId ?? null,
           item_no: d.code,
           description_ar: d.name_ar,
           description_en: d.name_en,
@@ -518,10 +607,34 @@ function BoqPage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", rows, paRates.selling, project?.excel_headers, project?.excel_pre_headers, "xlsx")}>
+                {latestExcelVersion?.original_workbook_b64 && (
+                  <DropdownMenuItem
+                    onClick={() => {
+                      try {
+                        const res = exportOriginalWorkbookToFile({
+                          originalWorkbookB64: latestExcelVersion.original_workbook_b64,
+                          projectName: project?.name || "BOQ",
+                          rows: rows as any[],
+                          paSellingRates: paRates.selling,
+                          paItemsByItemId: paRates.grouped,
+                          markupsByItemId: paRates.markupBy,
+                        });
+                        toast.success(
+                          `تم التصدير داخل قالب العميل الأصلي (تحديث ${res.updatedCells} خلية، وحفظ ${res.preservedFormulaCells} صيغة أصلية)`,
+                        );
+                      } catch (err: any) {
+                        toast.error(err?.message || "تعذر التصدير داخل القالب الأصلي");
+                      }
+                    }}
+                  >
+                    <FileSpreadsheet className="ml-2 h-4 w-4 text-emerald-600" />
+                    تصدير داخل قالب العميل الأصلي (.xlsx)
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", rows, paRates.selling, project?.excel_headers, project?.excel_pre_headers, "xlsx", language === "en" ? "en" : "ar", { paItemsByItemId: paRates.grouped, markupsByItemId: paRates.markupBy })}>
                   {t("common.toExcel", "إلى إكسل (.xlsx)")}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", rows, paRates.selling, project?.excel_headers, project?.excel_pre_headers, "csv")}>
+                <DropdownMenuItem onClick={() => exportBoq(project?.name || "BOQ", rows, paRates.selling, project?.excel_headers, project?.excel_pre_headers, "csv", language === "en" ? "en" : "ar", { paItemsByItemId: paRates.grouped, markupsByItemId: paRates.markupBy })}>
                   {t("common.toCsv", "إلى (.csv)")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -570,6 +683,57 @@ function BoqPage() {
       />
 
       <div className="mt-2 flex flex-col gap-3">
+        {projectTenders.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-primary">نطاق التسعير النشط:</span>
+              <Select
+                value={activeTenderId || "__baseline__"}
+                onValueChange={(v) => setActiveTenderId(v === "__baseline__" ? null : v)}
+              >
+                <SelectTrigger className="h-7 w-72 bg-background text-xs">
+                  <SelectValue placeholder="اختر نطاق التسعير" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__baseline__">الدراسة الأساسية للمشروع (Baseline)</SelectItem>
+                  {projectTenders.map((td) => (
+                    <SelectItem key={td.id} value={td.id}>
+                      فرصة {td.tender_no} — {td.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {activeTenderId && rows.length === 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1.5 text-xs"
+                disabled={cloningToTender}
+                onClick={async () => {
+                  setCloningToTender(true);
+                  try {
+                    const res = await cloneBaselineStudyToTender({
+                      projectId: projectId!,
+                      targetTenderId: activeTenderId,
+                    });
+                    await qc.invalidateQueries({ queryKey: ["boq_items"] });
+                    await qc.invalidateQueries({ queryKey: ["pa_items_project"] });
+                    await qc.invalidateQueries({ queryKey: ["pa_markup_project"] });
+                    toast.success(`تم نسخ ${res.clonedItems} بنداً و${res.clonedAnalyses} تحليل سعر للفرصة بشكل معزول ومستقل.`);
+                  } catch (err: any) {
+                    toast.error(err?.message || "تعذر نسخ الدراسة للفرصة");
+                  } finally {
+                    setCloningToTender(false);
+                  }
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                {cloningToTender ? "جاري النسخ..." : "نسخ الدراسة الأساسية لهذه الفرصة"}
+              </Button>
+            )}
+          </div>
+        )}
         {sheetNames.length > 1 && (
           <div className="flex w-full md:w-80">
             <Select value={activeSheet || ""} onValueChange={(v) => setActiveSheet(v)}>
@@ -726,6 +890,7 @@ function NewBoqDialog({
   const qc = useQueryClient();
 
   const projectId = useActiveProjectId();
+  const activeTenderId = useActiveTenderId();
 
   const handleParentSelect = (val: string) => {
     setParentId(val);
@@ -798,6 +963,7 @@ function NewBoqDialog({
       const { error } = await estimationClient.from("boq_items").insert({
         user_id,
         project_id: projectId,
+        tender_id: activeTenderId ?? null,
         parent_id: finalParentId,
         item_no: itemNo,
         description_ar: desc,

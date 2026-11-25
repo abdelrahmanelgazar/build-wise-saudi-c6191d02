@@ -21,6 +21,8 @@ export type Database = {
           description_ar: string
           description_en: string | null
           equipment_cost: number | null
+          excel_row_index: number | null
+          excel_version_id: string | null
           id: string
           imported_unit_rate: number | null
           is_group: boolean
@@ -31,15 +33,20 @@ export type Database = {
           manual_unit_price: number | null
           material_cost: number | null
           note: string | null
+          note_cell_ref: string | null
           parent_id: string | null
           pricing_status: string | null
           project_id: string | null
           quantity: number | null
+          rate_cell_ref: string | null
           rate_source: string | null
           raw_row: Json | null
+          row_kind: string | null
           sheet_name: string | null
           sort_order: number
           subcontractor_cost: number | null
+          tender_id: string | null
+          total_cell_ref: string | null
           unit: string | null
           updated_at: string
           user_id: string
@@ -50,6 +57,8 @@ export type Database = {
           description_ar: string
           description_en?: string | null
           equipment_cost?: number | null
+          excel_row_index?: number | null
+          excel_version_id?: string | null
           id?: string
           imported_unit_rate?: number | null
           is_group?: boolean
@@ -60,15 +69,20 @@ export type Database = {
           manual_unit_price?: number | null
           material_cost?: number | null
           note?: string | null
+          note_cell_ref?: string | null
           parent_id?: string | null
           pricing_status?: string | null
           project_id?: string | null
           quantity?: number | null
+          rate_cell_ref?: string | null
           rate_source?: string | null
           raw_row?: Json | null
+          row_kind?: string | null
           sheet_name?: string | null
           sort_order?: number
           subcontractor_cost?: number | null
+          tender_id?: string | null
+          total_cell_ref?: string | null
           unit?: string | null
           updated_at?: string
           user_id: string
@@ -79,6 +93,8 @@ export type Database = {
           description_ar?: string
           description_en?: string | null
           equipment_cost?: number | null
+          excel_row_index?: number | null
+          excel_version_id?: string | null
           id?: string
           imported_unit_rate?: number | null
           is_group?: boolean
@@ -89,15 +105,20 @@ export type Database = {
           manual_unit_price?: number | null
           material_cost?: number | null
           note?: string | null
+          note_cell_ref?: string | null
           parent_id?: string | null
           pricing_status?: string | null
           project_id?: string | null
           quantity?: number | null
+          rate_cell_ref?: string | null
           rate_source?: string | null
           raw_row?: Json | null
+          row_kind?: string | null
           sheet_name?: string | null
           sort_order?: number
           subcontractor_cost?: number | null
+          tender_id?: string | null
+          total_cell_ref?: string | null
           unit?: string | null
           updated_at?: string
           user_id?: string
@@ -145,6 +166,7 @@ export type Database = {
           scope_tag: string | null
           sort_order: number
           supplier_quote_id: string | null
+          tender_id: string | null
           unit: string
           unit_price: number
           user_id: string
@@ -175,6 +197,7 @@ export type Database = {
           scope_tag?: string | null
           sort_order?: number
           supplier_quote_id?: string | null
+          tender_id?: string | null
           unit: string
           unit_price?: number
           user_id: string
@@ -205,6 +228,7 @@ export type Database = {
           scope_tag?: string | null
           sort_order?: number
           supplier_quote_id?: string | null
+          tender_id?: string | null
           unit?: string
           unit_price?: number
           user_id?: string
@@ -245,6 +269,7 @@ export type Database = {
           project_id: string | null
           risk_pct: number
           round_up_rate: boolean | null
+          tender_id: string | null
           updated_at: string
           user_id: string
         }
@@ -258,6 +283,7 @@ export type Database = {
           project_id?: string | null
           risk_pct?: number
           round_up_rate?: boolean | null
+          tender_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -271,6 +297,7 @@ export type Database = {
           project_id?: string | null
           risk_pct?: number
           round_up_rate?: boolean | null
+          tender_id?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -898,6 +925,7 @@ export type Database = {
           id: string
           included_scopes: Json
           project_id: string
+          tender_id: string | null
           updated_at: string
           user_id: string
         }
@@ -914,6 +942,7 @@ export type Database = {
           id?: string
           included_scopes?: Json
           project_id: string
+          tender_id?: string | null
           updated_at?: string
           user_id: string
         }
@@ -930,6 +959,7 @@ export type Database = {
           id?: string
           included_scopes?: Json
           project_id?: string
+          tender_id?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -959,6 +989,255 @@ export type Database = {
         }
         Relationships: []
       }
+      boq_excel_versions: {
+        Row: {
+          created_at: string
+          file_name: string
+          file_sha256: string
+          id: string
+          imported_count: number
+          original_workbook_b64: string | null
+          project_id: string
+          sheet_names: Json
+          status: string
+          tender_id: string | null
+          user_id: string
+          writeback_map: Json
+        }
+        Insert: {
+          created_at?: string
+          file_name: string
+          file_sha256: string
+          id?: string
+          imported_count?: number
+          original_workbook_b64?: string | null
+          project_id: string
+          sheet_names?: Json
+          status?: string
+          tender_id?: string | null
+          user_id: string
+          writeback_map?: Json
+        }
+        Update: {
+          created_at?: string
+          file_name?: string
+          file_sha256?: string
+          id?: string
+          imported_count?: number
+          original_workbook_b64?: string | null
+          project_id?: string
+          sheet_names?: Json
+          status?: string
+          tender_id?: string | null
+          user_id?: string
+          writeback_map?: Json
+        }
+        Relationships: []
+      }
+      project_rfi_addenda: {
+        Row: {
+          answered_at: string | null
+          cost_impact_sar: number
+          created_at: string
+          due_date: string | null
+          entry_type: string
+          id: string
+          impacted_boq_item_ids: Json
+          project_id: string
+          question_text: string | null
+          ref_no: string
+          response_text: string | null
+          status: string
+          tender_id: string | null
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          answered_at?: string | null
+          cost_impact_sar?: number
+          created_at?: string
+          due_date?: string | null
+          entry_type?: string
+          id?: string
+          impacted_boq_item_ids?: Json
+          project_id: string
+          question_text?: string | null
+          ref_no: string
+          response_text?: string | null
+          status?: string
+          tender_id?: string | null
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          answered_at?: string | null
+          cost_impact_sar?: number
+          created_at?: string
+          due_date?: string | null
+          entry_type?: string
+          id?: string
+          impacted_boq_item_ids?: Json
+          project_id?: string
+          question_text?: string | null
+          ref_no?: string
+          response_text?: string | null
+          status?: string
+          tender_id?: string | null
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      tender_evaluations: {
+        Row: {
+          client_relationship_score: number
+          commercial_capacity_score: number
+          created_at: string
+          decided_at: string | null
+          decided_by: string | null
+          decision: string
+          decision_rationale: string | null
+          id: string
+          margin_attractiveness_score: number
+          overall_score: number
+          project_id: string
+          risk_exposure_score: number
+          technical_fit_score: number
+          tender_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          client_relationship_score?: number
+          commercial_capacity_score?: number
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision?: string
+          decision_rationale?: string | null
+          id?: string
+          margin_attractiveness_score?: number
+          overall_score?: number
+          project_id: string
+          risk_exposure_score?: number
+          technical_fit_score?: number
+          tender_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          client_relationship_score?: number
+          commercial_capacity_score?: number
+          created_at?: string
+          decided_at?: string | null
+          decided_by?: string | null
+          decision?: string
+          decision_rationale?: string | null
+          id?: string
+          margin_attractiveness_score?: number
+          overall_score?: number
+          project_id?: string
+          risk_exposure_score?: number
+          technical_fit_score?: number
+          tender_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      knowledge_item_templates: {
+        Row: Record<string, any> & {
+          id: string
+          workspace_id: string
+          code: string
+          category_type: string
+          scope: string
+          title_ar: string
+          unit: string
+          status: string
+        }
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
+      knowledge_template_versions: {
+        Row: Record<string, any> & {
+          id: string
+          template_id: string
+          workspace_id: string
+          version_no: number
+          basis: string
+          direct_unit_cost: number
+          unit: string
+          title_ar: string
+          status: string
+        }
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
+      knowledge_price_evidence: {
+        Row: Record<string, any> & {
+          id: string
+          workspace_id: string
+          source_type: string
+          resource_type: string
+          title_ar: string
+          unit: string
+          direct_unit_price: number
+          price_date: string
+          verification_status: string
+          scope: string
+        }
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
+      estimate_versions: {
+        Row: Record<string, any> & { id: string; project_id: string; version_no: number; state: string; row_version: number }
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
+      indirect_cost_lines: {
+        Row: Record<string, any> & { id: string; project_id: string; cost_scope_id: string; driver: string; total_cost: number }
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
+      tender_holds: {
+        Row: Record<string, any> & { id: string; project_id: string; tender_id: string; hold_ref: string; subject: string; status: string }
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
+      readiness_runs: {
+        Row: Record<string, any> & { id: string; project_id: string; tender_id: string; input_hash: string; overall_state: string }
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
+      comparison_packages: {
+        Row: Record<string, any> & { id: string; project_id: string; title_ar: string; target_unit: string; work_quantity: number }
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
+      boq_diff_runs: {
+        Row: Record<string, any> & { id: string; project_id: string; old_label: string; new_label: string; status: string }
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
+      knowledge_audit_logs: {
+        Row: Record<string, any> & { id: string; workspace_id: string; action: string; entity_type: string; entity_id: string }
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -970,6 +1249,23 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      submit_tender_version: {
+        Args: {
+          p_tender_id: string
+          p_project_id: string
+          p_idempotency_key: string
+          p_currency?: string
+          p_pricing_policy?: string
+          p_document_ref?: string | null
+          p_total_direct_cost?: number
+          p_net_selling_price?: number
+          p_vat_rate?: number
+          p_vat_amount?: number
+          p_grand_total_with_vat?: number
+          p_items_snapshot?: Json
+        }
+        Returns: Database["public"]["Tables"]["tender_submissions"]["Row"]
       }
     }
     Enums: {

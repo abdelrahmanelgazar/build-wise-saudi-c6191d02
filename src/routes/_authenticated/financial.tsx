@@ -2,7 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { estimationClient } from "@/lib/estimation-client";
-import { useActiveProjectId } from "@/lib/active-project";
+import { useActiveProjectId, useActiveTenderId } from "@/lib/active-project";
+import { scopeRowsByTender } from "@/lib/tender-pricing-scope";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +49,7 @@ export const Route = createFileRoute("/_authenticated/financial")({
 function FinancialPage() {
   const { t, language } = useLanguage();
   const projectId = useActiveProjectId();
+  const activeTenderId = useActiveTenderId();
   const qc = useQueryClient();
   const [vatRate, setVatRate] = useState<number>(15);
   const [isIssuing, setIsIssuing] = useState(false);
@@ -56,7 +58,7 @@ function FinancialPage() {
   useRegisterPageActions({
     pageKey: "financial",
     hasEditableState: false,
-    queryKeys: [["project_financial", projectId], ["financial_boq", projectId], ["financial_pa_items", projectId], ["financial_markups", projectId]],
+    queryKeys: [["project_financial", projectId], ["financial_boq", projectId, activeTenderId], ["financial_pa_items", projectId, activeTenderId], ["financial_markups", projectId, activeTenderId]],
   });
 
   const handleIssueTender = async () => {
@@ -72,7 +74,7 @@ function FinancialPage() {
         .from("tenders")
         .select("id")
         .eq("project_id", projectId!);
-      const targetTenderId = tendersList?.[0]?.id || projectId!;
+      const targetTenderId = activeTenderId || tendersList?.[0]?.id || projectId!;
 
       await submitTenderVersion({
         tenderId: targetTenderId,
@@ -124,8 +126,8 @@ function FinancialPage() {
     },
   });
 
-  const { data: boqItems = [] } = useQuery({
-    queryKey: ["financial_boq", projectId],
+  const { data: allBoqItems = [] } = useQuery({
+    queryKey: ["financial_boq", projectId, activeTenderId],
     enabled: !!projectId,
     queryFn: async () => {
       const { data, error } = await estimationClient
@@ -137,8 +139,8 @@ function FinancialPage() {
     },
   });
 
-  const { data: paItems = [] } = useQuery({
-    queryKey: ["financial_pa_items", projectId],
+  const { data: allPaItems = [] } = useQuery({
+    queryKey: ["financial_pa_items", projectId, activeTenderId],
     enabled: !!projectId,
     queryFn: async () => {
       const { data, error } = await estimationClient
@@ -150,8 +152,8 @@ function FinancialPage() {
     },
   });
 
-  const { data: markups = [] } = useQuery({
-    queryKey: ["financial_markups", projectId],
+  const { data: allMarkups = [] } = useQuery({
+    queryKey: ["financial_markups", projectId, activeTenderId],
     enabled: !!projectId,
     queryFn: async () => {
       const { data, error } = await estimationClient
@@ -162,6 +164,10 @@ function FinancialPage() {
       return data;
     },
   });
+
+  const boqItems = useMemo(() => scopeRowsByTender(allBoqItems as any[], activeTenderId), [allBoqItems, activeTenderId]);
+  const paItems = useMemo(() => scopeRowsByTender(allPaItems as any[], activeTenderId), [allPaItems, activeTenderId]);
+  const markups = useMemo(() => scopeRowsByTender(allMarkups as any[], activeTenderId), [allMarkups, activeTenderId]);
 
   const markupsMap = useMemo(() => {
     const map = new Map<string, MarkupSettings>();

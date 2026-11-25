@@ -421,4 +421,12 @@ export const enTranslations: Record<TranslationKey, string> = {
   "breakdown.descriptionEn": "Template description in English",
   "breakdown.resourceDescriptionEn": "Resource description in English",
   "common.unclassifiedDivision": "Unclassified",
+  "nav.tenderAssurance": "Tender Readiness & Assurance",
+  "knowledge.saveAsTemplate": "Save as Template",
+  "knowledge.publishToPriceLibrary": "Add Resources to Price Library",
+  "knowledge.viewOverview": "Overview",
+  "knowledge.viewBySection": "Items Breakdown by Section",
+  "knowledge.viewByProject": "Project Items Breakdown",
+  "knowledge.viewIndirectCost": "Indirect Cost",
+  "knowledge.viewTypicalAssemblies": "Typical Standard Assemblies",
 };

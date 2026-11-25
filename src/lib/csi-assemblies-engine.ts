@@ -1193,7 +1193,7 @@ export function buildLegacyTemplateDispositionLedger(
   // Deduplicate deterministically by stable legacy id so running migration twice stays idempotent
   const seenIds = new Set<string>();
   const sorted = [...templates]
-    .filter((t) => !t.id.startsWith("csi-"))
+    .filter((t) => !t.id.startsWith("csi-") && !t.id.startsWith("v2-"))
     .sort((a, b) => a.id.localeCompare(b.id));
 
   for (const t of sorted) {
@@ -1244,5 +1244,135 @@ export function buildLegacyTemplateDispositionLedger(
     byDisposition,
     entries,
     signatureHash,
+  };
+}
+
+// ── 8. Normalized Supplier Quote Scope Comparison (§G3) ───────────────────────
+
+export interface NormalizedQuoteCandidate {
+  id: string;
+  supplierName: string;
+  unitRateSar: number;
+  status: "quoted" | "reference" | "expired";
+  includedScopes: AssemblyScopeTag[];
+  /** Extra pump / install rate per unit needed when quote excludes pumping/install */
+  supplementalUnitRateSar?: number;
+  /** Minimum mobilization or pump charge spread across workQuantity */
+  minOrderChargeSar?: number;
+  validityDate?: string | null;
+  city?: string | null;
+  documentRef?: string | null;
+}
+
+export interface NormalizedQuoteComparisonRow {
+  id: string;
+  supplierName: string;
+  rawUnitRateSar: number;
+  normalizedUnitRateSar: number;
+  normalizedTotalSar: number;
+  isEquivalentScope: boolean;
+  missingScopesAdded: AssemblyScopeTag[];
+  status: "quoted" | "reference" | "expired";
+  rank: number;
+}
+
+/**
+ * Normalizes supplier quotes with differing commercial scopes (e.g. C35 all-in supply+pump+pour vs
+ * supply-only + separate pump minimum charge) onto the same target scope for fair bid comparison.
+ */
+export function compareSupplierQuotesNormalized(params: {
+  targetScopes: AssemblyScopeTag[];
+  workQuantity: number;
+  quotes: NormalizedQuoteCandidate[];
+}): NormalizedQuoteComparisonRow[] {
+  const qty = Math.max(0.0001, Number(params.workQuantity) || 1);
+  const rows: NormalizedQuoteComparisonRow[] = params.quotes.map((q) => {
+    const missing = params.targetScopes.filter((s) => !q.includedScopes.includes(s));
+    const amortizedMinCharge = roundTo((q.minOrderChargeSar ?? 0) / qty, 4);
+    const supplement = missing.length > 0 ? Number(q.supplementalUnitRateSar ?? 0) : 0;
+    const normalizedUnitRateSar = roundTo(q.unitRateSar + supplement + amortizedMinCharge, 2);
+    const normalizedTotalSar = roundTo(normalizedUnitRateSar * qty, 2);
+    return {
+      id: q.id,
+      supplierName: q.supplierName,
+      rawUnitRateSar: q.unitRateSar,
+      normalizedUnitRateSar,
+      normalizedTotalSar,
+      isEquivalentScope: missing.length === 0,
+      missingScopesAdded: missing,
+      status: q.status,
+      rank: 0,
+    };
+  });
+
+  rows.sort((a, b) => a.normalizedUnitRateSar - b.normalizedUnitRateSar);
+  rows.forEach((r, idx) => {
+    r.rank = idx + 1;
+  });
+  return rows;
+}
+
+export interface ValueAndValidityBreakdown {
+  totalValueSar: number;
+  validQuotedValueSar: number;
+  expiredQuotedValueSar: number;
+  referenceOnlyValueSar: number;
+  manualValueSar: number;
+  includedValueSar: number;
+  unpricedValueSar: number;
+  validCommercialCoveragePct: number;
+}
+
+/** Measures project BOQ coverage by SAR value and quote commercial validity status (§G3). */
+export function computeValueAndValidityCoverage(
+  items: Array<{
+    is_group?: boolean;
+    pricing_status?: string | null;
+    rate_source?: string | null;
+    quote_status?: "quoted" | "reference" | "expired" | null;
+    lineSellingPrice: number;
+  }>,
+): ValueAndValidityBreakdown {
+  let totalValueSar = 0;
+  let validQuotedValueSar = 0;
+  let expiredQuotedValueSar = 0;
+  let referenceOnlyValueSar = 0;
+  let manualValueSar = 0;
+  let includedValueSar = 0;
+  let unpricedValueSar = 0;
+
+  for (const it of items) {
+    if (it.is_group) continue;
+    const val = roundTo(Math.max(0, Number(it.lineSellingPrice) || 0), 2);
+    totalValueSar += val;
+
+    if (it.pricing_status === "included") {
+      includedValueSar += val;
+    } else if (val <= 0 || it.pricing_status === "unpriced") {
+      unpricedValueSar += val;
+    } else if (it.rate_source === "manual") {
+      manualValueSar += val;
+    } else if (it.quote_status === "expired") {
+      expiredQuotedValueSar += val;
+    } else if (it.quote_status === "quoted") {
+      validQuotedValueSar += val;
+    } else {
+      referenceOnlyValueSar += val;
+    }
+  }
+
+  totalValueSar = roundTo(totalValueSar, 2);
+  const validCommercialCoveragePct =
+    totalValueSar > 0 ? roundTo((validQuotedValueSar / totalValueSar) * 100, 2) : 0;
+
+  return {
+    totalValueSar,
+    validQuotedValueSar: roundTo(validQuotedValueSar, 2),
+    expiredQuotedValueSar: roundTo(expiredQuotedValueSar, 2),
+    referenceOnlyValueSar: roundTo(referenceOnlyValueSar, 2),
+    manualValueSar: roundTo(manualValueSar, 2),
+    includedValueSar: roundTo(includedValueSar, 2),
+    unpricedValueSar: roundTo(unpricedValueSar, 2),
+    validCommercialCoveragePct,
   };
 }

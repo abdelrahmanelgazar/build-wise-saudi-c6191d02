@@ -23,6 +23,7 @@ import { Route as AuthenticatedProjectsRouteImport } from './routes/_authenticat
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedResourcesRouteImport } from './routes/_authenticated/resources'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
+import { Route as AuthenticatedTenderAssuranceRouteImport } from './routes/_authenticated/tender-assurance'
 import { Route as AuthenticatedClientsIndexRouteImport } from './routes/_authenticated/clients.index'
 import { Route as AuthenticatedClientsClientIdRouteImport } from './routes/_authenticated/clients.$clientId'
 import { Route as AuthenticatedProjectsIndexRouteImport } from './routes/_authenticated/projects.index'
@@ -101,6 +102,12 @@ const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedTenderAssuranceRoute =
+  AuthenticatedTenderAssuranceRouteImport.update({
+    id: '/tender-assurance',
+    path: '/tender-assurance',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedClientsIndexRoute =
   AuthenticatedClientsIndexRouteImport.update({
     id: '/clients/',
@@ -146,6 +153,7 @@ export interface FileRoutesByFullPath {
   '/reports': typeof AuthenticatedReportsRoute
   '/resources': typeof AuthenticatedResourcesRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/tender-assurance': typeof AuthenticatedTenderAssuranceRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/projects/$': typeof AuthenticatedProjectsSplatRoute
   '/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
@@ -165,6 +173,7 @@ export interface FileRoutesByTo {
   '/reports': typeof AuthenticatedReportsRoute
   '/resources': typeof AuthenticatedResourcesRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/tender-assurance': typeof AuthenticatedTenderAssuranceRoute
   '/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/projects/$': typeof AuthenticatedProjectsSplatRoute
   '/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
@@ -187,6 +196,7 @@ export interface FileRoutesById {
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/resources': typeof AuthenticatedResourcesRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
+  '/_authenticated/tender-assurance': typeof AuthenticatedTenderAssuranceRoute
   '/_authenticated/clients/$clientId': typeof AuthenticatedClientsClientIdRoute
   '/_authenticated/projects/$': typeof AuthenticatedProjectsSplatRoute
   '/_authenticated/projects/$projectId': typeof AuthenticatedProjectsProjectIdRoute
@@ -209,6 +219,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/resources'
     | '/settings'
+    | '/tender-assurance'
     | '/clients/$clientId'
     | '/projects/$'
     | '/projects/$projectId'
@@ -228,6 +239,7 @@ export interface FileRouteTypes {
     | '/reports'
     | '/resources'
     | '/settings'
+    | '/tender-assurance'
     | '/clients/$clientId'
     | '/projects/$'
     | '/projects/$projectId'
@@ -249,6 +261,7 @@ export interface FileRouteTypes {
     | '/_authenticated/reports'
     | '/_authenticated/resources'
     | '/_authenticated/settings'
+    | '/_authenticated/tender-assurance'
     | '/_authenticated/clients/$clientId'
     | '/_authenticated/projects/$'
     | '/_authenticated/projects/$projectId'
@@ -362,6 +375,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedSettingsRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/tender-assurance': {
+      id: '/_authenticated/tender-assurance'
+      path: '/tender-assurance'
+      fullPath: '/tender-assurance'
+      preLoaderRoute: typeof AuthenticatedTenderAssuranceRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/clients/': {
       id: '/_authenticated/clients/'
       path: '/clients'
@@ -429,6 +449,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedResourcesRoute: typeof AuthenticatedResourcesRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
+  AuthenticatedTenderAssuranceRoute: typeof AuthenticatedTenderAssuranceRoute
   AuthenticatedClientsClientIdRoute: typeof AuthenticatedClientsClientIdRoute
   AuthenticatedClientsIndexRoute: typeof AuthenticatedClientsIndexRoute
 }
@@ -446,6 +467,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedResourcesRoute: AuthenticatedResourcesRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
+  AuthenticatedTenderAssuranceRoute: AuthenticatedTenderAssuranceRoute,
   AuthenticatedClientsClientIdRoute: AuthenticatedClientsClientIdRoute,
   AuthenticatedClientsIndexRoute: AuthenticatedClientsIndexRoute,
 }

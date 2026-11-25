@@ -27,8 +27,19 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install dependencies
-        run: npm install --force
+      - name: Install dependencies (lockfile reproducible)
+        run: npm ci --legacy-peer-deps || npm install --force
+
+      - name: Verify deployment target and migrations (strict)
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://desjchcthsjaeiplhuls.supabase.co' }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_7fJcrVmM18B9gBGeXhRpjA_jFmgOxC-' }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || 'desjchcthsjaeiplhuls' }}
+          VITE_SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || 'desjchcthsjaeiplhuls' }}
+        run: node scripts/cloud-release-check.mjs --strict
+
+      - name: TypeScript typecheck & unit tests
+        run: npx tsc --noEmit && npm test
 
       - name: Build project
         env:
@@ -38,6 +49,7 @@ jobs:
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_7fJcrVmM18B9gBGeXhRpjA_jFmgOxC-' }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || 'desjchcthsjaeiplhuls' }}
           VITE_SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || 'desjchcthsjaeiplhuls' }}
+          VITE_AI_EXECUTION_MODE: ${{ vars.VITE_AI_EXECUTION_MODE || 'edge' }}
         run: npm run build
 
       - name: Prepare static files for GitHub Pages

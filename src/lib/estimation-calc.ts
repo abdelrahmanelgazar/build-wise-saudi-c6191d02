@@ -394,6 +394,170 @@ export function computeUnitSellingPrice(
   };
 }
 
+export type CanonicalPricingSource = "included" | "manual" | "analysis" | "imported" | "unpriced";
+
+export interface BoqItemPricingInput {
+  id: string;
+  quantity?: number | null;
+  is_group?: boolean;
+  is_included_elsewhere?: boolean | null;
+  manual_unit_price?: number | null;
+  rate_source?: string | null;
+  material_cost?: number | null;
+  labor_cost?: number | null;
+  equipment_cost?: number | null;
+  subcontractor_cost?: number | null;
+}
+
+export interface CanonicalBoqItemPricing {
+  source: CanonicalPricingSource;
+  directUnitCost: number;
+  rawUnitSellingPrice: number;
+  approvedUnitRate: number;
+  roundingDifferencePerUnit: number;
+  lineDirectCost: number;
+  lineAdditions: number;
+  lineRoundingDifference: number;
+  lineManualAdjustment: number;
+  lineSellingPrice: number;
+  isUnpriced: boolean;
+}
+
+/**
+ * Single canonical source-of-truth pricing resolver used identically across BOQ UI,
+ * original Excel writeback, standard Excel/CSV export, Financial Review, Reports, and Tender Submission.
+ *
+ * Priority order:
+ * 1. Group parent -> 0
+ * 2. Included elsewhere -> 0 ("included")
+ * 3. Active manual unit price > 0 -> rounded UP via Phase 2 ROUNDUP contract ("manual")
+ * 4. Analysis lines (or rate_source === 'analysis' -> 0 if last line deleted) -> Phase 2 pricing ("analysis" / "unpriced")
+ * 5. Stored / imported unit cost fallback -> Phase 2 pricing ("imported" / "unpriced")
+ */
+export function resolveBoqItemPricing(params: {
+  item: BoqItemPricingInput;
+  paLines?: ResourceCostInput[];
+  hasAnalysisFlag?: boolean;
+  markup?: MarkupSettings;
+  defaultMarkup?: MarkupSettings;
+}): CanonicalBoqItemPricing {
+  const { item, paLines, hasAnalysisFlag = false, markup, defaultMarkup } = params;
+  const qty = Number(item.quantity ?? 0) || 0;
+
+  if (item.is_group) {
+    return {
+      source: "unpriced",
+      directUnitCost: 0,
+      rawUnitSellingPrice: 0,
+      approvedUnitRate: 0,
+      roundingDifferencePerUnit: 0,
+      lineDirectCost: 0,
+      lineAdditions: 0,
+      lineRoundingDifference: 0,
+      lineManualAdjustment: 0,
+      lineSellingPrice: 0,
+      isUnpriced: false,
+    };
+  }
+
+  if (item.is_included_elsewhere) {
+    return {
+      source: "included",
+      directUnitCost: 0,
+      rawUnitSellingPrice: 0,
+      approvedUnitRate: 0,
+      roundingDifferencePerUnit: 0,
+      lineDirectCost: 0,
+      lineAdditions: 0,
+      lineRoundingDifference: 0,
+      lineManualAdjustment: 0,
+      lineSellingPrice: 0,
+      isUnpriced: false,
+    };
+  }
+
+  const hasPaLines = Boolean(paLines && paLines.length > 0);
+  const isAnalysisMode = item.rate_source === "analysis" || hasAnalysisFlag || hasPaLines;
+  const directUnitCost = hasPaLines
+    ? computeDirectUnitCost(paLines!).directUnitCost
+    : isAnalysisMode
+      ? 0
+      : roundTo(
+          Number(item.material_cost ?? 0) +
+            Number(item.labor_cost ?? 0) +
+            Number(item.equipment_cost ?? 0) +
+            Number(item.subcontractor_cost ?? 0),
+          4,
+        );
+
+  const effectiveMarkup: MarkupSettings = {
+    ...(defaultMarkup ?? {}),
+    ...(markup ?? {}),
+    pricing_policy: markup?.pricing_policy ?? defaultMarkup?.pricing_policy ?? "additive_v2",
+    round_up_rate: markup?.round_up_rate ?? defaultMarkup?.round_up_rate ?? true,
+  };
+
+  const manualRaw = item.manual_unit_price ?? (markup as any)?.manual_unit_price ?? null;
+  const hasManual = manualRaw !== null && manualRaw !== undefined && Number(manualRaw) > 0;
+
+  if (hasManual) {
+    const p2 = computePricingPhase2({
+      directUnitCost,
+      quantity: qty,
+      markups: effectiveMarkup,
+      manualSellingPrice: Number(manualRaw),
+    });
+    return {
+      source: "manual",
+      directUnitCost: p2.directUnitCost,
+      rawUnitSellingPrice: p2.rawUnitSellingPrice,
+      approvedUnitRate: p2.approvedUnitRate,
+      roundingDifferencePerUnit: p2.roundingDifferencePerUnit,
+      lineDirectCost: p2.lineDirectCost,
+      lineAdditions: p2.lineAdditions,
+      lineRoundingDifference: p2.lineRoundingDifference,
+      lineManualAdjustment: p2.lineManualAdjustment,
+      lineSellingPrice: p2.lineSellingPrice,
+      isUnpriced: false,
+    };
+  }
+
+  if (directUnitCost > 0) {
+    const p2 = computePricingPhase2({
+      directUnitCost,
+      quantity: qty,
+      markups: effectiveMarkup,
+    });
+    return {
+      source: isAnalysisMode ? "analysis" : "imported",
+      directUnitCost: p2.directUnitCost,
+      rawUnitSellingPrice: p2.rawUnitSellingPrice,
+      approvedUnitRate: p2.approvedUnitRate,
+      roundingDifferencePerUnit: p2.roundingDifferencePerUnit,
+      lineDirectCost: p2.lineDirectCost,
+      lineAdditions: p2.lineAdditions,
+      lineRoundingDifference: p2.lineRoundingDifference,
+      lineManualAdjustment: p2.lineManualAdjustment,
+      lineSellingPrice: p2.lineSellingPrice,
+      isUnpriced: p2.approvedUnitRate <= 0,
+    };
+  }
+
+  return {
+    source: "unpriced",
+    directUnitCost: 0,
+    rawUnitSellingPrice: 0,
+    approvedUnitRate: 0,
+    roundingDifferencePerUnit: 0,
+    lineDirectCost: 0,
+    lineAdditions: 0,
+    lineRoundingDifference: 0,
+    lineManualAdjustment: 0,
+    lineSellingPrice: 0,
+    isUnpriced: true,
+  };
+}
+
 /**
  * Compute line item financials for a BOQ item
  */
@@ -623,15 +787,24 @@ export function computeProjectFinancials(params: {
     const markup = markupsByItemId.get(item.id) ?? defaultMarkup;
     const paList = paItemsByItemId?.get(item.id);
     const hasPa = Boolean(paList && paList.length > 0);
+    const isAnalysisEmpty = (item as any).rate_source === "analysis" && !hasPa;
     const paDirect = hasPa ? computeDirectUnitCost(paList!) : null;
 
     const line = computeLineItemFinancials({
       quantity: qty,
-      materialCost: paDirect ? paDirect.materialCost : Number(item.material_cost) || 0,
-      ...(paDirect ? { primaryMaterialCost: paDirect.primaryMaterialCost, accessoryMaterialCost: paDirect.accessoryMaterialCost, directUnitCost: paDirect.directUnitCost } : {}),
-      laborCost: paDirect ? paDirect.laborCost : Number(item.labor_cost) || 0,
-      equipmentCost: paDirect ? paDirect.equipmentCost : Number(item.equipment_cost) || 0,
-      subcontractorCost: paDirect ? paDirect.subcontractorCost : Number(item.subcontractor_cost) || 0,
+      materialCost: paDirect ? paDirect.materialCost : isAnalysisEmpty ? 0 : Number(item.material_cost) || 0,
+      ...(paDirect
+        ? {
+            primaryMaterialCost: paDirect.primaryMaterialCost,
+            accessoryMaterialCost: paDirect.accessoryMaterialCost,
+            directUnitCost: paDirect.directUnitCost,
+          }
+        : isAnalysisEmpty
+          ? { directUnitCost: 0 }
+          : {}),
+      laborCost: paDirect ? paDirect.laborCost : isAnalysisEmpty ? 0 : Number(item.labor_cost) || 0,
+      equipmentCost: paDirect ? paDirect.equipmentCost : isAnalysisEmpty ? 0 : Number(item.equipment_cost) || 0,
+      subcontractorCost: paDirect ? paDirect.subcontractorCost : isAnalysisEmpty ? 0 : Number(item.subcontractor_cost) || 0,
       manualUnitSellingPrice: item.manual_unit_price ?? (markup as any)?.manual_unit_price,
       isIncludedElsewhere: !!item.is_included_elsewhere,
       markup,

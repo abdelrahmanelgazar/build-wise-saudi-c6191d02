@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState, useEffect } from "react";
+import { useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { estimationClient } from "@/lib/estimation-client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,12 +29,23 @@ import {
   Layers,
   FileText,
   SlidersHorizontal,
+  GitCompare,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { useActiveProjectId } from "@/lib/active-project";
-import { csiDivisionCode, csiDivisionLabel, CSI_DIVISIONS } from "@/lib/csi-divisions";
+import { useActiveProjectId, useActiveTenderId } from "@/lib/active-project";
+import { csiDivisionCode, CSI_DIVISIONS } from "@/lib/csi-divisions";
 import { separateCategoryAndRate } from "@/lib/boq-header-mapping";
+import {
+  arrayBufferToBase64,
+  buildRowCellRefs,
+  computeBoqReimportDiff,
+  computeFileSha256,
+  detectCarryForwardRowKind,
+  type BoqRowKind,
+} from "@/lib/excel-roundtrip";
+import { scopeRowsByTender } from "@/lib/tender-pricing-scope";
 
 // Field keys (broader than ParsedRow — includes computed columns)
 export type FieldKey =
@@ -47,7 +58,8 @@ export type FieldKey =
   | "equipment_cost"
   | "subcontractor_cost"
   | "unit_rate"
-  | "total";
+  | "total"
+  | "note";
 
 export const FIELD_LABELS: Record<FieldKey, string> = {
   item_no: "رقم البند / المسلسل",
@@ -60,6 +72,7 @@ export const FIELD_LABELS: Record<FieldKey, string> = {
   equipment_cost: "تكلفة المعدات",
   subcontractor_cost: "مقاول الباطن",
   total: "الإجمالي / القيمة",
+  note: "ملاحظات",
 };
 
 const HEADER_MAP: Record<string, FieldKey> = {
@@ -210,6 +223,15 @@ const HEADER_MAP: Record<string, FieldKey> = {
   "باطن": "subcontractor_cost",
   "subcontractor": "subcontractor_cost",
   "sub": "subcontractor_cost",
+
+  // Notes
+  "ملاحظات": "note",
+  "الملاحظات": "note",
+  "ملاحظه": "note",
+  "ملاحظة": "note",
+  "notes": "note",
+  "note": "note",
+  "remarks": "note",
 };
 
 export type ParsedRow = {
@@ -224,6 +246,12 @@ export type ParsedRow = {
   unit_rate: number;
   total: number;
   is_group: boolean;
+  row_kind: BoqRowKind;
+  excel_row_index: number;
+  rate_cell_ref: string | null;
+  total_cell_ref: string | null;
+  note_cell_ref: string | null;
+  note_text?: string | null;
   _raw: (string | number | null)[];
 };
 
@@ -351,6 +379,7 @@ export function matchHeaderField(s: unknown): FieldKey | null {
   if (norm.includes("عماله") || norm.includes("العماله") || norm.includes("عمالة") || norm.includes("العمالة") || norm.includes("اجور") || norm.includes("أجور") || norm.includes("labor") || norm.includes("labour")) return "labor_cost";
   if (norm.includes("معدات") || norm.includes("المعدات") || norm.includes("اليات") || norm.includes("آليات") || norm.includes("equipment")) return "equipment_cost";
   if (norm.includes("باطن") || norm.includes("مقاول") || norm.includes("subcontractor")) return "subcontractor_cost";
+  if (norm.includes("ملاحظ") || norm.includes("notes") || norm === "note" || norm.includes("remarks")) return "note";
 
   return null;
 }
@@ -510,6 +539,13 @@ export function parseSheet(
   const data: ParsedRow[] = [];
 
   const divCode = sheetName ? csiDivisionCode(sheetName) : undefined;
+  const findColIdx = (target: FieldKey): number | null => {
+    const found = Object.entries(colMap).find(([, v]) => v === target)?.[0];
+    return found !== undefined ? Number(found) : null;
+  };
+  const rateColIdx = findColIdx("unit_rate");
+  const totalColIdx = findColIdx("total");
+  const noteColIdx = findColIdx("note");
 
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i] || [];
@@ -524,6 +560,23 @@ export function parseSheet(
     const description_ar = String(get("description_ar") ?? "").trim();
     if (!description_ar && !item_no_raw) continue;
 
+    const unit = String(get("unit") ?? "").trim();
+    let quantity = toNum(get("quantity"));
+    let material_cost = toNum(get("material_cost"));
+    const labor_cost = toNum(get("labor_cost"));
+    const equipment_cost = toNum(get("equipment_cost"));
+    const subcontractor_cost = toNum(get("subcontractor_cost"));
+    const unit_rate = toNum(get("unit_rate"));
+    const total = toNum(get("total"));
+    const note_text = String(get("note") ?? "").trim() || null;
+
+    // Classify carry-forward / brought-forward / sheet summary lines before skipping billable totals
+    const preliminaryKind = detectCarryForwardRowKind(description_ar, item_no_raw, unit, quantity, false);
+    if (preliminaryKind === "carry_forward" || preliminaryKind === "brought_forward" || preliminaryKind === "summary") {
+      warnings.push(`تم رصد صف غير قابل للفوترة (${preliminaryKind === "carry_forward" ? "مرحل ما بعده" : preliminaryKind === "brought_forward" ? "منقول ما قبله" : "إجمالي/ملخص"}): "${description_ar}" في الصف ${i + 1} وتم استبعاده من جمع البنود.`);
+      continue;
+    }
+
     // Filter out common sheet footer / total summary rows that aren't real BOQ items
     if (
       description_ar.startsWith("إجمالي") ||
@@ -533,15 +586,6 @@ export function parseSheet(
     ) {
       continue;
     }
-
-    const unit = String(get("unit") ?? "").trim();
-    let quantity = toNum(get("quantity"));
-    let material_cost = toNum(get("material_cost"));
-    const labor_cost = toNum(get("labor_cost"));
-    const equipment_cost = toNum(get("equipment_cost"));
-    const subcontractor_cost = toNum(get("subcontractor_cost"));
-    const unit_rate = toNum(get("unit_rate"));
-    const total = toNum(get("total"));
 
     // If unit rate exists but breakdown is empty, put it into material_cost
     if (material_cost === 0 && labor_cost === 0 && equipment_cost === 0 && subcontractor_cost === 0 && unit_rate > 0) {
@@ -562,6 +606,7 @@ export function parseSheet(
       equipment_cost,
       subcontractor_cost,
     ]);
+    const row_kind = detectCarryForwardRowKind(description_ar, item_no_raw, unit, quantity, is_group);
 
     let final_item_no = item_no_raw;
     if (!final_item_no) {
@@ -576,6 +621,13 @@ export function parseSheet(
       suffix++;
     }
 
+    const coords = buildRowCellRefs({
+      excelRowZeroBased: i,
+      rateColIdx,
+      totalColIdx,
+      noteColIdx,
+    });
+
     data.push({
       item_no: final_item_no,
       description_ar,
@@ -588,6 +640,12 @@ export function parseSheet(
       unit_rate: unit_rate || material_cost,
       total: total || quantity * (unit_rate || material_cost),
       is_group,
+      row_kind,
+      excel_row_index: coords.excelRowIndex,
+      rate_cell_ref: coords.rateCellRef,
+      total_cell_ref: coords.totalCellRef,
+      note_cell_ref: coords.noteCellRef,
+      note_text,
       _raw: r as (string | number | null)[],
     });
   }
@@ -655,6 +713,9 @@ export function ImportExcelDialog() {
   const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
   const [importScope, setImportScope] = useState<"all" | "single">("all");
   const [replaceExisting, setReplaceExisting] = useState(false);
+  const [smartDiffMerge, setSmartDiffMerge] = useState(true);
+  const [fileSha256, setFileSha256] = useState<string>("");
+  const [originalWorkbookB64, setOriginalWorkbookB64] = useState<string | null>(null);
   const [showColumnMapper, setShowColumnMapper] = useState(false);
   const [manualHeaderIdx, setManualHeaderIdx] = useState<number | null>(null);
   const [customColMap, setCustomColMap] = useState<Record<number, FieldKey>>({});
@@ -678,6 +739,32 @@ export function ImportExcelDialog() {
   const fileRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
+  const activeTenderId = useActiveTenderId();
+
+  const { data: existingProjectBoq = [] } = useQuery({
+    queryKey: ["boq_items_diff_baseline", projectId, activeTenderId],
+    enabled: Boolean(open && projectId),
+    queryFn: async () => {
+      const { data } = await estimationClient
+        .from("boq_items")
+        .select("id, item_no, description_ar, unit, quantity, sheet_name, is_group, sort_order, manual_unit_price, note, tender_id")
+        .eq("project_id", projectId!);
+      return scopeRowsByTender((data as any[]) ?? [], activeTenderId);
+    },
+  });
+
+  const { data: existingPaItemIds = new Set<string>() } = useQuery({
+    queryKey: ["pa_ids_diff_baseline", projectId, activeTenderId],
+    enabled: Boolean(open && projectId),
+    queryFn: async () => {
+      const { data } = await estimationClient
+        .from("price_analysis_items")
+        .select("boq_item_id, tender_id")
+        .eq("project_id", projectId!);
+      const scoped = scopeRowsByTender((data as any[]) ?? [], activeTenderId);
+      return new Set(scoped.map((r) => String(r.boq_item_id)));
+    },
+  });
 
   const reset = () => {
     setFileName("");
@@ -686,6 +773,9 @@ export function ImportExcelDialog() {
     setWorkbook(null);
     setImportScope("all");
     setReplaceExisting(false);
+    setSmartDiffMerge(true);
+    setFileSha256("");
+    setOriginalWorkbookB64(null);
     setShowColumnMapper(false);
     setManualHeaderIdx(null);
     setCustomColMap({});
@@ -708,10 +798,11 @@ export function ImportExcelDialog() {
   ) => {
     const ws = wb.Sheets[name];
     if (!ws) return;
+    // Keep blank rows so 0-based index matches the exact Excel sheet row coordinate
     const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, {
       header: 1,
       defval: "",
-      blankrows: false,
+      blankrows: true,
     });
     const result = parseSheet(
       rows,
@@ -732,7 +823,12 @@ export function ImportExcelDialog() {
         return;
       }
       const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
+      const sha256 = await computeFileSha256(buf);
+      setFileSha256(sha256);
+      // Store original binary template up to 4MB raw so roundtrip export can write straight into it
+      setOriginalWorkbookB64(buf.byteLength <= 4 * 1024 * 1024 ? arrayBufferToBase64(buf) : null);
+
+      const wb = XLSX.read(buf, { type: "array", cellFormula: true, cellNF: true });
       setWorkbook(wb);
       setFileName(file.name);
       setSheetNames(wb.SheetNames);
@@ -766,21 +862,32 @@ export function ImportExcelDialog() {
     }
   };
 
-  // Estimate total items in all sheets
+  // Estimate total items in all sheets & compute live re-import diff when existing BOQ exists
   const allSheetsStats = useMemo(() => {
-    if (!workbook) return { totalItems: 0, sheetCounts: {} as Record<string, number> };
+    if (!workbook) return { totalItems: 0, sheetCounts: {} as Record<string, number>, allIncoming: [] as Array<ParsedRow & { sheet_name: string }> };
     let total = 0;
     const sheetCounts: Record<string, number> = {};
+    const allIncoming: Array<ParsedRow & { sheet_name: string }> = [];
     for (const name of workbook.SheetNames) {
       const ws = workbook.Sheets[name];
       if (!ws) continue;
-      const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "", blankrows: false });
+      const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "", blankrows: true });
       const res = parseSheet(rows, name);
       sheetCounts[name] = res.data.length;
       total += res.data.length;
+      res.data.forEach((d) => allIncoming.push({ ...d, sheet_name: name }));
     }
-    return { totalItems: total, sheetCounts };
+    return { totalItems: total, sheetCounts, allIncoming };
   }, [workbook]);
+
+  const reimportDiff = useMemo(() => {
+    if (!workbook || existingProjectBoq.length === 0) return null;
+    const incoming =
+      importScope === "all"
+        ? allSheetsStats.allIncoming
+        : parsed.data.map((d) => ({ ...d, sheet_name: activeSheet || "Sheet1" }));
+    return computeBoqReimportDiff(existingProjectBoq, incoming, existingPaItemIds);
+  }, [workbook, existingProjectBoq, existingPaItemIds, importScope, allSheetsStats.allIncoming, parsed.data, activeSheet]);
 
   const groupsCount = useMemo(() => parsed.data.filter((r) => r.is_group).length, [parsed.data]);
   const itemsCount = useMemo(() => parsed.data.filter((r) => !r.is_group).length, [parsed.data]);
@@ -794,14 +901,40 @@ export function ImportExcelDialog() {
 
       const allHeaders: Record<string, ExcelHeader[]> = {};
       const allPreHeaders: Record<string, unknown[][]> = {};
+      const writebackMap: Record<string, Record<string, { excelRowIndex: number; rateCellRef: string | null; totalCellRef: string | null; noteCellRef: string | null }>> = {};
       let totalImported = 0;
 
+      // Save workbook version record first so imported items link cleanly to this version
+      const excelVersionId = crypto.randomUUID();
+      await estimationClient.from("boq_excel_versions").insert({
+        id: excelVersionId,
+        project_id: projectId,
+        tender_id: activeTenderId ?? null,
+        user_id,
+        file_name: fileName || "BOQ.xlsx",
+        file_sha256: fileSha256 || "unknown",
+        sheet_names: workbook.SheetNames as unknown as never,
+        writeback_map: {} as unknown as never,
+        original_workbook_b64: originalWorkbookB64,
+        imported_count: 0,
+        status: "active",
+      });
+
+      const useSmartMerge = Boolean(existingProjectBoq.length > 0 && smartDiffMerge && !replaceExisting && reimportDiff);
+
       if (replaceExisting) {
-        const { error: delErr } = await estimationClient
-          .from("boq_items")
-          .delete()
-          .eq("project_id", projectId);
-        if (delErr) throw delErr;
+        if (activeTenderId) {
+          const toDeleteIds = existingProjectBoq.map((r: any) => r.id).filter(Boolean);
+          for (const delId of toDeleteIds) {
+            await estimationClient.from("boq_items").delete().eq("id", delId);
+          }
+        } else {
+          const { error: delErr } = await estimationClient
+            .from("boq_items")
+            .delete()
+            .eq("project_id", projectId);
+          if (delErr) throw delErr;
+        }
       }
 
       const sheetsToProcess = importScope === "all" ? workbook.SheetNames : [activeSheet];
@@ -809,7 +942,7 @@ export function ImportExcelDialog() {
       for (const sheetName of sheetsToProcess) {
         const ws = workbook.Sheets[sheetName];
         if (!ws) continue;
-        const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "", blankrows: false });
+        const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: "", blankrows: true });
 
         // Use custom col map if current sheet, else auto-detect
         const isCurrent = sheetName === activeSheet;
@@ -822,6 +955,16 @@ export function ImportExcelDialog() {
 
         allHeaders[sheetName] = sheetParsed.headers;
         allPreHeaders[sheetName] = sheetParsed.preHeaders;
+        const sheetWriteback: Record<string, { excelRowIndex: number; rateCellRef: string | null; totalCellRef: string | null; noteCellRef: string | null }> = {};
+        sheetParsed.data.forEach((d) => {
+          sheetWriteback[d.item_no] = {
+            excelRowIndex: d.excel_row_index,
+            rateCellRef: d.rate_cell_ref,
+            totalCellRef: d.total_cell_ref,
+            noteCellRef: d.note_cell_ref,
+          };
+        });
+        writebackMap[sheetName] = sheetWriteback;
 
         if (!sheetParsed.data.length) continue;
 
@@ -834,14 +977,15 @@ export function ImportExcelDialog() {
             ? `القسم ${div.code} — ${div.name_ar}`
             : sheetName;
 
-          // Check if group already exists
+          // Check if group already exists in current tender/baseline scope
           const { data: existingGroups } = await estimationClient
             .from("boq_items")
-            .select("id, item_no")
+            .select("id, item_no, tender_id")
             .eq("project_id", projectId)
             .eq("is_group", true);
 
-          const matchedGroup = (existingGroups as Array<{ id: string; item_no: string }> | null)?.find(
+          const scopedGroups = scopeRowsByTender((existingGroups as any[]) ?? [], activeTenderId);
+          const matchedGroup = scopedGroups.find(
             (g) =>
               (divCode && (g.item_no === divCode || g.item_no?.startsWith(divCode + " "))) ||
               g.item_no === sheetName,
@@ -855,11 +999,14 @@ export function ImportExcelDialog() {
               .insert({
                 user_id,
                 project_id: projectId,
+                tender_id: activeTenderId ?? null,
+                excel_version_id: excelVersionId,
                 sheet_name: sheetName,
                 item_no: divCode || sheetName.slice(0, 10),
                 description_ar: groupTitle,
                 description_en: div?.name_en || null,
                 is_group: true,
+                row_kind: "group",
                 level: 0,
                 sort_order: divCode ? Number(divCode) * 10 : 100,
               })
@@ -885,6 +1032,16 @@ export function ImportExcelDialog() {
         const indexOf = new Map<string, number>();
         prepared.forEach((r, i) => indexOf.set(r._tmpId, i));
 
+        // Build diff lookup map for preserving matched IDs and linked price analyses
+        const existingByKey = new Map<string, any>();
+        if (useSmartMerge && reimportDiff) {
+          reimportDiff.entries.forEach((e) => {
+            if (e.existingId && e.sheetName === sheetName) {
+              existingByKey.set(`${e.itemNo}::${e.descriptionAr}`, e.existingId);
+            }
+          });
+        }
+
         const byLevel = new Map<number, typeof prepared>();
         prepared.forEach((r) => {
           const arr = byLevel.get(r._level) ?? [];
@@ -896,39 +1053,85 @@ export function ImportExcelDialog() {
         for (const lvl of levels) {
           const batch = byLevel.get(lvl);
           if (!batch) continue;
-          const payload = batch.map((r) => ({
-            user_id,
-            project_id: projectId,
-            sheet_name: sheetName,
-            parent_id: r._parentTmpId
-              ? tmpToDbId.get(r._parentTmpId) ?? sheetGroupDbId
-              : sheetGroupDbId,
-            item_no: r.item_no,
-            description_ar: r.description_ar,
-            unit: r.is_group ? null : r.unit || null,
-            quantity: r.is_group ? 0 : r.quantity,
-            material_cost: r.material_cost,
-            labor_cost: r.labor_cost,
-            equipment_cost: r.equipment_cost,
-            subcontractor_cost: r.subcontractor_cost,
-            is_group: r.is_group,
-            level: r._level,
-            sort_order: (indexOf.get(r._tmpId) ?? 0) + 1,
-            raw_row: r._raw as unknown as never,
-          }));
+          const toUpsert: any[] = [];
+          for (const r of batch) {
+            const matchedExistingId = useSmartMerge
+              ? existingByKey.get(`${r.item_no}::${r.description_ar}`)
+              : undefined;
 
-          const { data, error } = await estimationClient
-            .from("boq_items")
-            .upsert(payload, { onConflict: "user_id,project_id,sheet_name,item_no" })
-            .select("id");
-          if (error) throw error;
-          (data ?? []).forEach((row: any, i: number) => {
-            const source = batch[i];
-            if (source) tmpToDbId.set(source._tmpId, row.id);
-          });
+            if (matchedExistingId) {
+              // Update matched item in place to preserve linked price_analysis_items, notes, and manual rates
+              await estimationClient
+                .from("boq_items")
+                .update({
+                  item_no: r.item_no,
+                  description_ar: r.description_ar,
+                  unit: r.is_group ? null : r.unit || null,
+                  quantity: r.is_group ? 0 : r.quantity,
+                  sort_order: (indexOf.get(r._tmpId) ?? 0) + 1,
+                  excel_version_id: excelVersionId,
+                  excel_row_index: r.excel_row_index,
+                  rate_cell_ref: r.rate_cell_ref,
+                  total_cell_ref: r.total_cell_ref,
+                  note_cell_ref: r.note_cell_ref,
+                  row_kind: r.row_kind,
+                })
+                .eq("id", matchedExistingId);
+              tmpToDbId.set(r._tmpId, matchedExistingId);
+            } else {
+              toUpsert.push({
+                user_id,
+                project_id: projectId,
+                tender_id: activeTenderId ?? null,
+                excel_version_id: excelVersionId,
+                sheet_name: sheetName,
+                parent_id: r._parentTmpId
+                  ? tmpToDbId.get(r._parentTmpId) ?? sheetGroupDbId
+                  : sheetGroupDbId,
+                item_no: r.item_no,
+                description_ar: r.description_ar,
+                unit: r.is_group ? null : r.unit || null,
+                quantity: r.is_group ? 0 : r.quantity,
+                material_cost: r.material_cost,
+                labor_cost: r.labor_cost,
+                equipment_cost: r.equipment_cost,
+                subcontractor_cost: r.subcontractor_cost,
+                note: r.note_text ?? null,
+                is_group: r.is_group,
+                row_kind: r.row_kind,
+                excel_row_index: r.excel_row_index,
+                rate_cell_ref: r.rate_cell_ref,
+                total_cell_ref: r.total_cell_ref,
+                note_cell_ref: r.note_cell_ref,
+                level: r._level,
+                sort_order: (indexOf.get(r._tmpId) ?? 0) + 1,
+                raw_row: r._raw as unknown as never,
+              });
+            }
+          }
+
+          if (toUpsert.length > 0) {
+            const { data, error } = await estimationClient
+              .from("boq_items")
+              .upsert(toUpsert, { onConflict: "user_id,project_id,sheet_name,item_no" })
+              .select("id, item_no");
+            if (error) throw error;
+            (data ?? []).forEach((row: any, i: number) => {
+              const source = batch.find((b) => b.item_no === row.item_no) ?? batch[i];
+              if (source) tmpToDbId.set(source._tmpId, row.id);
+            });
+          }
         }
         totalImported += sheetParsed.data.length;
       }
+
+      await estimationClient
+        .from("boq_excel_versions")
+        .update({
+          writeback_map: writebackMap as unknown as never,
+          imported_count: totalImported,
+        })
+        .eq("id", excelVersionId);
 
       await estimationClient
         .from("projects")
@@ -1064,6 +1267,50 @@ export function ImportExcelDialog() {
                     استيراد الصفحة الحالية فقط ({parsed.data.length} بند)
                   </label>
                 </div>
+              </div>
+            )}
+
+            {/* Replace Existing / Smart Re-Import Diff Options */}
+            {reimportDiff && (
+              <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 font-semibold text-primary">
+                    <GitCompare className="h-4 w-4" />
+                    <span>مقارنة إعادة الاستيراد (Re-Import Diff)</span>
+                    {fileSha256 && (
+                      <Badge variant="outline" className="font-mono text-[10px]">
+                        SHA-256: {fileSha256.slice(0, 10)}…
+                      </Badge>
+                    )}
+                  </div>
+                  <label className="flex items-center gap-1.5 cursor-pointer font-medium">
+                    <input
+                      type="checkbox"
+                      checked={smartDiffMerge && !replaceExisting}
+                      disabled={replaceExisting}
+                      onChange={(e) => setSmartDiffMerge(e.target.checked)}
+                      className="accent-primary h-3.5 w-3.5"
+                    />
+                    <span>تحديث ذكي يحفظ تحليلات الأسعار المرتبطة ({reimportDiff.preservedPricingCount})</span>
+                  </label>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-[11px] tabular-nums">
+                  <div className="rounded border border-border bg-background px-2 py-1">تطابق تام: <strong>{reimportDiff.unchangedCount}</strong></div>
+                  <div className="rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1">تغيير كمية: <strong>{reimportDiff.qtyChangedCount}</strong></div>
+                  <div className="rounded border border-blue-500/30 bg-blue-500/10 px-2 py-1">تغيير وصف: <strong>{reimportDiff.descriptionChangedCount}</strong></div>
+                  <div className="rounded border border-purple-500/30 bg-purple-500/10 px-2 py-1">إعادة ترتيب: <strong>{reimportDiff.reorderedCount}</strong></div>
+                  <div className="rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-1">بنود جديدة: <strong>{reimportDiff.addedCount}</strong></div>
+                  <div className="rounded border border-rose-500/30 bg-rose-500/10 px-2 py-1">غير موجودة بالملف: <strong>{reimportDiff.removedCount}</strong></div>
+                </div>
+              </div>
+            )}
+
+            {!reimportDiff && fileSha256 && (
+              <div className="flex items-center gap-2 text-[11px] text-muted-foreground px-1">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                <span>بصمة المصنف المحفوظة للكتابة العكسية (SHA-256):</span>
+                <code className="font-mono">{fileSha256.slice(0, 16)}…</code>
+                {originalWorkbookB64 && <Badge variant="secondary" className="text-[10px]">جاهز لحقن الأسعار في الأصل (.xlsx)</Badge>}
               </div>
             )}
 

@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="960" viewBox="0 0 1280 960" role="img" aria-labelledby="title desc">
+  <title id="title">تقديري | معمارية مكتبات التكلفة المباشرة وتقديم العطاء</title>
+  <desc id="desc">يتفرع التحليل المحفوظ إلى نموذج مباشر وأدلة لأسعار الموارد. عند الاستدعاء يُنقل المباشر إلى المنافسة وتُحسب التحميلات والتقريب داخلها، ثم يُعتمد الإصدار وملف إكسل.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#436a63"/>
+    </marker>
+  </defs>
+  <rect width="1280" height="960" fill="#f7f8f5"/>
+  <rect x="48" y="197" width="1184" height="256" rx="20" fill="#e7f1e9"/>
+  <rect x="48" y="473" width="1184" height="458" rx="20" fill="#eaf0f6"/>
+  <g font-family="Tahoma, Arial, sans-serif" text-anchor="middle" direction="rtl">
+    <text x="640" y="48" font-size="33" font-weight="bold" fill="#183935">تقديري | من تحليل البند إلى تقديم العطاء</text>
+    <text x="640" y="78" font-size="18" fill="#355a51">حدود البيانات والحساب بين المكتبة والمنافسة</text>
+    <text x="940" y="224" font-size="17" font-weight="bold" fill="#2b6453">المكتبة · التكلفة المباشرة فقط</text>
+    <text x="940" y="501" font-size="17" font-weight="bold" fill="#365b80">المنافسة · حساب البيع والاعتماد</text>
+  </g>
+  <g fill="none" stroke="#436a63" stroke-width="2.5" marker-end="url(#arrow)">
+    <path d="M640 184V211H340V238"/>
+    <path d="M640 184V211H810V238"/>
+    <path d="M340 322V352"/>
+    <path d="M940 322V352"/>
+    <path d="M340 436V460H640V511"/>
+    <path d="M940 436V460H640V511"/>
+    <path d="M640 595V621"/>
+    <path d="M640 705V731"/>
+    <path d="M640 815V841"/>
+  </g>
+  <g font-family="Tahoma, Arial, sans-serif" text-anchor="middle" direction="rtl">
+    <g>
+      <rect x="375" y="104" width="530" height="80" rx="12" fill="#183935" stroke="#183935"/>
+      <text x="640" y="136" font-size="23" font-weight="bold" fill="#fff">تحليل البند المحفوظ</text>
+      <text x="640" y="164" font-size="17" fill="#dbeee8">المشروع، المنافسة، إصدار التقدير، والبند المصدر</text>
+    </g>
+    <g>
+      <rect x="677" y="242" width="526" height="80" rx="12" fill="#fff" stroke="#9abfb1"/>
+      <text x="940" y="274" font-size="23" font-weight="bold" fill="#153b34">حفظ البند كنموذج</text>
+      <text x="940" y="302" font-size="17" fill="#355a51">المكونات والاستهلاك والهالك وتكلفة الوحدة المباشرة</text>
+    </g>
+    <g>
+      <rect x="77" y="242" width="526" height="80" rx="12" fill="#fff" stroke="#9abfb1"/>
+      <text x="340" y="274" font-size="23" font-weight="bold" fill="#153b34">إضافة أسعار الموارد المختارة</text>
+      <text x="340" y="302" font-size="17" fill="#355a51">تكلفة الشراء ووحدتها ودليل المورد أو مرجع التحليل</text>
+    </g>
+    <g>
+      <rect x="677" y="356" width="526" height="80" rx="12" fill="#fff" stroke="#9abfb1"/>
+      <text x="940" y="388" font-size="23" font-weight="bold" fill="#153b34">مراجعة ونشر إصدار النموذج</text>
+      <text x="940" y="416" font-size="17" fill="#355a51">حسب أقسام الأعمال، المشاريع، أو النماذج النمطية</text>
+    </g>
+    <g>
+      <rect x="77" y="356" width="526" height="80" rx="12" fill="#fff" stroke="#9abfb1"/>
+      <text x="340" y="388" font-size="23" font-weight="bold" fill="#153b34">مراجعة دليل السعر وتسوية العرض</text>
+      <text x="340" y="416" font-size="17" fill="#355a51">المشمولات، النقل، وحدة الشراء، والصلاحية</text>
+    </g>
+    <g>
+      <rect x="375" y="515" width="530" height="80" rx="12" fill="#fff" stroke="#a6b9ce"/>
+      <text x="640" y="547" font-size="23" font-weight="bold" fill="#1e3a57">استدعاء المباشر في العطاء المستهدف</text>
+      <text x="640" y="575" font-size="17" fill="#415c77">الموارد ومصدرها ونسخة النموذج، مع معاينة الأثر</text>
+    </g>
+    <g>
+      <rect x="375" y="625" width="530" height="80" rx="12" fill="#fff" stroke="#a6b9ce"/>
+      <text x="640" y="657" font-size="23" font-weight="bold" fill="#1e3a57">حساب بيع الوحدة في العطاء</text>
+      <text x="640" y="685" font-size="17" fill="#415c77">تحميلات العطاء على المباشر ثم التقريب لأعلى</text>
+    </g>
+    <g>
+      <rect x="375" y="735" width="530" height="80" rx="12" fill="#fff" stroke="#a6b9ce"/>
+      <text x="640" y="767" font-size="23" font-weight="bold" fill="#1e3a57">مراجعة واعتماد إصدار العطاء</text>
+      <text x="640" y="795" font-size="17" fill="#415c77">الجاهزية والتعليقات وفروق المقايسة ومطابقة إكسل</text>
+    </g>
+    <g>
+      <rect x="375" y="845" width="530" height="80" rx="12" fill="#183935" stroke="#183935"/>
+      <text x="640" y="877" font-size="23" font-weight="bold" fill="#fff">لقطة التقديم وملف إكسل</text>
+      <text x="640" y="905" font-size="17" fill="#dbeee8">قيم الإصدار المعتمد ومرجع الملف وبصمته</text>
+    </g>
+  </g>
+</svg>

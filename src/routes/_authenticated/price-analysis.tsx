@@ -35,7 +35,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { useActiveProjectId, setActiveProjectId } from "@/lib/active-project";
+import { useActiveProjectId, setActiveProjectId, useActiveTenderId } from "@/lib/active-project";
+import { scopeRowsByTender } from "@/lib/tender-pricing-scope";
 import { PaGrid } from "@/components/price-analysis/pa-grid";
 import { BoqSidebar } from "@/components/price-analysis/boq-sidebar";
 import { InPlaceTemplateCaller } from "@/components/price-analysis/in-place-template-caller";
@@ -149,9 +150,11 @@ function PriceAnalysisPage() {
     }
   }, [projectId, projects]);
 
-  // Fetch BOQ items for active project
-  const { data: boqItems = [], isLoading } = useQuery({
-    queryKey: ["boq_items", projectId],
+  const activeTenderId = useActiveTenderId();
+
+  // Fetch BOQ items for active project (scoped by activeTenderId if selected)
+  const { data: allBoqItems = [], isLoading } = useQuery({
+    queryKey: ["boq_items", projectId, activeTenderId],
     enabled: !!projectId,
     queryFn: async () => {
       if (!projectId) throw new Error("اختر مشروعاً أولاً");
@@ -166,6 +169,8 @@ function PriceAnalysisPage() {
       return data as BoqRow[];
     },
   });
+
+  const boqItems = scopeRowsByTender(allBoqItems, activeTenderId);
 
   // Auto-pick first item if none selected and items exist
   useEffect(() => {

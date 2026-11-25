@@ -1,6 +1,12 @@
 import * as XLSX from "xlsx";
 import type { Database } from "@/integrations/supabase/types";
-import { roundTo } from "./estimation-calc";
+import {
+  resolveBoqItemPricing,
+  roundTo,
+  roundUpRate,
+  type MarkupSettings,
+  type ResourceCostInput,
+} from "./estimation-calc";
 import { separateCategoryAndRate } from "./boq-header-mapping";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
@@ -15,7 +21,11 @@ export function exportBoq(
   excelHeadersRaw: any,
   excelPreHeadersRaw: any,
   format: "xlsx" | "csv",
-  lang: "ar" | "en" = "ar"
+  lang: "ar" | "en" = "ar",
+  paContext?: {
+    paItemsByItemId?: Map<string, ResourceCostInput[]>;
+    markupsByItemId?: Map<string, MarkupSettings>;
+  },
 ) {
   const isEn = lang === "en";
   const sheetNames = Array.from(new Set(allRows.map((r) => r.sheet_name || "Sheet1")));
@@ -48,16 +58,30 @@ export function exportBoq(
       if (n.is_group) {
         n.unitRate = 0;
         n.rolledTotal = roundTo(n.children.reduce((s, c) => s + computeTotal(c), 0), 2);
+      } else if (paContext?.paItemsByItemId || paContext?.markupsByItemId) {
+        const resolved = resolveBoqItemPricing({
+          item: n,
+          ...(paContext.paItemsByItemId?.get(n.id) ? { paLines: paContext.paItemsByItemId.get(n.id)! } : {}),
+          ...(paContext.markupsByItemId?.get(n.id) ? { markup: paContext.markupsByItemId.get(n.id)! } : {}),
+        });
+        n.unitRate = resolved.approvedUnitRate;
+        n.rolledTotal = resolved.lineSellingPrice;
       } else {
-        const fromPa = paSellingRates.get(n.id);
-        const rawRate =
-          typeof fromPa === "number" && fromPa > 0
-            ? fromPa
-            : Number(n.material_cost ?? 0) +
-              Number(n.labor_cost ?? 0) +
-              Number(n.equipment_cost ?? 0) +
-              Number(n.subcontractor_cost ?? 0);
-        n.unitRate = roundTo(rawRate, 2);
+        // Fallback aligned strictly with canonical priority: included -> rounded manual -> analysis -> stored
+        if (n.is_included_elsewhere) {
+          n.unitRate = 0;
+        } else if (Number(n.manual_unit_price ?? 0) > 0) {
+          n.unitRate = roundUpRate(Number(n.manual_unit_price));
+        } else if (n.rate_source === "analysis" || paSellingRates.has(n.id)) {
+          n.unitRate = roundUpRate(paSellingRates.get(n.id) ?? 0);
+        } else {
+          const stored =
+            Number(n.material_cost ?? 0) +
+            Number(n.labor_cost ?? 0) +
+            Number(n.equipment_cost ?? 0) +
+            Number(n.subcontractor_cost ?? 0);
+          n.unitRate = roundUpRate(stored);
+        }
         n.rolledTotal = roundTo(n.unitRate * Number(n.quantity ?? 0), 2);
       }
       return n.rolledTotal;

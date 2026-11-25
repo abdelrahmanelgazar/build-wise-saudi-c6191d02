@@ -15,7 +15,10 @@ import {
   ShoppingBag,
   Layers,
   ArrowLeftRight,
+  BookmarkPlus,
+  Database as DatabaseIcon,
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +51,7 @@ import {
 import type { Database } from "@/integrations/supabase/types";
 import { ImportPaDialog } from "./import-pa-dialog";
 import { SelectQuoteDialog } from "./select-quote-dialog";
+import { SaveAnalysisTemplateDialog, PublishPriceEvidenceDialog } from "./knowledge-capture-dialogs";
 import { exportPriceAnalysis } from "@/lib/pa-export";
 import { useLanguage } from "@/lib/i18n";
 
@@ -65,16 +69,16 @@ const TYPE_LABEL: Record<ResourceType, string> = {
 };
 
 const SECTION_HEADER_CLS: Record<ResourceType, string> = {
-  material:      "bg-muted/40 text-foreground border-r-[3px] border-r-chart-2",
-  labor:         "bg-muted/40 text-foreground border-r-[3px] border-r-chart-3",
-  equipment:     "bg-muted/40 text-foreground border-r-[3px] border-r-primary",
+  material: "bg-muted/40 text-foreground border-r-[3px] border-r-chart-2",
+  labor: "bg-muted/40 text-foreground border-r-[3px] border-r-chart-3",
+  equipment: "bg-muted/40 text-foreground border-r-[3px] border-r-primary",
   subcontractor: "bg-muted/40 text-foreground border-r-[3px] border-r-chart-4",
 };
 
 const SECTION_SUBTOTAL_CLS: Record<ResourceType, string> = {
-  material:      "bg-muted/25 text-foreground",
-  labor:         "bg-muted/25 text-foreground",
-  equipment:     "bg-muted/25 text-foreground",
+  material: "bg-muted/25 text-foreground",
+  labor: "bg-muted/25 text-foreground",
+  equipment: "bg-muted/25 text-foreground",
   subcontractor: "bg-muted/25 text-foreground",
 };
 
@@ -88,7 +92,7 @@ type Col = { key: string; label: string; defaultW: number; align: "center" | "le
 const CELL = "flex shrink-0 items-center overflow-hidden border-l border-border/40 px-2 py-[5px] text-[11px] tabular-nums";
 
 export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
-  const qc        = useQueryClient();
+  const qc = useQueryClient();
   const projectId = useActiveProjectId();
   const { t, language } = useLanguage();
   const storageKey = `pa-grid-v3-widths:${boqItem.id}`;
@@ -104,14 +108,14 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   // Unified single "التوصيف (Description)" column + dedicated "الملاحظات (Notes)" as LAST logical column after amount
   const cols = useMemo(() => {
     const rawCols: Col[] = [
-      { key: "level",          label: t("pa.colItemNo", "رقم البند"),             defaultW: 75,  align: "center" },
-      { key: "description",    label: "التوصيف (Description)",                    defaultW: 360, align: "right"  },
-      { key: "qty",            label: t("common.quantity", "الكمية"),             defaultW: 75,  align: "center" },
-      { key: "uom",            label: t("common.unit", "وحدة القياس"),            defaultW: 75,  align: "center" },
-      { key: "rate",           label: t("common.directCost", "التكلفة المباشرة"), defaultW: 120, align: "center" },
-      { key: "amount",         label: "إجمالي التكلفة المباشرة",                   defaultW: 140, align: "center" },
-      { key: "notes",          label: "الملاحظات (Notes)",                        defaultW: 220, align: "right"  },
-      { key: "__actions",      label: "",                                         defaultW: 64,  align: "center" },
+      { key: "level", label: t("pa.colItemNo", "رقم البند"), defaultW: 75, align: "center" },
+      { key: "description", label: "التوصيف (Description)", defaultW: 360, align: "right" },
+      { key: "qty", label: t("common.quantity", "الكمية"), defaultW: 75, align: "center" },
+      { key: "uom", label: t("common.unit", "وحدة القياس"), defaultW: 75, align: "center" },
+      { key: "rate", label: t("common.directCost", "التكلفة المباشرة"), defaultW: 120, align: "center" },
+      { key: "amount", label: "إجمالي التكلفة المباشرة", defaultW: 140, align: "center" },
+      { key: "notes", label: "الملاحظات (Notes)", defaultW: 220, align: "right" },
+      { key: "__actions", label: "", defaultW: 64, align: "center" },
     ];
     return rawCols.map((c) => ({ ...c, w: colWidths[c.key] ?? c.defaultW }));
   }, [colWidths, t]);
@@ -128,6 +132,9 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   const [quoteDialogOpen, setQuoteDialogOpen] = useState(false);
   const [quoteDialogType, setQuoteDialogType] = useState<ResourceType>("material");
   const [exceptionEvidenceInput, setExceptionEvidenceInput] = useState("");
+  const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set());
+  const [saveTemplateDialogOpen, setSaveTemplateDialogOpen] = useState(false);
+  const [publishPriceDialogOpen, setPublishPriceDialogOpen] = useState(false);
 
   const { data: items = [] } = useQuery({
     queryKey: ["pa_items", boqItem.id],
@@ -258,10 +265,10 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
     const onUp = () => {
       resizeRef.current = null;
       window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup",   onUp);
+      window.removeEventListener("mouseup", onUp);
     };
     window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup",   onUp);
+    window.addEventListener("mouseup", onUp);
   };
 
   const updateMut = useMutation({
@@ -276,7 +283,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
       qc.invalidateQueries({ queryKey: ["pa_items_project", projectId] });
       qc.invalidateQueries({ queryKey: ["boq_items"] });
     },
-    onError:   (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const toggleMaterialCategoryMut = useMutation({
@@ -344,17 +351,17 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
       const maxSort = items.reduce((m, i) => Math.max(m, i.sort_order ?? 0), 0);
       const isAccessory = type === "material" && cat === "accessory";
       const { error } = await estimationClient.from("price_analysis_items").insert({
-        boq_item_id:   boqItem.id,
-        user_id:       userId,
-        project_id:    projectId,
+        boq_item_id: boqItem.id,
+        user_id: userId,
+        project_id: projectId,
         resource_type: type,
         description_ar: isAccessory ? "إكسسوار / مستهلك جديد" : `مكوّن جديد (${TYPE_LABEL[type]})`,
-        unit:          type === "material" ? (isAccessory ? "عدد" : "م³") : type === "labor" ? "يومية" : type === "equipment" ? "ساعة" : "مقطوعية",
-        quantity:      1,
-        unit_price:    0,
-        sort_order:    maxSort + 1,
+        unit: type === "material" ? (isAccessory ? "عدد" : "م³") : type === "labor" ? "يومية" : type === "equipment" ? "ساعة" : "مقطوعية",
+        quantity: 1,
+        unit_price: 0,
+        sort_order: maxSort + 1,
         material_category: type === "material" ? (cat ?? "primary") : null,
-        cell_styles:   (type === "material" ? { material_category: cat ?? "primary" } : null) as any,
+        cell_styles: (type === "material" ? { material_category: cat ?? "primary" } : null) as any,
       });
       if (error) throw error;
       await syncBoqItemBreakdownFromPa(boqItem.id);
@@ -364,7 +371,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
       qc.invalidateQueries({ queryKey: ["pa_items_project", projectId] });
       qc.invalidateQueries({ queryKey: ["boq_items"] });
     },
-    onError:   (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const cw = (key: string) => {
@@ -495,6 +502,32 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
             size="sm"
             variant="outline"
             className="gap-1.5"
+            disabled={items.length === 0}
+            onClick={() => setSaveTemplateDialogOpen(true)}
+            title="حفظ هذا التحليل كنموذج مباشر في المكتبة"
+          >
+            <BookmarkPlus className="h-3.5 w-3.5 text-primary" />
+            {t("knowledge.saveAsTemplate", "حفظ البند كنموذج")}
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
+            disabled={items.length === 0}
+            onClick={() => setPublishPriceDialogOpen(true)}
+            title="إضافة السطور المحددة (أو كل السطور) إلى مكتبة الأسعار"
+          >
+            <DatabaseIcon className="h-3.5 w-3.5 text-emerald-500" />
+            {selectedLineIds.size > 0
+              ? `إضافة (${selectedLineIds.size}) لمكتبة الأسعار`
+              : t("knowledge.publishToPriceLibrary", "إضافة لمكتبة الأسعار")}
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-1.5"
             onClick={() => exportPriceAnalysis(boqItem, items, markup ?? null)}
           >
             <Download className="h-3.5 w-3.5" />
@@ -514,9 +547,9 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               البريك داون لهذا البند فارغ (0.00)، بينما يحتوي جدول الكميات على تكلفة سابقة (
               {fmtSAR(
                 Number(boqItem.material_cost ?? 0) +
-                  Number(boqItem.labor_cost ?? 0) +
-                  Number(boqItem.equipment_cost ?? 0) +
-                  Number(boqItem.subcontractor_cost ?? 0),
+                Number(boqItem.labor_cost ?? 0) +
+                Number(boqItem.equipment_cost ?? 0) +
+                Number(boqItem.subcontractor_cost ?? 0),
                 language,
               )}
               ).
@@ -605,8 +638,8 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                   CELL,
                   "py-2 text-[11px] font-bold text-primary border-l border-primary/30 whitespace-pre-line leading-tight",
                   c.align === "center" && "justify-center text-center",
-                  c.align === "right"  && "justify-start  text-right",
-                  c.align === "left"   && "justify-start  text-left",
+                  c.align === "right" && "justify-start  text-right",
+                  c.align === "left" && "justify-start  text-left",
                 )}
               >
                 {c.label}
@@ -764,22 +797,22 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               return qty * (1 + waste / 100) * price;
             };
             const sectionItems = items.filter((i) => i.resource_type === type);
-            const subtotal     = sectionItems.reduce(
+            const subtotal = sectionItems.reduce(
               (s, i) => s + lineCostWithSingleWaste(i), 0,
             );
-            const isCollapsed  = collapsed.has(type);
-            const isMaterial   = type === "material";
+            const isCollapsed = collapsed.has(type);
+            const isMaterial = type === "material";
 
             // Material subcategories per plan §3 & §7: Primary vs Accessories
-            const primaryItems   = isMaterial ? sectionItems.filter((i) => (i.cell_styles as any)?.material_category !== "accessory") : [];
+            const primaryItems = isMaterial ? sectionItems.filter((i) => (i.cell_styles as any)?.material_category !== "accessory") : [];
             const accessoryItems = isMaterial ? sectionItems.filter((i) => (i.cell_styles as any)?.material_category === "accessory") : [];
-            const primaryTotal   = primaryItems.reduce((s, i) => s + lineCostWithSingleWaste(i), 0);
+            const primaryTotal = primaryItems.reduce((s, i) => s + lineCostWithSingleWaste(i), 0);
             const accessoryTotal = accessoryItems.reduce((s, i) => s + lineCostWithSingleWaste(i), 0);
 
             const renderItemRow = (it: PaItem, idx: number) => {
               const cellStyles = ((it.cell_styles ?? {}) as CellStyles);
-              const total      = lineCostWithSingleWaste(it);
-              const noteVal    = (cellStyles as any)?.note ?? "";
+              const total = lineCostWithSingleWaste(it);
+              const noteVal = (cellStyles as any)?.note ?? "";
               const isAccessory = (cellStyles as any)?.material_category === "accessory";
 
               return (
@@ -788,21 +821,34 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                   className="group flex border-b border-border/40 hover:bg-muted/10 transition-colors"
                   style={{ minWidth: totalW, minHeight: 30 }}
                 >
-                  {/* Level */}
+                  {/* Level + Row Selection Checkbox for M-02 Price Library Publishing */}
                   <div style={cw("level")}
-                    className={cn(CELL, "justify-center text-[10px] text-muted-foreground/60 select-none")}>
-                    {idx + 1}
+                    className={cn(CELL, "justify-center gap-1.5 text-[10px] text-muted-foreground/60 select-none")}>
+                    <Checkbox
+                      checked={selectedLineIds.has(it.id)}
+                      onCheckedChange={(checked) => {
+                        setSelectedLineIds((prev) => {
+                          const next = new Set(prev);
+                          if (checked) next.add(it.id);
+                          else next.delete(it.id);
+                          return next;
+                        });
+                      }}
+                      aria-label={`تحديد ${it.description_ar}`}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span>{idx + 1}</span>
                   </div>
 
                   {/* Description (Unified editable cell) */}
                   <div
                     className={cn(CELL, "gap-1.5", {
                       "font-bold": cellStyles["description"]?.bold,
-                      "italic":    cellStyles["description"]?.italic,
+                      "italic": cellStyles["description"]?.italic,
                     })}
                     style={{
                       ...cw("description"),
-                      fontSize:  cellStyles["description"]?.fontSize
+                      fontSize: cellStyles["description"]?.fontSize
                         ? `${cellStyles["description"].fontSize}px` : undefined,
                       textAlign: cellStyles["description"]?.align ?? "right",
                     }}
@@ -953,16 +999,16 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                     className={cn(CELL, "justify-center text-[11px] text-muted-foreground")}>
                     {isCollapsed
                       ? <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                      : <ChevronDown  className="h-3.5 w-3.5 shrink-0" />}
+                      : <ChevronDown className="h-3.5 w-3.5 shrink-0" />}
                   </div>
                   <div style={cw("description")}
                     className={cn(CELL, "gap-2 text-[13px] font-bold justify-start text-right")}>
                     <span>{TYPE_LABEL[type]}</span>
                     <span className="text-[11px] font-normal text-muted-foreground">({sectionItems.length})</span>
                   </div>
-                  <div style={cw("qty")}   className={cn(CELL, "justify-center")} />
-                  <div style={cw("uom")}   className={cn(CELL, "justify-center")} />
-                  <div style={cw("rate")}  className={cn(CELL, "justify-center")} />
+                  <div style={cw("qty")} className={cn(CELL, "justify-center")} />
+                  <div style={cw("uom")} className={cn(CELL, "justify-center")} />
+                  <div style={cw("rate")} className={cn(CELL, "justify-center")} />
                   <div style={cw("amount")}
                     className={cn(CELL, "justify-center border-l-border/40 text-[12px] font-bold")}>
                     {subtotal > 0 ? fmtNumber(subtotal, 2) : ""}
@@ -1034,18 +1080,18 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
                     className={cn("flex border-b text-[11px] font-semibold", SECTION_SUBTOTAL_CLS[type])}
                     style={{ minWidth: totalW }}
                   >
-                    <div style={cw("level")}       className={cn(CELL, "justify-center")} />
+                    <div style={cw("level")} className={cn(CELL, "justify-center")} />
                     <div style={cw("description")} className={cn(CELL, "justify-start text-right font-bold")}>
                       مجموع {TYPE_LABEL[type]}
                     </div>
-                    <div style={cw("qty")}         className={cn(CELL, "justify-center")} />
-                    <div style={cw("uom")}         className={cn(CELL, "justify-center")} />
-                    <div style={cw("rate")}        className={cn(CELL, "justify-center")} />
+                    <div style={cw("qty")} className={cn(CELL, "justify-center")} />
+                    <div style={cw("uom")} className={cn(CELL, "justify-center")} />
+                    <div style={cw("rate")} className={cn(CELL, "justify-center")} />
                     <div style={cw("amount")}
                       className={cn(CELL, "justify-center border-l-border/40 font-bold")}>
                       {fmtNumber(subtotal, 2)}
                     </div>
-                    <div style={cw("notes")}       className={cn(CELL, "justify-start")} />
+                    <div style={cw("notes")} className={cn(CELL, "justify-start")} />
                     <div style={cw("__actions")} className={cn(CELL, "border-l-0")} />
                   </div>
                 )}
@@ -1110,6 +1156,32 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
         projectId={projectId}
         defaultType={quoteDialogType}
       />
+
+      <SaveAnalysisTemplateDialog
+        open={saveTemplateDialogOpen}
+        onOpenChange={setSaveTemplateDialogOpen}
+        boqItem={boqItem}
+        projectId={projectId}
+        onSaved={() => {
+          qc.invalidateQueries({ queryKey: ["knowledge_templates"] });
+        }}
+      />
+
+      <PublishPriceEvidenceDialog
+        open={publishPriceDialogOpen}
+        onOpenChange={setPublishPriceDialogOpen}
+        boqItem={boqItem}
+        projectId={projectId}
+        selectedLines={
+          selectedLineIds.size > 0
+            ? items.filter((i) => selectedLineIds.has(i.id))
+            : items
+        }
+        onPublished={() => {
+          setSelectedLineIds(new Set());
+          qc.invalidateQueries({ queryKey: ["knowledge_price_evidence"] });
+        }}
+      />
     </div>
   );
 }
@@ -1135,7 +1207,7 @@ function MarkupLine({
   projectId: string | null;
   lang?: "ar" | "en";
 }) {
-  const qc  = useQueryClient();
+  const qc = useQueryClient();
   const mut = useMutation({
     mutationFn: async (newPct: number) => {
       const { data: u } = await estimationClient.auth.getUser();
@@ -1150,12 +1222,12 @@ function MarkupLine({
       } else {
         const { error } = await estimationClient.from("price_analysis_markup").insert({
           boq_item_id: boqItemId,
-          user_id:     userId,
-          project_id:  projectId,
+          user_id: userId,
+          project_id: projectId,
           indirect_pct: field === "indirect_pct" ? newPct : 0,
           overhead_pct: field === "overhead_pct" ? newPct : 0,
-          risk_pct:     field === "risk_pct"     ? newPct : 0,
-          profit_pct:   field === "profit_pct"   ? newPct : 0,
+          risk_pct: field === "risk_pct" ? newPct : 0,
+          profit_pct: field === "profit_pct" ? newPct : 0,
         });
         if (error) throw error;
       }
@@ -1166,7 +1238,7 @@ function MarkupLine({
       qc.invalidateQueries({ queryKey: ["pa_markup_project", projectId] });
       qc.invalidateQueries({ queryKey: ["boq_items"] });
     },
-    onError:   (e: Error) => toast.error(e.message),
+    onError: (e: Error) => toast.error(e.message),
   });
 
   return (
@@ -1201,7 +1273,7 @@ function EditableCell({
   style?: React.CSSProperties;
 }) {
   const [editing, setEditing] = useState(false);
-  const [draft,   setDraft]   = useState(value);
+  const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
 
   if (editing) {
@@ -1214,7 +1286,7 @@ function EditableCell({
           onBlur={() => { setEditing(false); if (draft !== value) onSave(draft); }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); }
-            if (e.key === "Escape")               { setDraft(value); setEditing(false); }
+            if (e.key === "Escape") { setDraft(value); setEditing(false); }
           }}
           className="w-full resize-none rounded border border-primary bg-background px-1.5 py-0.5 text-[11px] leading-tight outline-none focus:ring-1 focus:ring-primary"
           rows={Math.min(4, Math.max(1, draft.split("\n").length))}

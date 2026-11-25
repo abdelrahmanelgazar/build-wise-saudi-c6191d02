@@ -419,6 +419,14 @@ export const arTranslations = {
   "breakdown.descriptionEn": "وصف النموذج بالإنجليزية",
   "breakdown.resourceDescriptionEn": "وصف المورد بالإنجليزية",
   "common.unclassifiedDivision": "غير مصنف",
+  "nav.tenderAssurance": "جاهزية العطاء والتعليقات",
+  "knowledge.saveAsTemplate": "حفظ البند كنموذج",
+  "knowledge.publishToPriceLibrary": "إضافة موارد لمكتبة الأسعار",
+  "knowledge.viewOverview": "عام",
+  "knowledge.viewBySection": "نماذج البنود حسب الأقسام",
+  "knowledge.viewByProject": "نماذج البنود حسب المشاريع",
+  "knowledge.viewIndirectCost": "التكلفة غير المباشرة",
+  "knowledge.viewTypicalAssemblies": "نماذج تسعير نمطية",
 } as const;
 
 export type TranslationKey = keyof typeof arTranslations;

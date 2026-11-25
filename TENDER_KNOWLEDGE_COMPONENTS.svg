@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="620" viewBox="0 0 1000 620" role="img" aria-labelledby="t d">
+<title id="t">معمارية وحدات تقديري</title><desc id="d">تستدعي الواجهة خدمات التطبيق التي تستخدم محرك الحساب وتتحقق من صلاحية عمليات الحفظ والاعتماد. تربط قاعدة البيانات كل إصدار بمستنداته.</desc>
+<rect width="1000" height="620" fill="#f5f7f3"/>
+<g font-family="Tahoma,Arial,sans-serif" text-anchor="middle" direction="rtl">
+<text x="500" y="57" font-size="31" font-weight="bold" fill="#183935">معمارية تقديري | مسؤوليات التنفيذ</text>
+<g transform="translate(80 96)">
+<rect width="840" height="96" rx="12" fill="#e4eee9"/>
+<text x="420" y="36" font-size="23" font-weight="bold" fill="#193e38">واجهة العمل</text>
+<text x="420" y="73" font-size="18" fill="#315951">تحليل السعر واستدعاء نموذج  ·  المكتبتان ومراجعة المنافسة</text>
+</g>
+<g transform="translate(80 225)">
+<rect width="840" height="96" rx="12" fill="#173e38"/>
+<text x="420" y="36" font-size="23" font-weight="bold" fill="#fff">خدمات التطبيق</text>
+<text x="420" y="73" font-size="18" fill="#ebf3ea">حفظ مصدر وإصدار وصلاحية  ·  تطبيق نموذج واعتماد تقدير</text>
+</g>
+<g transform="translate(80 354)">
+<rect width="840" height="96" rx="12" fill="#e4eee9"/>
+<text x="420" y="36" font-size="23" font-weight="bold" fill="#193e38">محرك الحساب المشترك</text>
+<text x="420" y="73" font-size="18" fill="#315951">مباشر الموارد والوحدات والهالك  ·  تحميلات وبيع داخل المنافسة فقط</text>
+</g>
+<g transform="translate(80 483)">
+<rect width="840" height="96" rx="12" fill="#e4eee9"/>
+<text x="420" y="36" font-size="23" font-weight="bold" fill="#193e38">البيانات والمستندات</text>
+<text x="420" y="73" font-size="18" fill="#315951">إصدارات وعلاقات في Supabase  ·  مصنفات وعروض وملفات تقديم خاصة</text>
+</g>
+</g></svg>

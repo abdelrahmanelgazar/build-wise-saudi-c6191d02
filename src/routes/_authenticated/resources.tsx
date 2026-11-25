@@ -34,16 +34,40 @@ import { CSI_DIVISIONS, csiDivisionCode, csiDivisionLabel } from "@/lib/csi-divi
 import { useLanguage } from "@/lib/i18n";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 import { SupplierQuotesPanel } from "@/components/resources/supplier-quotes-panel";
+import { listAllPriceEvidence } from "@/lib/knowledge-library-service";
 
 type ResourceRow = Database["public"]["Tables"]["resources"]["Row"] & {
   name_en?: string | null;
   division?: string | null;
 };
 type ResourceType = Database["public"]["Enums"]["resource_type"];
-type QuotationTab = "all" | "supplier_quotes" | "subcontractor" | "equipment" | "labor" | "material" | "general_requirements";
+type QuotationTab =
+  | "all"
+  | "supplier_quotes"
+  | "price_evidence"
+  | "by_project"
+  | "typical_assembly_offers"
+  | "subcontractor"
+  | "equipment"
+  | "labor"
+  | "material"
+  | "general_requirements";
 
 const resourcesSearchSchema = z.object({
-  tab: z.enum(["all", "supplier_quotes", "subcontractor", "equipment", "labor", "material", "general_requirements"]).optional(),
+  tab: z
+    .enum([
+      "all",
+      "supplier_quotes",
+      "price_evidence",
+      "by_project",
+      "typical_assembly_offers",
+      "subcontractor",
+      "equipment",
+      "labor",
+      "material",
+      "general_requirements",
+    ])
+    .optional(),
 });
 
 export const Route = createFileRoute("/_authenticated/resources")({
@@ -54,7 +78,10 @@ export const Route = createFileRoute("/_authenticated/resources")({
 
 const TAB_CONFIG: Record<QuotationTab, { labelKey: string; defaultLabel: string; icon: typeof Boxes; color: string; resourceType: ResourceType }> = {
   all: { labelKey: "resources.tabAll", defaultLabel: "عام (الكل)", icon: Boxes, color: "text-foreground", resourceType: "material" },
-  supplier_quotes: { labelKey: "resources.tabSupplierQuotes", defaultLabel: "عروض الموردين الموثّقة", icon: FileText, color: "text-emerald-500", resourceType: "material" },
+  supplier_quotes: { labelKey: "resources.tabSupplierQuotes", defaultLabel: "عروض الموردين الفعلية", icon: FileText, color: "text-emerald-500", resourceType: "material" },
+  price_evidence: { labelKey: "resources.tabPriceEvidence", defaultLabel: "الأسعار المرجعية (من تحليل)", icon: FileText, color: "text-amber-500", resourceType: "material" },
+  by_project: { labelKey: "resources.tabByProject", defaultLabel: "عروض حسب المشروع", icon: FileText, color: "text-primary", resourceType: "material" },
+  typical_assembly_offers: { labelKey: "resources.tabTypicalOffers", defaultLabel: "عروض النماذج النمطية", icon: Boxes, color: "text-chart-4", resourceType: "subcontractor" },
   subcontractor: { labelKey: "resources.tabSubcontractor", defaultLabel: "مقاولو الباطن", icon: Truck, color: "text-chart-4", resourceType: "subcontractor" },
   equipment: { labelKey: "resources.tabEquipment", defaultLabel: "المعدات", icon: Truck, color: "text-primary", resourceType: "equipment" },
   labor: { labelKey: "resources.tabLabour", defaultLabel: "العمالة", icon: Hammer, color: "text-chart-3", resourceType: "labor" },
@@ -251,8 +278,35 @@ function ResourcesPage() {
           <SupplierQuotesPanel projectId={projectId} resources={resources} />
         </TabsContent>
 
+        <TabsContent value="price_evidence" className="space-y-4">
+          <PriceEvidenceLibraryView
+            mode="price_evidence"
+            projectId={projectId}
+            search={search}
+            csiFilter={selectedDivisionFilter}
+          />
+        </TabsContent>
+
+        <TabsContent value="by_project" className="space-y-4">
+          <PriceEvidenceLibraryView
+            mode="by_project"
+            projectId={projectId}
+            search={search}
+            csiFilter={selectedDivisionFilter}
+          />
+        </TabsContent>
+
+        <TabsContent value="typical_assembly_offers" className="space-y-4">
+          <PriceEvidenceLibraryView
+            mode="typical_assembly_offers"
+            projectId={projectId}
+            search={search}
+            csiFilter={selectedDivisionFilter}
+          />
+        </TabsContent>
+
         {(Object.keys(TAB_CONFIG) as QuotationTab[])
-          .filter((k) => k !== "supplier_quotes")
+          .filter((k) => !["supplier_quotes", "price_evidence", "by_project", "typical_assembly_offers"].includes(k))
           .map((tKey) => (
           <TabsContent key={tKey} value={tKey} className="space-y-4">
             {isLoading && (
@@ -358,6 +412,94 @@ export function PageHeader({
         )}
       </div>
       {action}
+    </div>
+  );
+}
+
+function PriceEvidenceLibraryView({
+  mode,
+  projectId,
+  search,
+  csiFilter,
+}: {
+  mode: "price_evidence" | "by_project" | "typical_assembly_offers";
+  projectId: string;
+  search: string;
+  csiFilter: string;
+}) {
+  const entries = useMemo(
+    () =>
+      listAllPriceEvidence({
+        ...(mode === "by_project" ? { projectId, scope: "project" as const } : {}),
+        ...(mode === "typical_assembly_offers" ? { scope: "typical_assembly" as const } : {}),
+        csiDivision: csiFilter,
+        search,
+      }),
+    [mode, projectId, search, csiFilter],
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-lg border border-border bg-card p-4">
+        <h2 className="text-sm font-bold">
+          {mode === "price_evidence"
+            ? "الأسعار المرجعية والتاريخية (من تحليل الأسعار — منفصلة عن عروض الموردين)"
+            : mode === "by_project"
+              ? "أسعار وعروض حسب المشروع"
+              : "عروض النماذج النمطية (مثل توريد تسوير Plywood 3 م ولافتات مشروع)"}
+        </h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          يحافظ السجل على مصدر السعر (عرض مورد موثق أم مرجع داخلي من تحليل) وحالة الضريبة والصلاحية دون تكرار.
+        </p>
+      </div>
+
+      {entries.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border p-10 text-center text-xs text-muted-foreground">
+          لا توجد سجلات مضافة هنا بعد — استخدم زر «إضافة لمكتبة الأسعار» داخل شاشة تحليل الأسعار لإضافة موارد موثقة.
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="w-full text-xs tabular-nums">
+            <thead className="bg-muted/40">
+              <tr>
+                <th className="p-2.5 text-start">المورد / الوصف</th>
+                <th className="p-2.5 text-center">الأصل والموثوقية</th>
+                <th className="p-2.5 text-center">المشروع المصدر</th>
+                <th className="p-2.5 text-center">القسم CSI</th>
+                <th className="p-2.5 text-center">الوحدة</th>
+                <th className="p-2.5 text-center">التكلفة المباشرة</th>
+                <th className="p-2.5 text-center">الضريبة والتاريخ</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {entries.map((entry) => (
+                <tr key={entry.id}>
+                  <td className="p-2.5 font-medium">
+                    <div>{entry.title_ar}</div>
+                    {entry.linked_assembly_code && (
+                      <div className="text-[10px] text-primary font-mono">{entry.linked_assembly_code}</div>
+                    )}
+                  </td>
+                  <td className="p-2.5 text-center">
+                    <Badge variant={entry.source_type === "supplier_quote" ? "default" : "secondary"} className="text-[10px]">
+                      {entry.source_type === "supplier_quote" ? "عرض مورد موثّق" : "مرجع داخلي من تحليل"}
+                    </Badge>
+                  </td>
+                  <td className="p-2.5 text-center text-muted-foreground">{entry.project_name || "—"}</td>
+                  <td className="p-2.5 text-center font-mono">{entry.csi_division}</td>
+                  <td className="p-2.5 text-center">{entry.unit}</td>
+                  <td className="p-2.5 text-center font-mono font-bold text-primary">{fmtSAR(entry.direct_unit_price)}</td>
+                  <td className="p-2.5 text-center text-[10px] text-muted-foreground">
+                    {entry.tax_basis === "included" ? "شامل VAT" : entry.tax_basis === "excluded" ? "قبل VAT" : "غير محدد"}
+                    {" · "}
+                    <span className="font-mono">{entry.price_date}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
