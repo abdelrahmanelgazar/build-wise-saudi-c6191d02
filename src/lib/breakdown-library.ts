@@ -4,6 +4,7 @@ import { readWorkspaceSetting, writeWorkspaceSetting } from "./workspace-setting
 import { computeDirectUnitCost, computePricingPhase2, type ResourceCostInput } from "./estimation-calc";
 import { CSI_01_10_ASSEMBLIES } from "./csi-01-10-assemblies";
 import { CSI_REMAINING_WORKS_ASSEMBLIES } from "./csi-remaining-works-assemblies";
+import { CSI_V2_EXPANSION_ASSEMBLIES } from "./csi-v2-expansion-assemblies";
 import type { Database } from "@/integrations/supabase/types";
 
 export type BreakdownResourceType = "material" | "labor" | "equipment" | "subcontractor";
@@ -342,6 +343,7 @@ const originalTemplates: BreakdownTemplate[] = [
 export const DEFAULT_BREAKDOWN_TEMPLATES: BreakdownTemplate[] = [
   ...CSI_01_10_ASSEMBLIES,
   ...CSI_REMAINING_WORKS_ASSEMBLIES,
+  ...CSI_V2_EXPANSION_ASSEMBLIES,
   ...originalTemplates.map(template => ({
     ...template,
     items: template.items.map(item => ({
@@ -385,6 +387,30 @@ export async function deleteCustomTemplate(id: string) {
   if (typeof window === "undefined") return;
   const list = getCustomTemplates().filter((t) => t.id !== id);
   await writeWorkspaceSetting(STORAGE_KEY, JSON.stringify(list));
+}
+
+/** Imports a reviewed batch of custom CSI assemblies from JSON into workspace storage. */
+export async function importCustomTemplatesBatch(templates: BreakdownTemplate[]): Promise<number> {
+  if (typeof window === "undefined") return 0;
+  const list = getCustomTemplates();
+  const byId = new Map(list.map((t) => [t.id, t]));
+  let count = 0;
+  for (const tpl of templates) {
+    const titleAr = tpl.title_ar || (tpl as any).name_ar;
+    if (!tpl.code || !titleAr || !Array.isArray(tpl.items)) continue;
+    const id = tpl.id || `custom-${tpl.code}-${Date.now()}-${count}`;
+    byId.set(id, {
+      ...tpl,
+      title_ar: titleAr,
+      title_en: tpl.title_en || (tpl as any).name_en || titleAr,
+      id,
+      is_custom: true,
+      created_at: tpl.created_at || new Date().toISOString(),
+    });
+    count++;
+  }
+  await writeWorkspaceSetting(STORAGE_KEY, JSON.stringify(Array.from(byId.values())));
+  return count;
 }
 
 export function calculateBreakdownCost(

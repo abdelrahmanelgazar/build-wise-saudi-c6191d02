@@ -1,4 +1,6 @@
 import { estimationClient } from "@/lib/estimation-client";
+import { isLocalDevelopment } from "@/lib/local-development";
+import { supabase } from "@/integrations/supabase/client";
 import type {
   Client,
   ClientType,
@@ -410,20 +412,95 @@ export async function submitTenderVersion(params: {
   const nextVersion = existing.length > 0 ? Math.max(...existing.map((s) => s.versionNo)) + 1 : 1;
   const now = new Date().toISOString();
 
+  let persistedVersionNo = nextVersion;
+  let persistedId = crypto.randomUUID ? crypto.randomUUID() : `sub-${Date.now()}`;
+  let persistedAt = now;
+
+  // In hosted Supabase mode, execute the atomic SQL RPC (`submit_tender_version`) first
+  // so tender_submissions insert + tenders status update + tender_transitions commit together or rollback cleanly.
+  if (!isLocalDevelopment() && typeof window !== "undefined") {
+    const { data: rpcRow, error: rpcErr } = await supabase.rpc("submit_tender_version", {
+      p_tender_id: tenderId,
+      p_project_id: projectId,
+      p_idempotency_key: idempotencyKey,
+      p_currency: currency,
+      p_pricing_policy: "additive_v2",
+      p_document_ref: documentRef,
+      p_total_direct_cost: totalDirectCost,
+      p_net_selling_price: netSellingPrice,
+      p_vat_rate: vatRate,
+      p_vat_amount: vatAmount,
+      p_grand_total_with_vat: grandTotalWithVat,
+      p_items_snapshot: itemSnapshots as unknown as never,
+    });
+    if (rpcErr) {
+      throw new Error(rpcErr.message || "فشل تنفيذ التقديم الذري على قاعدة البيانات.");
+    }
+    if (rpcRow) {
+      persistedId = (rpcRow as any).id || persistedId;
+      persistedVersionNo = Number((rpcRow as any).version_no ?? persistedVersionNo);
+      persistedAt = (rpcRow as any).submitted_at || persistedAt;
+    }
+  } else {
+    // Local dev / Vitest parity: persist submission record & transitions sequentially after failure guard
+    try {
+      await Promise.all([
+        (estimationClient as any).from("tender_submissions").insert({
+          id: persistedId,
+          tender_id: tenderId,
+          project_id: projectId,
+          version_no: persistedVersionNo,
+          idempotency_key: idempotencyKey,
+          currency,
+          pricing_policy: "additive_v2",
+          document_ref: documentRef,
+          total_direct_cost: totalDirectCost,
+          net_selling_price: netSellingPrice,
+          vat_rate: vatRate,
+          vat_amount: vatAmount,
+          grand_total_with_vat: grandTotalWithVat,
+          items_snapshot: itemSnapshots,
+          submitted_by: userId,
+          submitted_at: persistedAt,
+        }),
+        (estimationClient as any)
+          .from("tenders")
+          .update({
+            status: "submitted",
+            submitted_at: persistedAt,
+            submitted_amount: netSellingPrice,
+            updated_at: persistedAt,
+          })
+          .eq("id", tenderId),
+        (estimationClient as any).from("tender_transitions").insert({
+          id: crypto.randomUUID ? crypto.randomUUID() : `tr-${Date.now()}`,
+          tender_id: tenderId,
+          from_status: "review",
+          to_status: "submitted",
+          reason: `تقديم الإصدار #${persistedVersionNo}${documentRef ? ` (${documentRef})` : ""}`,
+          changed_by: userId,
+          created_at: persistedAt,
+        }),
+      ]);
+    } catch {
+      // Pure offline unit test environment without local HTTP store still preserves immutable snapshot
+    }
+  }
+
   const snapshot: SubmittedTenderSnapshot = {
-    id: crypto.randomUUID ? crypto.randomUUID() : `sub-${Date.now()}`,
+    id: persistedId,
     tenderId,
     projectId,
     companyId,
     companyName,
     clientName,
-    versionNo: nextVersion,
+    versionNo: persistedVersionNo,
     idempotencyKey,
     currency,
     pricingPolicy: "additive_v2",
     documentRef,
     submittedBy: userId,
-    submittedAt: now,
+    submittedAt: persistedAt,
     totalDirectCost,
     netSellingPrice,
     vatRate,
@@ -432,35 +509,9 @@ export async function submitTenderVersion(params: {
     items: itemSnapshots,
   };
 
-  // Persist snapshot locally (immutable) & attempt DB persistence
   const store = readSnapshotStore();
   store[tenderId] = [snapshot, ...(store[tenderId] ?? [])];
   writeSnapshotStore(store);
-
-  try {
-    await Promise.all([
-      (estimationClient as any)
-        .from("tenders")
-        .update({
-          status: "submitted",
-          submitted_at: now,
-          submitted_amount: netSellingPrice,
-          updated_at: now,
-        })
-        .eq("id", tenderId),
-      (estimationClient as any).from("tender_transitions").insert({
-        id: crypto.randomUUID ? crypto.randomUUID() : `tr-${Date.now()}`,
-        tender_id: tenderId,
-        from_status: "review",
-        to_status: "submitted",
-        reason: `تقديم الإصدار #${nextVersion}${documentRef ? ` (${documentRef})` : ""}`,
-        changed_by: userId,
-        created_at: now,
-      }),
-    ]);
-  } catch {
-    // Local unit tests or offline mode without live tenders table still preserve immutable snapshot
-  }
 
   return snapshot;
 }

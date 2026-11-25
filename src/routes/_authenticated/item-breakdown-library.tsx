@@ -55,13 +55,15 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { estimationClient } from "@/lib/estimation-client";
-import { useActiveProjectId } from "@/lib/active-project";
+import { useActiveProjectId, useActiveTenderId } from "@/lib/active-project";
+import { scopeRowsByTender } from "@/lib/tender-pricing-scope";
 import { useLanguage } from "@/lib/i18n";
 import { CSI_DIVISIONS, csiDivisionCode, csiDivisionLabel } from "@/lib/csi-divisions";
 import {
   getAllBreakdownTemplates,
   DEFAULT_BREAKDOWN_TEMPLATES,
   saveCustomTemplate,
+  importCustomTemplatesBatch,
   deleteCustomTemplate,
   calculateBreakdownCost,
   applyTemplateToBoqItem,
@@ -177,9 +179,11 @@ function ItemBreakdownLibraryPage() {
     [templates],
   );
 
+  const activeTenderId = useActiveTenderId();
+
   // Fetch project BOQ items for apply modal and Coverage Registry
-  const { data: boqItems = [] } = useQuery({
-    queryKey: ["boq_items_for_apply", projectId],
+  const { data: allBoqItems = [] } = useQuery({
+    queryKey: ["boq_items_for_apply", projectId, activeTenderId],
     enabled: !!projectId && (applyModalOpen || activeTab === "coverage"),
     queryFn: async () => {
       if (!projectId) return [];
@@ -194,6 +198,11 @@ function ItemBreakdownLibraryPage() {
       return data as BoqRow[];
     },
   });
+
+  const boqItems = useMemo(
+    () => scopeRowsByTender(allBoqItems as any[], activeTenderId) as BoqRow[],
+    [allBoqItems, activeTenderId],
+  );
 
   const { data: coverageRecords = [] } = useQuery({
     queryKey: ["assembly_coverage_records", projectId],
@@ -721,6 +730,33 @@ function ItemBreakdownLibraryPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <label className="cursor-pointer">
+            <input
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (!file) return;
+                try {
+                  const text = await file.text();
+                  const parsedJson = JSON.parse(text);
+                  const arr = Array.isArray(parsedJson) ? parsedJson : parsedJson?.templates;
+                  if (!Array.isArray(arr)) throw new Error("ملف JSON يجب أن يحتوي على مصفوفة قوالب");
+                  const importedCount = await importCustomTemplatesBatch(arr);
+                  setTemplates(getAllBreakdownTemplates());
+                  toast.success(`تم استيراد ${importedCount} نموذجاً معتمداً إلى مكتبة الشركة بنجاح.`);
+                } catch (err: any) {
+                  toast.error(err?.message || "تعذر قراءة ملف القوالب JSON");
+                }
+              }}
+            />
+            <span className="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium hover:bg-muted">
+              <Copy className="h-3.5 w-3.5 text-primary" />
+              استيراد قوالب (JSON)
+            </span>
+          </label>
           <Button
             onClick={() => {
               setEditorMode("new");

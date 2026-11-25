@@ -27,6 +27,8 @@ import { getAllBreakdownTemplates } from "@/lib/breakdown-library";
 import { csiDivisionCode } from "@/lib/csi-divisions";
 import { getSubmittedTenderSnapshots } from "@/lib/client-tender-service";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
+import { useActiveTenderId } from "@/lib/active-project";
+import { scopeRowsByTender } from "@/lib/tender-pricing-scope";
 import * as XLSX from "xlsx";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -237,6 +239,7 @@ function ProjectsReport() {
 /* ============== 2) BOQ REPORT ============== */
 function BoqReport() {
   const [projectId, setProjectId] = useState<string>("");
+  const activeTenderId = useActiveTenderId();
   const [selectedVersion, setSelectedVersion] = useState<string>("draft");
 
   const { data: projects = [] } = useQuery({
@@ -254,8 +257,8 @@ function BoqReport() {
     if (!projectId && projects.length > 0) setProjectId(projects[0]?.id ?? "");
   }, [projectId, projects]);
 
-  const { data: items = [], isLoading } = useQuery({
-    queryKey: ["report-boq", projectId],
+  const { data: allItems = [], isLoading } = useQuery({
+    queryKey: ["report-boq", projectId, activeTenderId],
     enabled: !!projectId,
     queryFn: async () => {
       const { data, error } = await estimationClient
@@ -266,21 +269,21 @@ function BoqReport() {
     },
   });
 
-  const { data: paItems = [] } = useQuery({
-    queryKey: ["report-pa-items", projectId],
+  const { data: allPaItems = [] } = useQuery({
+    queryKey: ["report-pa-items", projectId, activeTenderId],
     enabled: !!projectId,
     queryFn: async () => {
       const { data, error } = await estimationClient
         .from("price_analysis_items")
-        .select("boq_item_id, resource_type, quantity, unit_price, waste_pct, productivity, cell_styles")
+        .select("boq_item_id, resource_type, quantity, unit_price, waste_pct, productivity, cell_styles, tender_id")
         .eq("project_id", projectId);
       if (error) throw error;
-      return (data as Array<ResourceCostInput & { boq_item_id: string }>) ?? [];
+      return (data as Array<ResourceCostInput & { boq_item_id: string; tender_id?: string | null }>) ?? [];
     },
   });
 
-  const { data: paMarkups = [] } = useQuery({
-    queryKey: ["report-pa-markups", projectId],
+  const { data: allPaMarkups = [] } = useQuery({
+    queryKey: ["report-pa-markups", projectId, activeTenderId],
     enabled: !!projectId,
     queryFn: async () => {
       const { data, error } = await estimationClient
@@ -291,6 +294,10 @@ function BoqReport() {
       return data ?? [];
     },
   });
+
+  const items = useMemo(() => scopeRowsByTender(allItems as any[], activeTenderId) as BoqItem[], [allItems, activeTenderId]);
+  const paItems = useMemo(() => scopeRowsByTender(allPaItems as any[], activeTenderId) as Array<ResourceCostInput & { boq_item_id: string }>, [allPaItems, activeTenderId]);
+  const paMarkups = useMemo(() => scopeRowsByTender(allPaMarkups as any[], activeTenderId), [allPaMarkups, activeTenderId]);
 
   const { data: projectTenders = [] } = useQuery({
     queryKey: ["report-tenders", projectId],
@@ -571,6 +578,7 @@ function ResourcesReport() {
 /* ============== 4) EXECUTIVE SUMMARY ============== */
 function ExecutiveSummary() {
   const [projectId, setProjectId] = useState<string>("");
+  const activeTenderId = useActiveTenderId();
 
   const { data: projects = [] } = useQuery({
     queryKey: ["report-summary-projects-list"],
@@ -596,18 +604,20 @@ function ExecutiveSummary() {
       const [boq, res, pa, mk] = await Promise.all([
         estimationClient.from("boq_items").select("*").eq("project_id", projectId),
         estimationClient.from("resources").select("type").eq("project_id", projectId),
-        estimationClient.from("price_analysis_items").select("boq_item_id,resource_type,quantity,unit_price,waste_pct,productivity").eq("project_id", projectId),
+        estimationClient.from("price_analysis_items").select("boq_item_id,resource_type,quantity,unit_price,waste_pct,productivity,tender_id").eq("project_id", projectId),
         estimationClient.from("price_analysis_markup").select("*").eq("project_id", projectId),
       ]);
-      const boqRows = (boq.data ?? []) as BoqItem[];
+      const boqRows = scopeRowsByTender((boq.data ?? []) as any[], activeTenderId) as BoqItem[];
+      const paScoped = scopeRowsByTender((pa.data ?? []) as any[], activeTenderId);
+      const mkScoped = scopeRowsByTender((mk.data ?? []) as any[], activeTenderId);
       const paByBoq = new Map<string, ResourceCostInput[]>();
-      for (const p of (pa.data ?? []) as any[]) {
+      for (const p of paScoped) {
         const list = paByBoq.get(p.boq_item_id) ?? [];
         list.push(p);
         paByBoq.set(p.boq_item_id, list);
       }
       const mkByBoq = new Map<string, MarkupSettings>();
-      for (const m of (mk.data ?? []) as any[]) {
+      for (const m of mkScoped) {
         if (m.boq_item_id) mkByBoq.set(m.boq_item_id, m);
       }
       const summary = computeProjectFinancials({

@@ -30,6 +30,9 @@ jobs:
       - name: Install dependencies
         run: npm install --force
 
+      - name: Run cloud release preflight check
+        run: node scripts/cloud-release-check.mjs
+
       - name: Build project
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://desjchcthsjaeiplhuls.supabase.co' }}
@@ -38,6 +41,7 @@ jobs:
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_7fJcrVmM18B9gBGeXhRpjA_jFmgOxC-' }}
           SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || 'desjchcthsjaeiplhuls' }}
           VITE_SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || 'desjchcthsjaeiplhuls' }}
+          VITE_AI_EXECUTION_MODE: ${{ vars.VITE_AI_EXECUTION_MODE || 'edge' }}
         run: npm run build
 
       - name: Prepare static files for GitHub Pages

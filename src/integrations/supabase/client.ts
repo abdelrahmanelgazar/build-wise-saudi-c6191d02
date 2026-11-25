@@ -49,10 +49,23 @@ function createSupabaseClient() {
   const FALLBACK_SUPABASE_URL = "https://desjchcthsjaeiplhuls.supabase.co";
   const FALLBACK_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_7fJcrVmM18B9gBGeXhRpjA_jFmgOxC-";
 
+  const requireExplicitTarget =
+    import.meta.env['VITE_REQUIRE_EXPLICIT_SUPABASE'] === 'true' ||
+    (typeof process !== 'undefined' && process.env['REQUIRE_EXPLICIT_SUPABASE'] === 'true');
+
   // Use import.meta.env for client-side (Vite build-time replacement)
   // Fall back to process.env for SSR (server-side rendering)
-  const SUPABASE_URL = import.meta.env['VITE_SUPABASE_URL'] || process.env['SUPABASE_URL'] || FALLBACK_SUPABASE_URL;
-  const SUPABASE_PUBLISHABLE_KEY = import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || process.env['SUPABASE_PUBLISHABLE_KEY'] || FALLBACK_SUPABASE_PUBLISHABLE_KEY;
+  const explicitUrl = import.meta.env['VITE_SUPABASE_URL'] || (typeof process !== 'undefined' ? process.env['SUPABASE_URL'] : undefined);
+  const explicitKey = import.meta.env['VITE_SUPABASE_PUBLISHABLE_KEY'] || (typeof process !== 'undefined' ? process.env['SUPABASE_PUBLISHABLE_KEY'] : undefined);
+
+  if (requireExplicitTarget && (!explicitUrl || !explicitKey)) {
+    throw new Error(
+      'Missing explicit Supabase destination configuration (VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY) while VITE_REQUIRE_EXPLICIT_SUPABASE=true.',
+    );
+  }
+
+  const SUPABASE_URL = explicitUrl || FALLBACK_SUPABASE_URL;
+  const SUPABASE_PUBLISHABLE_KEY = explicitKey || FALLBACK_SUPABASE_PUBLISHABLE_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     const missing = [

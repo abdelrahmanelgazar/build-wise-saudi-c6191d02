@@ -1193,7 +1193,7 @@ export function buildLegacyTemplateDispositionLedger(
   // Deduplicate deterministically by stable legacy id so running migration twice stays idempotent
   const seenIds = new Set<string>();
   const sorted = [...templates]
-    .filter((t) => !t.id.startsWith("csi-"))
+    .filter((t) => !t.id.startsWith("csi-") && !t.id.startsWith("v2-"))
     .sort((a, b) => a.id.localeCompare(b.id));
 
   for (const t of sorted) {

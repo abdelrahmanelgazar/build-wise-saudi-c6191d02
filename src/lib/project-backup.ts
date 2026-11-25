@@ -11,11 +11,16 @@ export interface ProjectBackupSnapshot {
   supplier_quotes?: any[];
   supplier_quote_items?: any[];
   assembly_coverage_records?: any[];
+  boq_excel_versions?: any[];
+  project_rfi_addenda?: any[];
+  tender_evaluations?: any[];
   metadata: {
     totalItems: number;
     totalAnalyses: number;
     totalSupplierQuotes?: number;
     totalCoverageRecords?: number;
+    totalExcelVersions?: number;
+    totalRfiAddenda?: number;
     estimatedValue: number;
     checksum?: string;
   };
@@ -25,7 +30,7 @@ export interface ProjectBackupSnapshot {
  * Export a complete consistent JSON snapshot of the active project (including supplier quotes & CSI coverage records).
  */
 export async function exportProjectBackup(projectId: string): Promise<ProjectBackupSnapshot> {
-  const [projectRes, boqRes, paRes, markupRes, resRes, sqRes, covRes] = await Promise.all([
+  const [projectRes, boqRes, paRes, markupRes, resRes, sqRes, covRes, excelVerRes, rfiRes, evalRes] = await Promise.all([
     estimationClient.from("projects").select("*").eq("id", projectId).single(),
     estimationClient.from("boq_items").select("*").eq("project_id", projectId),
     estimationClient.from("price_analysis_items").select("*").eq("project_id", projectId),
@@ -33,6 +38,9 @@ export async function exportProjectBackup(projectId: string): Promise<ProjectBac
     estimationClient.from("resources").select("*").eq("project_id", projectId),
     estimationClient.from("supplier_quotes").select("*").eq("project_id", projectId),
     estimationClient.from("assembly_coverage_records").select("*").eq("project_id", projectId),
+    estimationClient.from("boq_excel_versions").select("*").eq("project_id", projectId),
+    estimationClient.from("project_rfi_addenda").select("*").eq("project_id", projectId),
+    estimationClient.from("tender_evaluations").select("*").eq("project_id", projectId),
   ]);
 
   if (projectRes.error) throw projectRes.error;
@@ -44,6 +52,9 @@ export async function exportProjectBackup(projectId: string): Promise<ProjectBac
   const resources = (resRes.data as any[]) ?? [];
   const supplier_quotes = (sqRes.data as any[]) ?? [];
   const assembly_coverage_records = (covRes.data as any[]) ?? [];
+  const boq_excel_versions = (excelVerRes.data as any[]) ?? [];
+  const project_rfi_addenda = (rfiRes.data as any[]) ?? [];
+  const tender_evaluations = (evalRes.data as any[]) ?? [];
 
   let supplier_quote_items: any[] = [];
   if (supplier_quotes.length > 0) {
@@ -63,11 +74,16 @@ export async function exportProjectBackup(projectId: string): Promise<ProjectBac
     supplier_quotes,
     supplier_quote_items,
     assembly_coverage_records,
+    boq_excel_versions,
+    project_rfi_addenda,
+    tender_evaluations,
     metadata: {
       totalItems: boq_items.length,
       totalAnalyses: price_analysis_items.length,
       totalSupplierQuotes: supplier_quotes.length,
       totalCoverageRecords: assembly_coverage_records.length,
+      totalExcelVersions: boq_excel_versions.length,
+      totalRfiAddenda: project_rfi_addenda.length,
       estimatedValue: Number(project.estimated_value ?? 0),
     },
   };
@@ -179,6 +195,29 @@ export async function restoreProjectBackup(
     await estimationClient
       .from("assembly_coverage_records")
       .upsert(covPayload, { onConflict: "project_id,boq_item_id" });
+  }
+
+  // 8. Restore Excel Workbook Versions, RFI/Addenda, and Go/No-Go Evaluations
+  if (snapshot.boq_excel_versions?.length) {
+    const verPayload = snapshot.boq_excel_versions.map((v) => ({
+      ...v,
+      project_id: targetProjectId,
+    }));
+    await estimationClient.from("boq_excel_versions").upsert(verPayload, { onConflict: "id" });
+  }
+  if (snapshot.project_rfi_addenda?.length) {
+    const rfiPayload = snapshot.project_rfi_addenda.map((r) => ({
+      ...r,
+      project_id: targetProjectId,
+    }));
+    await estimationClient.from("project_rfi_addenda").upsert(rfiPayload, { onConflict: "id" });
+  }
+  if (snapshot.tender_evaluations?.length) {
+    const evalPayload = snapshot.tender_evaluations.map((ev) => ({
+      ...ev,
+      project_id: targetProjectId,
+    }));
+    await estimationClient.from("tender_evaluations").upsert(evalPayload, { onConflict: "id" });
   }
 
   return {

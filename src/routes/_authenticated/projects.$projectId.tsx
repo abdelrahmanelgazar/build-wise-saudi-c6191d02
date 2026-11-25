@@ -47,9 +47,10 @@ import { cn } from "@/lib/utils";
 import type { Tender, TenderStatus } from "@/types/client-tender";
 import { TENDER_STATUS_META } from "@/types/client-tender";
 import { transitionTenderStatus } from "@/lib/client-tender-service";
-import { setActiveProjectId } from "@/lib/active-project";
+import { setActiveProjectId, setActiveTenderId } from "@/lib/active-project";
 import type { Database } from "@/integrations/supabase/types";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
+import { ProjectRfiAddendaTab, TenderGoNoGoTab } from "@/components/projects/tender-rfi-gonogo-tabs";
 
 type Project = Database["public"]["Tables"]["projects"]["Row"];
 type Status = Database["public"]["Enums"]["project_status"];
@@ -226,6 +227,8 @@ function ProjectDetail() {
             </Badge>
           </TabsTrigger>
           <TabsTrigger value="info">البيانات الأساسية</TabsTrigger>
+          <TabsTrigger value="rfi">الاستفسارات والملحقات</TabsTrigger>
+          <TabsTrigger value="gonogo">تقييم Go/No-Go</TabsTrigger>
           <TabsTrigger value="requirements">المتطلبات</TabsTrigger>
           <TabsTrigger value="files">الملفات</TabsTrigger>
         </TabsList>
@@ -257,6 +260,14 @@ function ProjectDetail() {
 
         <TabsContent value="info" className="mt-4">
           <ProjectInfoForm project={project} />
+        </TabsContent>
+
+        <TabsContent value="rfi" className="mt-4">
+          <ProjectRfiAddendaTab projectId={project.id} tenders={projectTenders} />
+        </TabsContent>
+
+        <TabsContent value="gonogo" className="mt-4">
+          <TenderGoNoGoTab projectId={project.id} tenders={projectTenders} />
         </TabsContent>
 
         <TabsContent value="requirements" className="mt-4">
@@ -787,6 +798,18 @@ function ProjectTendersTab({
                     </td>
                     <td className="px-3 py-2.5 text-center">
                       <div className="flex items-center justify-center gap-1.5">
+                        <Link
+                          to="/boq"
+                          onClick={() => {
+                            setActiveProjectId(projectId);
+                            setActiveTenderId(t.id);
+                          }}
+                        >
+                          <Button variant="secondary" size="sm" className="h-7 text-[11px] gap-1">
+                            <Calculator className="h-3 w-3" />
+                            تسعير الفرصة
+                          </Button>
+                        </Link>
                         <Button
                           variant="outline"
                           size="sm"
