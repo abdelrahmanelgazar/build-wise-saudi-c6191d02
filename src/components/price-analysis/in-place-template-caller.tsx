@@ -39,6 +39,7 @@ import { estimationClient } from "@/lib/estimation-client";
 import { fmtNumber, fmtSAR } from "@/lib/format";
 import { useLanguage } from "@/lib/i18n";
 import { CSI_DIVISIONS, csiDivisionCode, csiDivisionLabel } from "@/lib/csi-divisions";
+import { SCOPE_LABELS_AR, type AssemblyScopeTag } from "@/lib/csi-assemblies-engine";
 import {
   getAllBreakdownTemplates,
   calculateBreakdownCost,
@@ -181,6 +182,7 @@ export function InPlaceTemplateCaller({
       // Invalidate queries to refresh the live grid
       await Promise.all([
         qc.invalidateQueries({ queryKey: ["pa_items", boqItem.id] }),
+        qc.invalidateQueries({ queryKey: ["pa_items_project", boqItem.project_id] }),
         qc.invalidateQueries({ queryKey: ["pa_markup", boqItem.id] }),
         qc.invalidateQueries({ queryKey: ["boq_items", boqItem.project_id] }),
       ]);
@@ -337,6 +339,11 @@ export function InPlaceTemplateCaller({
                     <Badge variant="outline" className="font-mono text-xs">
                       {selectedTemplate.code}
                     </Badge>
+                    {selectedTemplate.assembly_kind === "reference_composite" && (
+                      <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px]">
+                        مرجع مركّب
+                      </Badge>
+                    )}
                     <span className="text-xs text-muted-foreground">
                       {csiDivisionLabel(selectedTemplate.division, language)}
                     </span>
@@ -347,6 +354,13 @@ export function InPlaceTemplateCaller({
                   <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
                     {isEn ? selectedTemplate.description_en : selectedTemplate.description_ar}
                   </p>
+                  {selectedTemplate.assembly_kind === "reference_composite" && (
+                    <div className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 p-2 text-[11px] text-amber-700 dark:text-amber-300">
+                      تنبيه مرجعي: هذا القالب موروث مركّب لا يشمل{" "}
+                      {selectedTemplate.excluded_scopes?.map((s) => SCOPE_LABELS_AR[s as AssemblyScopeTag] ?? s).join(" و")}
+                      ، ويُفضّل استخدام قوالب القسم 03 التنفيذية أو ربط عروض الموردين.
+                    </div>
+                  )}
                 </div>
 
                 {/* Rates & Markups summary cards */}
@@ -397,7 +411,8 @@ export function InPlaceTemplateCaller({
                       </thead>
                       <tbody className="divide-y divide-border">
                         {selectedTemplate.items.map((res) => {
-                          const itemTotal = (res.quantity || 0) * (res.unit_price || 0);
+                          const wasteFactor = res.resource_type === "material" ? 1 + (Number(res.waste_pct ?? 0) / 100) : 1;
+                          const itemTotal = (res.quantity || 0) * wasteFactor * (res.unit_price || 0);
                           return (
                             <tr key={res.id} className="hover:bg-muted/20">
                               <td className="px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground">

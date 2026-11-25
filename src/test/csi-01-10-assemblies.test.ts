@@ -13,6 +13,7 @@ import {
   getAllBreakdownTemplates,
 } from "@/lib/breakdown-library";
 import { computeDirectUnitCost, computePricingPhase2 } from "@/lib/estimation-calc";
+import { buildPriceAnalysisExportRows } from "@/lib/pa-export";
 
 describe("CSI 01–10 Assemblies, Concrete QTO, and Scope Audit (§1–§5)", () => {
   it("computes the §2 parametric concrete column (0.40x0.60x3.00m) with single waste and exact ratios", () => {
@@ -295,5 +296,43 @@ describe("CSI 01–10 Assemblies, Concrete QTO, and Scope Audit (§1–§5)", ()
     ]);
     expect(rep.highImpactGaps[0]?.boqItemId).toBe("g2");
     expect(rep.highImpactGaps[0]?.divisionCode).toBe("14");
+  });
+
+  it("reconciles Price Analysis Excel export rows with Phase 2 additive markups, single waste, and ROUNDUP rate", () => {
+    const boqItem = {
+      item_no: "09-30-13",
+      description_ar: "أعمال دهان/تشطيب",
+      description_en: null,
+      unit: "m2",
+      quantity: 100,
+      manual_unit_price: null,
+    };
+    const items = [
+      {
+        resource_type: "material" as const,
+        description_ar: "طلاء تشطيب (عبوة 400 / 40 = 10/وحدة)",
+        unit: "L",
+        quantity: 1.5, // net consumption -> * 10 = 15.00
+        waste_pct: 0,
+        unit_price: 10,
+        scope_tag: "finishes",
+      },
+    ];
+    const markup = {
+      indirect_pct: 1,
+      overhead_pct: 1,
+      risk_pct: 1,
+      profit_pct: 1,
+      pricing_policy: "additive_v2",
+      round_up_rate: true,
+    };
+
+    const { aoa, phase2 } = buildPriceAnalysisExportRows(boqItem, items, markup, "ar");
+    expect(phase2.directUnitCost).toBe(15);
+    expect(phase2.rawUnitSellingPrice).toBe(15.6);
+    expect(phase2.approvedUnitRate).toBe(16);
+    expect(phase2.lineSellingPrice).toBe(1600);
+    expect(aoa.some((row) => row.includes(16) && row.some((c) => String(c).includes("ROUNDUP")))).toBe(true);
+    expect(aoa.some((row) => row.includes(1600))).toBe(true);
   });
 });

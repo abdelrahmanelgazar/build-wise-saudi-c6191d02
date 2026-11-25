@@ -16,6 +16,7 @@ import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from "lucide-react
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useActiveProjectId } from "@/lib/active-project";
+import { syncBoqItemBreakdownFromPa } from "@/lib/pa-sync";
 import type { Database } from "@/integrations/supabase/types";
 
 type ResourceType = Database["public"]["Enums"]["resource_type"];
@@ -257,11 +258,15 @@ export function ImportPaDialog({ boqItemId }: { boqItemId: string }) {
           });
         }
       }
+
+      await syncBoqItemBreakdownFromPa(boqItemId);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pa_items", boqItemId] });
+      qc.invalidateQueries({ queryKey: ["pa_items_project", projectId] });
       qc.invalidateQueries({ queryKey: ["pa_markup", boqItemId] });
-      toast.success("تم الاستيراد");
+      qc.invalidateQueries({ queryKey: ["boq_items"] });
+      toast.success("تم الاستيراد ومزامنة التكاليف مع جدول الكميات");
       setOpen(false);
       setParsed(null);
     },
