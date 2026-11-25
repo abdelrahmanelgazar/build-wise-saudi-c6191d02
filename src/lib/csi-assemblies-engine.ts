@@ -505,6 +505,10 @@ export interface QuoteConversionInput {
   packageSize: number;
   consumptionRate: number;
   wastePct: number;
+  /** Optional pricing basis: per unit OR full shift allocation divided by shift output */
+  pricingBasis?: "unit" | "shift";
+  shiftOutputQty?: number;
+  shiftHours?: number;
   /** Optional unit conversion between quote unit and consumption unit */
   quoteUnit?: string;
   consumptionUnit?: string;
@@ -559,7 +563,10 @@ export function resolveUnitConversionFactor(
 
 export function convertQuoteToAnalysisLine(input: QuoteConversionInput): QuoteConversionResult {
   const pkgSize = input.packageSize > 0 ? input.packageSize : 1;
-  const baseUnitRate = input.packagePrice / pkgSize;
+  const baseUnitRate =
+    input.pricingBasis === "shift" && input.shiftOutputQty && input.shiftOutputQty > 0
+      ? input.packagePrice / input.shiftOutputQty
+      : input.packagePrice / pkgSize;
   const unitConversionFactor = resolveUnitConversionFactor(
     input.quoteUnit,
     input.consumptionUnit,
@@ -1009,6 +1016,75 @@ export function computeMultiTradeQto(input: MultiTradeQtoInput): MultiTradeQtoRe
     lines,
     directUnitCost: computeDirectUnitCost(lines).directUnitCost,
   };
+}
+
+// ── 9. Quote Revision Delta Impact & Deduction Line Extension (§6 / §8) ──────
+
+export interface QuoteRevisionImpactLine {
+  paItemId: string;
+  boqItemId: string;
+  description_ar: string;
+  quantity: number;
+  waste_pct: number;
+  oldUnitPrice: number;
+  newUnitPrice: number;
+  lineDirectDelta: number;
+}
+
+export interface QuoteRevisionImpactSummary {
+  affectedLinesCount: number;
+  affectedBoqIds: string[];
+  totalDirectUnitDelta: number;
+  lines: QuoteRevisionImpactLine[];
+}
+
+export function computeQuoteRevisionImpact(
+  linkedPaItems: Array<{
+    id: string;
+    boq_item_id: string;
+    description_ar: string;
+    resource_type: "material" | "labor" | "equipment" | "subcontractor";
+    quantity: number;
+    waste_pct?: number | null;
+    unit_price: number;
+  }>,
+  newQuoteUnitPrice: number,
+): QuoteRevisionImpactSummary {
+  const affectedBoqSet = new Set<string>();
+  const lines: QuoteRevisionImpactLine[] = [];
+  let totalDirectUnitDelta = 0;
+
+  for (const item of linkedPaItems) {
+    const qty = Number(item.quantity) || 0;
+    const waste = item.resource_type === "material" ? Number(item.waste_pct ?? 0) : 0;
+    const oldRate = Number(item.unit_price) || 0;
+    const effectiveQty = qty * (1 + waste / 100);
+    const delta = roundTo(effectiveQty * (newQuoteUnitPrice - oldRate), 4);
+    totalDirectUnitDelta = roundTo(totalDirectUnitDelta + delta, 4);
+    affectedBoqSet.add(item.boq_item_id);
+    lines.push({
+      paItemId: item.id,
+      boqItemId: item.boq_item_id,
+      description_ar: item.description_ar,
+      quantity: qty,
+      waste_pct: waste,
+      oldUnitPrice: oldRate,
+      newUnitPrice: roundTo(newQuoteUnitPrice, 4),
+      lineDirectDelta: delta,
+    });
+  }
+
+  return {
+    affectedLinesCount: lines.length,
+    affectedBoqIds: Array.from(affectedBoqSet),
+    totalDirectUnitDelta,
+    lines,
+  };
+}
+
+/** Handles signed deduction BOQ rows cleanly (preserves negative deduction totals when quantity < 0). */
+export function computeSignedBoqExtension(quantity: number, approvedUnitRate: number): number {
+  return roundTo((Number(quantity) || 0) * Math.abs(Number(approvedUnitRate) || 0), 2);
 }
 
 // ── 7. 50-Template Legacy Inventory & Idempotent Migration Ledger (§5 #1) ──────

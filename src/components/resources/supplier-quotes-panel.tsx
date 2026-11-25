@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, FileText, Trash2, CheckCircle2, AlertTriangle, Clock } from "lucide-react";
+import { Plus, FileText, Trash2, CheckCircle2, AlertTriangle, Clock, GitCompare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,7 +24,13 @@ import {
 import { toast } from "sonner";
 import { estimationClient } from "@/lib/estimation-client";
 import { fmtSAR } from "@/lib/format";
-import { SCOPE_LABELS_AR, type AssemblyScopeTag, type QuoteStatus } from "@/lib/csi-assemblies-engine";
+import {
+  computeQuoteRevisionImpact,
+  SCOPE_LABELS_AR,
+  type AssemblyScopeTag,
+  type QuoteStatus,
+} from "@/lib/csi-assemblies-engine";
+import { syncBoqItemBreakdownFromPa } from "@/lib/pa-sync";
 import type { Database } from "@/integrations/supabase/types";
 
 type SupplierQuote = Database["public"]["Tables"]["supplier_quotes"]["Row"];
@@ -61,6 +67,11 @@ export function SupplierQuotesPanel({
   const [minOrderCharge, setMinOrderCharge] = useState(0);
   const [shiftHours, setShiftHours] = useState(8);
   const [linkedResourceId, setLinkedResourceId] = useState<string>("none");
+
+  // Quote revision & Delta Impact Preview state (§6 & §2)
+  const [reviseTarget, setReviseTarget] = useState<{ quote: SupplierQuote; item: SupplierQuoteItem } | null>(null);
+  const [revisedPackPrice, setRevisedPackPrice] = useState<number>(0);
+  const [applyToDraftPa, setApplyToDraftPa] = useState<boolean>(true);
 
   const { data: quotes = [], isLoading } = useQuery({
     queryKey: ["supplier_quotes_project", projectId],
@@ -177,6 +188,125 @@ export function SupplierQuotesPanel({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["supplier_quotes_project", projectId] });
       toast.success("تم حذف عرض المورد");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const { data: linkedPaForRevision = [] } = useQuery({
+    queryKey: ["linked_pa_revision", reviseTarget?.item.id],
+    enabled: !!reviseTarget,
+    queryFn: async () => {
+      if (!reviseTarget) return [];
+      const { data, error } = await estimationClient
+        .from("price_analysis_items")
+        .select("*")
+        .eq("quote_item_id", reviseTarget.item.id);
+      if (error) return [];
+      return data ?? [];
+    },
+  });
+
+  const revisedUnitPrice = useMemo(() => {
+    if (!reviseTarget) return 0;
+    const pack = reviseTarget.item.pack_size > 0 ? reviseTarget.item.pack_size : 1;
+    return revisedPackPrice / pack;
+  }, [reviseTarget, revisedPackPrice]);
+
+  const revisionImpact = useMemo(
+    () =>
+      computeQuoteRevisionImpact(
+        linkedPaForRevision.map((r) => ({
+          id: r.id,
+          boq_item_id: r.boq_item_id,
+          description_ar: r.description_ar,
+          resource_type: r.resource_type,
+          quantity: r.quantity,
+          waste_pct: r.waste_pct,
+          unit_price: r.unit_price,
+        })),
+        revisedUnitPrice,
+      ),
+    [linkedPaForRevision, revisedUnitPrice],
+  );
+
+  const createRevisionMut = useMutation({
+    mutationFn: async () => {
+      if (!reviseTarget) return;
+      const { quote, item } = reviseTarget;
+      const nextVersion = (quote.version_no ?? 1) + 1;
+
+      const { data: newQuote, error: qErr } = await estimationClient
+        .from("supplier_quotes")
+        .insert({
+          workspace_id: quote.workspace_id,
+          project_id: quote.project_id,
+          supplier_name: quote.supplier_name,
+          quote_no: quote.quote_no,
+          quote_date: new Date().toISOString().slice(0, 10),
+          validity_date: quote.validity_date,
+          city: quote.city,
+          currency: quote.currency,
+          status: "quoted",
+          vat_included: quote.vat_included,
+          transport_included: quote.transport_included,
+          delivery_terms: quote.delivery_terms,
+          version_no: nextVersion,
+          created_by: quote.created_by,
+        })
+        .select()
+        .single();
+      if (qErr) throw qErr;
+
+      const { data: newItem, error: itErr } = await estimationClient
+        .from("supplier_quote_items")
+        .insert({
+          quote_id: newQuote.id,
+          resource_id: item.resource_id,
+          specification: item.specification,
+          pricing_unit: item.pricing_unit,
+          pack_size: item.pack_size,
+          pack_price: revisedPackPrice,
+          unit_price: revisedUnitPrice,
+          waste_pct: item.waste_pct,
+          scope_tag: item.scope_tag,
+          min_order_charge: item.min_order_charge,
+          shift_hours: item.shift_hours,
+          terms: item.terms,
+        })
+        .select()
+        .single();
+      if (itErr) throw itErr;
+
+      // Update active draft price_analysis_items ONLY when user opts in; historical tender_submissions stay immutable
+      if (applyToDraftPa && linkedPaForRevision.length > 0) {
+        const affectedBoqIds = new Set<string>();
+        for (const paRow of linkedPaForRevision) {
+          affectedBoqIds.add(paRow.boq_item_id);
+          await estimationClient
+            .from("price_analysis_items")
+            .update({
+              supplier_quote_id: newQuote.id,
+              quote_item_id: newItem.id,
+              quote_id: newQuote.id,
+              quote_version: nextVersion,
+              unit_price: Number(revisedUnitPrice.toFixed(2)),
+              copied_unit_price: revisedUnitPrice,
+            })
+            .eq("id", paRow.id);
+        }
+        for (const boqId of affectedBoqIds) {
+          await syncBoqItemBreakdownFromPa(boqId);
+        }
+      }
+    },
+    onSuccess: () => {
+      toast.success("تم إصدار نسخة العرض المنقحة ومعاينة/تحديث المسودة بنجاح (الإصدارات المقدمة السابقة محفوظة دون تغيير)");
+      qc.invalidateQueries({ queryKey: ["supplier_quotes_project", projectId] });
+      qc.invalidateQueries({ queryKey: ["supplier_quote_items_project", projectId] });
+      qc.invalidateQueries({ queryKey: ["pa_items"] });
+      qc.invalidateQueries({ queryKey: ["pa_items_project", projectId] });
+      qc.invalidateQueries({ queryKey: ["boq_items"] });
+      setReviseTarget(null);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -348,6 +478,7 @@ export function SupplierQuotesPanel({
                           <th className="p-2 text-center">سعر الوحدة</th>
                           <th className="p-2 text-center">الهالك %</th>
                           <th className="p-2 text-center">حد أدنى / وردية</th>
+                          <th className="p-2 text-center">مراجعة السعر</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
@@ -364,6 +495,20 @@ export function SupplierQuotesPanel({
                             <td className="p-2 text-center">{it.waste_pct}%</td>
                             <td className="p-2 text-center text-muted-foreground">
                               {it.min_order_charge > 0 ? `${fmtSAR(it.min_order_charge)}` : "—"} / {it.shift_hours} س
+                            </td>
+                            <td className="p-2 text-center">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-[10px] gap-1 text-primary"
+                                onClick={() => {
+                                  setReviseTarget({ quote: q, item: it });
+                                  setRevisedPackPrice(Number(it.pack_price) > 0 ? Number(it.pack_price) : Number(it.unit_price));
+                                }}
+                              >
+                                <GitCompare className="h-3 w-3" />
+                                مراجعة وأثر
+                              </Button>
                             </td>
                           </tr>
                         ))}
@@ -446,6 +591,84 @@ export function SupplierQuotesPanel({
             <Button variant="outline" size="sm" onClick={() => setAddItemForQuoteId(null)}>إلغاء</Button>
             <Button size="sm" onClick={() => addItemMut.mutate()} disabled={addItemMut.isPending}>
               {addItemMut.isPending ? "جاري الإضافة…" : "إضافة السطر"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quote Revision & Delta Impact Preview Modal (§6 / §2 Plan) */}
+      <Dialog open={!!reviseTarget} onOpenChange={(o) => { if (!o) setReviseTarget(null); }}>
+        <DialogContent dir="rtl" className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <GitCompare className="h-4 w-4 text-primary" />
+              إصدار مراجعة جديدة لعرض المورد ومعاينة الأثر على المسودة
+            </DialogTitle>
+          </DialogHeader>
+          {reviseTarget && (
+            <div className="space-y-3 text-xs py-2">
+              <div className="rounded border bg-muted/30 p-3 space-y-1">
+                <div className="font-bold">{reviseTarget.item.specification}</div>
+                <div className="text-muted-foreground">
+                  العرض الحالي: {reviseTarget.quote.supplier_name} (v{reviseTarget.quote.version_no}) · السعر الحالي للوحدة:{" "}
+                  <strong>{fmtSAR(reviseTarget.item.unit_price)}</strong>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>سعر العبوة / الوحدة الجديد (ر.س)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={revisedPackPrice}
+                    onChange={(e) => setRevisedPackPrice(Number(e.target.value) || 0)}
+                    className="mt-1 h-8 text-xs"
+                  />
+                </div>
+                <div className="rounded border p-2 bg-primary/5 flex flex-col justify-center">
+                  <span className="text-[10px] text-muted-foreground">سعر الوحدة الجديد المحسوب</span>
+                  <strong className="font-mono text-sm text-primary">{fmtSAR(revisedUnitPrice)}</strong>
+                </div>
+              </div>
+
+              <div className="rounded border p-3 space-y-2">
+                <div className="flex items-center justify-between font-semibold">
+                  <span>الأسطر المتأثرة في مسودة المشروع: {revisionImpact.affectedLinesCount}</span>
+                  <span className={revisionImpact.totalDirectUnitDelta >= 0 ? "text-amber-600" : "text-emerald-600"}>
+                    فرق التكلفة المباشرة: {revisionImpact.totalDirectUnitDelta >= 0 ? "+" : ""}
+                    {fmtSAR(revisionImpact.totalDirectUnitDelta)}
+                  </span>
+                </div>
+                {revisionImpact.lines.length > 0 && (
+                  <div className="max-h-36 overflow-y-auto divide-y text-[11px]">
+                    {revisionImpact.lines.map((ln) => (
+                      <div key={ln.paItemId} className="py-1 flex items-center justify-between gap-2">
+                        <span className="truncate">{ln.description_ar}</span>
+                        <span className="font-mono shrink-0">
+                          {fmtSAR(ln.oldUnitPrice)} ← <strong>{fmtSAR(ln.newUnitPrice)}</strong> (Δ{" "}
+                          {ln.lineDirectDelta >= 0 ? "+" : ""}
+                          {ln.lineDirectDelta.toFixed(2)})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <label className="flex items-center gap-2 pt-1 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={applyToDraftPa}
+                    onChange={(e) => setApplyToDraftPa(e.target.checked)}
+                  />
+                  <span>اعتماد وتطبيق السعر الجديد على المسودة النشطة فقط (الإصدارات المقدمة تبقى ثابتة)</span>
+                </label>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" size="sm" onClick={() => setReviseTarget(null)}>إلغاء</Button>
+            <Button size="sm" disabled={createRevisionMut.isPending} onClick={() => createRevisionMut.mutate()}>
+              {createRevisionMut.isPending ? "جاري الإصدار…" : "إصدار النسخة الجديدة"}
             </Button>
           </DialogFooter>
         </DialogContent>

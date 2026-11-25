@@ -16,7 +16,7 @@ import { Upload, FileSpreadsheet, AlertCircle, CheckCircle2 } from "lucide-react
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useActiveProjectId } from "@/lib/active-project";
-import { syncBoqItemBreakdownFromPa } from "@/lib/pa-sync";
+import { syncBoqItemBreakdownFromPa, syncCoverageRecordFromAnalysis } from "@/lib/pa-sync";
 import type { Database } from "@/integrations/supabase/types";
 
 type ResourceType = Database["public"]["Enums"]["resource_type"];
@@ -260,6 +260,15 @@ export function ImportPaDialog({ boqItemId }: { boqItemId: string }) {
       }
 
       await syncBoqItemBreakdownFromPa(boqItemId);
+      await syncCoverageRecordFromAnalysis({
+        projectId,
+        boqItemId,
+        userId,
+        assemblyId: "excel-import-pa",
+        assemblyCode: "EXCEL-PA",
+        coverageStatus: "matched",
+        evidenceNote: `استيراد Excel مباشر (${parsed.items.length} سطور تحليل)`,
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["pa_items", boqItemId] });

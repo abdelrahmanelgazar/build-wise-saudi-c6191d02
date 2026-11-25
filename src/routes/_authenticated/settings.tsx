@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { estimationClient } from "@/lib/estimation-client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +52,56 @@ function SettingsPage() {
   const [isExporting, setIsExporting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [migrationSummary, setMigrationSummary] = useState<MigrationSummary | null>(null);
+  const [newMemberUserId, setNewMemberUserId] = useState("");
+  const [newMemberRole, setNewMemberRole] = useState<
+    "pricing_engineer" | "procurement" | "discipline_reviewer" | "approver" | "data_admin"
+  >("pricing_engineer");
   const queryClient = useQueryClient();
+
+  const { data: memberships = [] } = useQuery({
+    queryKey: ["workspace_memberships"],
+    queryFn: async () => {
+      const { data, error } = await estimationClient
+        .from("workspace_memberships")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) return [];
+      return data ?? [];
+    },
+  });
+
+  const addMembershipMut = useMutation({
+    mutationFn: async () => {
+      const { data: u } = await estimationClient.auth.getUser();
+      const ownerId = u.user?.id;
+      if (!ownerId) throw new Error("غير مسجل دخول");
+      const targetUid = newMemberUserId.trim() || ownerId;
+      const { error } = await estimationClient.from("workspace_memberships").insert({
+        workspace_id: ownerId,
+        user_id: targetUid,
+        role: newMemberRole,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("تم إسناد الدور في نطاق مساحة العمل بنجاح");
+      queryClient.invalidateQueries({ queryKey: ["workspace_memberships"] });
+      setNewMemberUserId("");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const removeMembershipMut = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await estimationClient.from("workspace_memberships").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["workspace_memberships"] });
+      toast.success("تم إزالة تعيين الدور");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   useRegisterPageActions({
     pageKey: "settings",
@@ -355,6 +405,73 @@ function SettingsPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* Active 5-Role Workspace Memberships Assignment (§2 Plan) */}
+              <div className="pt-4 border-t border-border space-y-3">
+                <h3 className="text-sm font-bold">تعيينات الأدوار الخمسة الفعلية (`workspace_memberships`)</h3>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <Input
+                    value={newMemberUserId}
+                    onChange={(e) => setNewMemberUserId(e.target.value)}
+                    placeholder="معرّف المستخدم UUID (اتركه فارغاً لحسابك الحالي)"
+                    className="h-8 flex-1 min-w-[240px] text-xs font-mono"
+                    dir="ltr"
+                  />
+                  <select
+                    value={newMemberRole}
+                    onChange={(e) => setNewMemberRole(e.target.value as any)}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                  >
+                    <option value="pricing_engineer">مهندس تسعير (pricing_engineer)</option>
+                    <option value="procurement">المشتريات (procurement)</option>
+                    <option value="discipline_reviewer">مراجع التخصص (discipline_reviewer)</option>
+                    <option value="approver">مسؤول الاعتماد (approver)</option>
+                    <option value="data_admin">مسؤول البيانات (data_admin)</option>
+                  </select>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-8 text-xs"
+                    disabled={addMembershipMut.isPending}
+                    onClick={() => addMembershipMut.mutate()}
+                  >
+                    {addMembershipMut.isPending ? "جاري الإسناد…" : "إسناد الدور"}
+                  </Button>
+                </div>
+
+                {memberships.length > 0 && (
+                  <div className="overflow-x-auto rounded-md border border-border">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/30">
+                        <tr>
+                          <th className="p-2 text-start">معرّف المستخدم</th>
+                          <th className="p-2 text-start">الدور</th>
+                          <th className="p-2 text-center">إجراء</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {memberships.map((m) => (
+                          <tr key={m.id}>
+                            <td className="p-2 font-mono text-[11px]">{m.user_id}</td>
+                            <td className="p-2"><Badge variant="outline">{m.role}</Badge></td>
+                            <td className="p-2 text-center">
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-[11px] text-destructive"
+                                onClick={() => removeMembershipMut.mutate(m.id)}
+                              >
+                                إزالة
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

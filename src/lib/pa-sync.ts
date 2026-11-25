@@ -131,3 +131,45 @@ export async function restoreImportedRateForBoqItem(boqItemId: string): Promise<
     .eq("id", boqItemId);
   if (updErr) throw updErr;
 }
+
+/** Upserts coverage lineage & exception evidence for a BOQ item across manual edits, Excel import, quotes, or templates. */
+export async function syncCoverageRecordFromAnalysis(params: {
+  projectId: string | null;
+  boqItemId: string;
+  userId: string;
+  assemblyId?: string;
+  assemblyCode?: string | null;
+  csiDivision?: string | null;
+  coverageStatus?: "matched" | "gap" | "manual" | "reference_only";
+  includedScopes?: string[];
+  excludedScopes?: string[];
+  evidenceNote?: string | null;
+}): Promise<void> {
+  if (!params.projectId) return;
+  const { data: existing } = await estimationClient
+    .from("assembly_coverage_records")
+    .select("*")
+    .eq("project_id", params.projectId)
+    .eq("boq_item_id", params.boqItemId)
+    .maybeSingle();
+
+  await estimationClient
+    .from("assembly_coverage_records")
+    .upsert(
+      {
+        project_id: params.projectId,
+        boq_item_id: params.boqItemId,
+        user_id: params.userId,
+        assembly_id: params.assemblyId ?? existing?.assembly_id ?? "manual-analysis",
+        assembly_code: params.assemblyCode ?? existing?.assembly_code ?? "MANUAL-PA",
+        assembly_version: existing?.assembly_version ?? 1,
+        csi_division: params.csiDivision ?? existing?.csi_division ?? null,
+        coverage_status: params.coverageStatus ?? (existing?.coverage_status as any) ?? "manual",
+        included_scopes: params.includedScopes ?? (existing?.included_scopes as any) ?? [],
+        excluded_scopes: params.excludedScopes ?? (existing?.excluded_scopes as any) ?? [],
+        evidence_note:
+          params.evidenceNote !== undefined ? params.evidenceNote : (existing?.evidence_note ?? null),
+      },
+      { onConflict: "project_id,boq_item_id" },
+    );
+}

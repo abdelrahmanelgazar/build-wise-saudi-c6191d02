@@ -30,7 +30,7 @@ import {
   type AssemblyScopeTag,
   type RateKind,
 } from "@/lib/csi-assemblies-engine";
-import { syncBoqItemBreakdownFromPa } from "@/lib/pa-sync";
+import { syncBoqItemBreakdownFromPa, syncCoverageRecordFromAnalysis } from "@/lib/pa-sync";
 import type { Database } from "@/integrations/supabase/types";
 
 type Resource = Database["public"]["Tables"]["resources"]["Row"] & {
@@ -120,6 +120,8 @@ export function SelectQuoteDialog({
   const [wastePct, setWastePct] = useState<number>(0);
   const [pourVolume, setPourVolume] = useState<number>(0);
   const [minOrderCharge, setMinOrderCharge] = useState<number>(0);
+  const [pricingBasis, setPricingBasis] = useState<"unit" | "shift">("unit");
+  const [shiftOutputQty, setShiftOutputQty] = useState<number>(60);
   const [isSplitPour, setIsSplitPour] = useState<boolean>(false);
   const [allocatedQty, setAllocatedQty] = useState<number>(0);
   const [note, setNote] = useState("");
@@ -272,9 +274,11 @@ export function SelectQuoteDialog({
         ...(thicknessMeters > 0 ? { thicknessMeters } : {}),
         ...(minOrderCharge > 0 ? { minOrderCharge } : {}),
         ...(pourVolume > 0 ? { pourVolume } : {}),
+        pricingBasis,
+        ...(pricingBasis === "shift" ? { shiftOutputQty } : {}),
         bakeWasteIntoQty: false,
       }),
-    [packagePrice, packageSize, consumptionRate, wastePct, selectedCandidate, consumptionUnit, thicknessMeters, minOrderCharge, pourVolume],
+    [packagePrice, packageSize, consumptionRate, wastePct, selectedCandidate, consumptionUnit, thicknessMeters, minOrderCharge, pourVolume, pricingBasis, shiftOutputQty],
   );
 
   const insertMut = useMutation({
@@ -342,6 +346,15 @@ export function SelectQuoteDialog({
 
       if (error) throw error;
       await syncBoqItemBreakdownFromPa(boqItemId);
+      await syncCoverageRecordFromAnalysis({
+        projectId,
+        boqItemId,
+        userId,
+        assemblyId: selectedCandidate.supplierQuoteId ? "supplier-quote-pa" : "resource-pa",
+        assemblyCode: selectedCandidate.code ?? "QUOTE-PA",
+        coverageStatus: selectedCandidate.quoteStatus === "reference" ? "reference_only" : "matched",
+        includedScopes: [scopeTag],
+      });
     },
     onSuccess: () => {
       toast.success("تم إدراج البند بربط عرض السعر وتحويل الوحدة بنجاح");
@@ -629,6 +642,34 @@ export function SelectQuoteDialog({
                     className="h-8 text-xs mt-1"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-[11px] text-muted-foreground">أساس التسعير (بالوحدة / بالوردية)</Label>
+                  <Select value={pricingBasis} onValueChange={(v) => setPricingBasis(v as "unit" | "shift")}>
+                    <SelectTrigger className="h-8 text-xs mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unit">بالوحدة / العبوة</SelectItem>
+                      <SelectItem value="shift">بالوردية الكاملة (معدل إنتاج الوردية)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {pricingBasis === "shift" && (
+                  <div>
+                    <Label className="text-[11px] text-muted-foreground">إنتاجية الوردية الكاملة (مثلاً 60 م³/وردية)</Label>
+                    <Input
+                      type="number"
+                      step="1"
+                      min={1}
+                      value={shiftOutputQty}
+                      onChange={(e) => setShiftOutputQty(Math.max(1, Number(e.target.value) || 1))}
+                      className="h-8 text-xs mt-1"
+                    />
+                  </div>
+                )}
               </div>
 
               <div>

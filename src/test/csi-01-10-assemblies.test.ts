@@ -5,6 +5,8 @@ import {
   computeConcreteElementQto,
   computeMultiTradeQto,
   computeProjectCoverageStats,
+  computeQuoteRevisionImpact,
+  computeSignedBoqExtension,
   convertQuoteToAnalysisLine,
   expandSubAssemblyAtDirectCost,
 } from "@/lib/csi-assemblies-engine";
@@ -334,5 +336,41 @@ describe("CSI 01–10 Assemblies, Concrete QTO, and Scope Audit (§1–§5)", ()
     expect(phase2.lineSellingPrice).toBe(1600);
     expect(aoa.some((row) => row.includes(16) && row.some((c) => String(c).includes("ROUNDUP")))).toBe(true);
     expect(aoa.some((row) => row.includes(1600))).toBe(true);
+  });
+
+  it("supports shift-based pump pricing, quote revision delta preview (400 -> 500 SAR), and signed deduction extension", () => {
+    // 1. Shift-based pump quote: 2,400 SAR/shift for 60 m³/shift output -> 40 SAR/m³
+    const pumpShift = convertQuoteToAnalysisLine({
+      packagePrice: 2400,
+      packageSize: 1,
+      pricingBasis: "shift",
+      shiftOutputQty: 60,
+      consumptionRate: 1,
+      wastePct: 0,
+    });
+    expect(pumpShift.convertedUnitPrice).toBe(40);
+    expect(pumpShift.directCostPerBoqUnit).toBe(40);
+
+    // 2. Quote revision delta preview: pack 20L goes 400 -> 500 SAR (20 -> 25/L), net 0.20 L/m² + 5% waste => +1.05 SAR/m²
+    const impact = computeQuoteRevisionImpact(
+      [
+        {
+          id: "pa-1",
+          boq_item_id: "boq-1",
+          description_ar: "دهان تشطيب",
+          resource_type: "material",
+          quantity: 0.2,
+          waste_pct: 5,
+          unit_price: 20,
+        },
+      ],
+      25,
+    );
+    expect(impact.affectedLinesCount).toBe(1);
+    expect(impact.affectedBoqIds).toEqual(["boq-1"]);
+    expect(impact.totalDirectUnitDelta).toBeCloseTo(1.05, 4);
+
+    // 3. Signed deduction item extension preserves negative total
+    expect(computeSignedBoqExtension(-5, 16)).toBe(-80);
   });
 });

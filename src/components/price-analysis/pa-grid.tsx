@@ -39,7 +39,12 @@ import {
   type AssemblyScopeTag,
   type ScopedAnalysisLine,
 } from "@/lib/csi-assemblies-engine";
-import { syncBoqItemBreakdownFromPa, clearManualPriceForBoqItem, restoreImportedRateForBoqItem } from "@/lib/pa-sync";
+import {
+  syncBoqItemBreakdownFromPa,
+  clearManualPriceForBoqItem,
+  restoreImportedRateForBoqItem,
+  syncCoverageRecordFromAnalysis,
+} from "@/lib/pa-sync";
 import type { Database } from "@/integrations/supabase/types";
 import { ImportPaDialog } from "./import-pa-dialog";
 import { SelectQuoteDialog } from "./select-quote-dialog";
@@ -122,6 +127,7 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
 
   const [quoteDialogOpen, setQuoteDialogOpen] = useState(false);
   const [quoteDialogType, setQuoteDialogType] = useState<ResourceType>("material");
+  const [exceptionEvidenceInput, setExceptionEvidenceInput] = useState("");
 
   const { data: items = [] } = useQuery({
     queryKey: ["pa_items", boqItem.id],
@@ -148,6 +154,44 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
       if (error) throw error;
       return data as Markup | null;
     },
+  });
+
+  const { data: coverageRecord } = useQuery({
+    queryKey: ["assembly_coverage_record", boqItem.id, projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      const { data, error } = await estimationClient
+        .from("assembly_coverage_records")
+        .select("*")
+        .eq("boq_item_id", boqItem.id)
+        .maybeSingle();
+      if (error) return null;
+      return data as Database["public"]["Tables"]["assembly_coverage_records"]["Row"] | null;
+    },
+  });
+
+  const approveExceptionMut = useMutation({
+    mutationFn: async (evidenceNote: string) => {
+      if (!evidenceNote.trim()) throw new Error("أدخل مبرر ومرجع اعتماد الاستثناء");
+      const { data: u } = await estimationClient.auth.getUser();
+      const userId = u.user?.id;
+      if (!userId) throw new Error("غير مسجل دخول");
+      await syncCoverageRecordFromAnalysis({
+        projectId,
+        boqItemId: boqItem.id,
+        userId,
+        includedScopes: scopeAudit.includedScopes,
+        excludedScopes: scopeAudit.excludedStructuralScopes,
+        evidenceNote: `اعتماد استثناء النطاق: ${evidenceNote.trim()}`,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["assembly_coverage_record", boqItem.id, projectId] });
+      qc.invalidateQueries({ queryKey: ["assembly_coverage_records", projectId] });
+      setExceptionEvidenceInput("");
+      toast.success("تم توثيق اعتماد استثناء النطاق ودليله في سجل المشروع");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const directBreakdown = useMemo(() => computeDirectUnitCost(items as any), [items]);
@@ -494,8 +538,8 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
         )}
 
       {/* CSI Scope Conflict & Provenance Warnings (§4.3) */}
-      {scopeAudit.warnings.length > 0 && (
-        <div className="space-y-1 border-b border-border bg-muted/20 px-4 py-2 text-xs">
+      {(scopeAudit.warnings.length > 0 || coverageRecord?.evidence_note) && (
+        <div className="space-y-1.5 border-b border-border bg-muted/20 px-4 py-2 text-xs">
           {scopeAudit.warnings.map((w) => (
             <div
               key={w.code}
@@ -514,6 +558,33 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
               </Badge>
             </div>
           ))}
+          {coverageRecord?.evidence_note && (
+            <div className="flex items-center justify-between gap-2 rounded bg-emerald-500/10 px-2.5 py-1 text-emerald-700 dark:text-emerald-300">
+              <span>توثيق المراجعة/الاستثناء: {coverageRecord.evidence_note}</span>
+              <Badge variant="outline" className="text-[10px] border-emerald-500/40 text-emerald-600">
+                مُوثَّق
+              </Badge>
+            </div>
+          )}
+          {scopeAudit.warnings.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 pt-0.5">
+              <Input
+                value={exceptionEvidenceInput}
+                onChange={(e) => setExceptionEvidenceInput(e.target.value)}
+                placeholder="سبب/دليل اعتماد الاستثناء أو فصل النطاق (مثلاً: الحديد مسعر ببند 03-02 المستقل)…"
+                className="h-7 flex-1 min-w-[240px] text-[11px]"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-[11px]"
+                disabled={approveExceptionMut.isPending || !exceptionEvidenceInput.trim()}
+                onClick={() => approveExceptionMut.mutate(exceptionEvidenceInput)}
+              >
+                {approveExceptionMut.isPending ? "جاري الحفظ…" : "اعتماد وتوثيق الاستثناء"}
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
