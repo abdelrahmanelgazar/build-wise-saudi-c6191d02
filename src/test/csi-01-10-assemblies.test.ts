@@ -3,6 +3,7 @@ import {
   analyzeAssemblyScopes,
   buildLegacyTemplateDispositionLedger,
   computeConcreteElementQto,
+  computeMultiTradeQto,
   computeProjectCoverageStats,
   convertQuoteToAnalysisLine,
   expandSubAssemblyAtDirectCost,
@@ -256,5 +257,43 @@ describe("CSI 01–10 Assemblies, Concrete QTO, and Scope Audit (§1–§5)", ()
     expect(run2.totalAudited).toBe(50);
     expect(run1.signatureHash).toBe(run2.signatureHash);
     expect(run1.byDisposition.reference_composite).toBeGreaterThanOrEqual(1);
+  });
+
+  it("covers remaining CSI 11-33 divisions, multi-trade parametric QTO, and ranks high-impact gaps by SAR value", () => {
+    const all = getAllBreakdownTemplates();
+    for (const div of ["11", "12", "13", "14", "21", "22", "23", "25", "26", "27", "28", "31", "32", "33"]) {
+      expect(all.some((t) => t.division.includes(div) || t.code.startsWith(div))).toBe(true);
+    }
+
+    // Multi-trade Masonry wall QTO: 10m x 3m = 30m2 - 2m2 opening = 28m2 net
+    const wall = computeMultiTradeQto({
+      kind: "masonry_wall",
+      length_m: 10,
+      width_or_thickness_m: 0.2,
+      height_or_depth_m: 3.0,
+      openings_deduction_m2: 2.0,
+      waste_pct: 4,
+    });
+    expect(wall.primaryPayQty).toBe(28);
+    expect(wall.secondaryMetricVal).toBe(350);
+
+    // Earthwork bulking/swell factor 1.25 on 10x2x2 = 40 m3 bank -> 50 m3 loose
+    const earth = computeMultiTradeQto({
+      kind: "earthwork_trench_bulk",
+      length_m: 10,
+      width_or_thickness_m: 2,
+      height_or_depth_m: 2,
+      swell_factor: 1.25,
+    });
+    expect(earth.primaryPayQty).toBe(40);
+    expect(earth.secondaryMetricVal).toBe(50);
+
+    // High-impact gap ranking puts highest SAR gap first
+    const rep = computeProjectCoverageStats([
+      { id: "g1", item_no: "26-1", description_ar: "لوحة", quantity: 1, selling_unit_rate: 5000 },
+      { id: "g2", item_no: "14-1", description_ar: "مصعد", quantity: 2, selling_unit_rate: 110000 },
+    ]);
+    expect(rep.highImpactGaps[0]?.boqItemId).toBe("g2");
+    expect(rep.highImpactGaps[0]?.divisionCode).toBe("14");
   });
 });

@@ -25,11 +25,13 @@ import { Label } from "@/components/ui/label";
 import {
   buildLegacyTemplateDispositionLedger,
   computeConcreteElementQto,
+  computeMultiTradeQto,
   computeProjectCoverageStats,
   expandSubAssemblyAtDirectCost,
   SCOPE_LABELS_AR,
   type AssemblyScopeTag,
   type ConcreteElementFamily,
+  type MultiTradeQtoKind,
   type ScopedAnalysisLine,
 } from "@/lib/csi-assemblies-engine";
 import { Button } from "@/components/ui/button";
@@ -115,6 +117,29 @@ function ItemBreakdownLibraryPage() {
   const [qtoRebarKg, setQtoRebarKg] = useState<number>(90);
   const [qtoIncludeFormwork, setQtoIncludeFormwork] = useState<boolean>(true);
   const [qtoIncludeRebar, setQtoIncludeRebar] = useState<boolean>(true);
+
+  // Multi-Trade Parametric QTO state ("باقي الأعمال")
+  const [multiTradeKind, setMultiTradeKind] = useState<MultiTradeQtoKind>("masonry_wall");
+  const [mtLength, setMtLength] = useState<number>(10);
+  const [mtWidth, setMtWidth] = useState<number>(4);
+  const [mtHeight, setMtHeight] = useState<number>(3.2);
+  const [mtOpenings, setMtOpenings] = useState<number>(2.0);
+  const [mtSwell, setMtSwell] = useState<number>(1.25);
+  const [mtWaste, setMtWaste] = useState<number>(4);
+
+  const multiTradeResult = useMemo(
+    () =>
+      computeMultiTradeQto({
+        kind: multiTradeKind,
+        length_m: mtLength,
+        width_or_thickness_m: mtWidth,
+        height_or_depth_m: mtHeight,
+        openings_deduction_m2: mtOpenings,
+        swell_factor: mtSwell,
+        waste_pct: mtWaste,
+      }),
+    [multiTradeKind, mtLength, mtWidth, mtHeight, mtOpenings, mtSwell, mtWaste],
+  );
 
   const qtoResult = useMemo(
     () =>
@@ -742,7 +767,7 @@ function ItemBreakdownLibraryPage() {
           onClick={() => setActiveTab("library")}
         >
           <Layers className="h-3.5 w-3.5" />
-          مكتبة القوالب التنفيذية (CSI 01–10)
+          مكتبة القوالب التنفيذية (CSI 01–33 الشاملة)
         </Button>
         <Button
           size="sm"
@@ -751,7 +776,7 @@ function ItemBreakdownLibraryPage() {
           onClick={() => setActiveTab("qto")}
         >
           <Calculator className="h-3.5 w-3.5" />
-          حاسبة الحصر الخرساني ومصفوفة القسم 03
+          حاسبة الحصر (الخرسانة + باقي الأعمال)
         </Button>
         <Button
           size="sm"
@@ -907,6 +932,119 @@ function ItemBreakdownLibraryPage() {
                 تطبيق النتيجة البارامترية على بند بالمقايسة
               </Button>
             </div>
+
+            {/* Multi-Trade Parametric Calculator for Remaining Works ("باقي الأعمال") */}
+            <div className="pt-4 border-t border-border space-y-3">
+              <div>
+                <h3 className="text-sm font-bold">حاسبة الحصر والـ Breakdown لباقي الأعمال (مباني، ترابية، عزل، ومسارات MEP)</h3>
+                <p className="text-[11px] text-muted-foreground">
+                  احسب صافي كميات الدفع ومعامل الانتفاش أو الوزرات أو مسار الكابلات والمواسير ثم طبّق التحليل مباشرة على بند بالمقايسة.
+                </p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 text-xs">
+                <div className="col-span-2">
+                  <Label className="text-[11px]">نوع العمل</Label>
+                  <Select value={multiTradeKind} onValueChange={(v) => setMultiTradeKind(v as MultiTradeQtoKind)}>
+                    <SelectTrigger className="h-8 text-xs mt-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="masonry_wall">04 — مباني بلوك (مع خصم الفتحات)</SelectItem>
+                      <SelectItem value="earthwork_trench_bulk">31 — حفر وترحيل (بمعامل انتفاش)</SelectItem>
+                      <SelectItem value="waterproofing_area">07 — عزل مائي (شامل وزرة الحواف)</SelectItem>
+                      <SelectItem value="mep_pipe_cable_run">22/26 — مسار مواسير/كابلات مع حوامل</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-[11px]">الطول (م)</Label>
+                  <Input type="number" step="0.5" value={mtLength} onChange={(e) => setMtLength(Number(e.target.value) || 0)} className="h-8 text-xs mt-1" />
+                </div>
+                <div>
+                  <Label className="text-[11px]">العرض (م)</Label>
+                  <Input type="number" step="0.5" value={mtWidth} onChange={(e) => setMtWidth(Number(e.target.value) || 0)} className="h-8 text-xs mt-1" />
+                </div>
+                <div>
+                  <Label className="text-[11px]">الارتفاع/العمق (م)</Label>
+                  <Input type="number" step="0.1" value={mtHeight} onChange={(e) => setMtHeight(Number(e.target.value) || 0)} className="h-8 text-xs mt-1" />
+                </div>
+                <div>
+                  <Label className="text-[11px]">
+                    {multiTradeKind === "masonry_wall" ? "خصم فتحات (م²)" : multiTradeKind === "earthwork_trench_bulk" ? "معامل الانتفاش" : "نسبة الهالك %"}
+                  </Label>
+                  {multiTradeKind === "masonry_wall" ? (
+                    <Input type="number" step="0.5" value={mtOpenings} onChange={(e) => setMtOpenings(Number(e.target.value) || 0)} className="h-8 text-xs mt-1" />
+                  ) : multiTradeKind === "earthwork_trench_bulk" ? (
+                    <Input type="number" step="0.05" value={mtSwell} onChange={(e) => setMtSwell(Number(e.target.value) || 1)} className="h-8 text-xs mt-1" />
+                  ) : (
+                    <Input type="number" step="0.5" value={mtWaste} onChange={(e) => setMtWaste(Number(e.target.value) || 0)} className="h-8 text-xs mt-1" />
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3 text-xs">
+                <div className="flex flex-wrap gap-6">
+                  <div>
+                    <span className="text-muted-foreground">كمية الدفع الصافية: </span>
+                    <strong className="font-mono">{multiTradeResult.primaryPayQty} {multiTradeResult.payUnit}</strong>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">{multiTradeResult.secondaryMetricLabel}: </span>
+                    <strong className="font-mono text-primary">{multiTradeResult.secondaryMetricVal}</strong>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">التكلفة المباشرة التقديرية/وحدة: </span>
+                    <strong className="font-mono text-emerald-500">{multiTradeResult.directUnitCost.toFixed(2)} ر.س</strong>
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="text-xs gap-1.5"
+                  onClick={() =>
+                    handleOpenApply({
+                      id: `parametric-${multiTradeKind}`,
+                      code: `QTO-${multiTradeKind.toUpperCase()}`,
+                      division:
+                        multiTradeKind === "masonry_wall"
+                          ? "Div. 04 - Masonry"
+                          : multiTradeKind === "earthwork_trench_bulk"
+                            ? "Div. 31 - Earthwork"
+                            : multiTradeKind === "waterproofing_area"
+                              ? "Div. 07 - Thermal & Moisture Protection"
+                              : "Div. 26 - Electrical",
+                      title_ar: `تحليل بارامتري — ${multiTradeKind}`,
+                      title_en: `Parametric assembly ${multiTradeKind}`,
+                      description_ar: `كمية الدفع الصافية ${multiTradeResult.primaryPayQty} ${multiTradeResult.payUnit}.`,
+                      description_en: `Net pay qty ${multiTradeResult.primaryPayQty}`,
+                      unit: multiTradeResult.payUnit,
+                      recommended_indirect_pct: 3,
+                      recommended_overhead_pct: 9,
+                      recommended_profit_pct: 11,
+                      recommended_risk_pct: 2,
+                      assembly_kind: "executable",
+                      rate_kind: "composite",
+                      items: multiTradeResult.lines.map((line, i) => ({
+                        id: `mt-line-${i + 1}`,
+                        resource_type: line.resource_type,
+                        ...(line.material_category ? { material_category: line.material_category } : {}),
+                        description_ar: line.description_ar ?? "",
+                        description_en: line.description_en ?? "",
+                        unit: line.unit ?? multiTradeResult.payUnit,
+                        quantity: line.quantity,
+                        ...(line.waste_pct !== undefined ? { waste_pct: line.waste_pct } : {}),
+                        unit_price: line.unit_price,
+                        ...(line.scope_tag ? { scope_tag: String(line.scope_tag) } : {}),
+                        ...(line.rate_kind ? { rate_kind: String(line.rate_kind) } : {}),
+                      })),
+                    })
+                  }
+                >
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  تطبيق التحليل على بند بالمقايسة
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -980,6 +1118,54 @@ function ItemBreakdownLibraryPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                {coverageReport.highImpactGaps.length > 0 && (
+                  <div className="pt-2 space-y-2">
+                    <h4 className="text-xs font-bold text-amber-600">
+                      الدفعة التالية ذات الأثر المالي الأعلى ({coverageReport.highImpactGaps.length} بند فجوة):
+                    </h4>
+                    <div className="max-h-48 overflow-y-auto rounded-md border">
+                      <table className="w-full text-[11px]">
+                        <thead className="bg-muted/40 sticky top-0">
+                          <tr>
+                            <th className="p-2 text-start">رقم البند</th>
+                            <th className="p-2 text-start">الوصف</th>
+                            <th className="p-2 text-center">القسم</th>
+                            <th className="p-2 text-center">الأثر المالي التقديري</th>
+                            <th className="p-2 text-center">إجراء</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {coverageReport.highImpactGaps.slice(0, 15).map((gap) => (
+                            <tr key={gap.boqItemId}>
+                              <td className="p-1.5 font-mono font-bold">{gap.itemNo}</td>
+                              <td className="p-1.5 max-w-xs truncate">{gap.description_ar}</td>
+                              <td className="p-1.5 text-center font-mono">{gap.divisionCode}</td>
+                              <td className="p-1.5 text-center font-mono text-amber-600">
+                                {gap.estimatedValue.toLocaleString("en-US", { maximumFractionDigits: 0 })} ر.س
+                              </td>
+                              <td className="p-1.5 text-center">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 text-[10px]"
+                                  onClick={() => {
+                                    if (gap.divisionCode && gap.divisionCode !== "00") {
+                                      setSelectedDivision(gap.divisionCode);
+                                    }
+                                    setActiveTab("library");
+                                  }}
+                                >
+                                  عرض قوالب القسم
+                                </Button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </>

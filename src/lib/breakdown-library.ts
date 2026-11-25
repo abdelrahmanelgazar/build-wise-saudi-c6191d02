@@ -3,6 +3,7 @@ import catalog from "./breakdown-catalog.json";
 import { readWorkspaceSetting, writeWorkspaceSetting } from "./workspace-settings";
 import { computeDirectUnitCost, computePricingPhase2, type ResourceCostInput } from "./estimation-calc";
 import { CSI_01_10_ASSEMBLIES } from "./csi-01-10-assemblies";
+import { CSI_REMAINING_WORKS_ASSEMBLIES } from "./csi-remaining-works-assemblies";
 import type { Database } from "@/integrations/supabase/types";
 
 export type BreakdownResourceType = "material" | "labor" | "equipment" | "subcontractor";
@@ -340,6 +341,7 @@ const originalTemplates: BreakdownTemplate[] = [
 
 export const DEFAULT_BREAKDOWN_TEMPLATES: BreakdownTemplate[] = [
   ...CSI_01_10_ASSEMBLIES,
+  ...CSI_REMAINING_WORKS_ASSEMBLIES,
   ...originalTemplates.map(template => ({
     ...template,
     items: template.items.map(item => ({

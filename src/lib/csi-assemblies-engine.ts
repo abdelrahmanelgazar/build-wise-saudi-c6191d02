@@ -5,6 +5,7 @@
  */
 
 import { computeDirectUnitCost, roundTo, type ResourceCostInput } from "./estimation-calc";
+import { csiDivisionCode } from "./csi-divisions";
 
 // ── 1. Scope Tags & Provenance Types ──────────────────────────────────────────
 
@@ -24,6 +25,13 @@ export type AssemblyScopeTag =
   | "openings"
   | "finishes"
   | "specialties"
+  | "equipment_conveying"
+  | "mep_fire"
+  | "mep_plumbing"
+  | "mep_hvac"
+  | "mep_electrical"
+  | "low_current"
+  | "infrastructure"
   | "general";
 
 export type RateKind = "supply" | "install" | "composite" | "reference";
@@ -60,6 +68,13 @@ export const SCOPE_LABELS_AR: Record<AssemblyScopeTag, string> = {
   openings: "أبواب ونوافذ وزجاج وخردوات",
   finishes: "تشطيبات (لياسة / بلاط / دهانات / جبس)",
   specialties: "تخصصات (لوحات / فواصل / تجهيزات)",
+  equipment_conveying: "معدات ومصاعد وأنظمة نقل",
+  mep_fire: "أنظمة إخماد ومكافحة الحريق",
+  mep_plumbing: "أعمال السباكة والصرف الصحي",
+  mep_hvac: "التدفئة والتهوية والتكييف (HVAC)",
+  mep_electrical: "الأعمال الكهربائية والقوى والتأريض",
+  low_current: "التيار الخفيف وBMS والأمن",
+  infrastructure: "أعمال البنية التحتية والموقع العام",
   general: "بنود عامة ومؤقتات موقع",
 };
 
@@ -645,6 +660,15 @@ export interface CsiDivisionCoverageSummary {
   valueCoveragePct: number;
 }
 
+export interface HighImpactGapEntry {
+  boqItemId: string;
+  itemNo: string;
+  description_ar: string;
+  divisionCode: string;
+  quantity: number;
+  estimatedValue: number;
+}
+
 export interface ProjectCoverageReport {
   totalItems: number;
   coveredItems: number;
@@ -658,11 +682,14 @@ export interface ProjectCoverageReport {
   valueCoveragePct: number;
   byDivision: CsiDivisionCoverageSummary[];
   gapItemIds: string[];
+  highImpactGaps: HighImpactGapEntry[];
 }
 
 export function extractCsiDivisionPrefix(value?: string | null): string {
   if (!value) return "00";
-  const m = value.match(/\b(0[1-9]|10)\b/) ?? value.match(/^(\d{2})/);
+  const resolved = csiDivisionCode(value);
+  if (resolved) return resolved;
+  const m = value.match(/\b(\d{2})\b/) ?? value.match(/^(\d{2})/);
   return m?.[1] ?? "00";
 }
 
@@ -681,6 +708,7 @@ export function computeProjectCoverageStats(
   let totalValue = 0;
   let coveredValue = 0;
   const gapItemIds: string[] = [];
+  const highImpactGaps: HighImpactGapEntry[] = [];
 
   for (const item of leafItems) {
     const div = extractCsiDivisionPrefix(item.csi_division ?? item.item_no);
@@ -708,6 +736,14 @@ export function computeProjectCoverageStats(
     } else {
       gapItems++;
       gapItemIds.push(item.id);
+      highImpactGaps.push({
+        boqItemId: item.id,
+        itemNo: item.item_no ?? "—",
+        description_ar: item.description_ar,
+        divisionCode: div,
+        quantity: qty,
+        estimatedValue: itemValue,
+      });
     }
 
     const entry = divMap.get(div) ?? {
@@ -738,6 +774,8 @@ export function computeProjectCoverageStats(
       entry.totalValue > 0 ? roundTo((entry.coveredValue / entry.totalValue) * 100, 2) : 0;
   }
 
+  highImpactGaps.sort((a, b) => b.estimatedValue - a.estimatedValue || b.quantity - a.quantity);
+
   const totalItems = leafItems.length;
   return {
     totalItems,
@@ -754,6 +792,222 @@ export function computeProjectCoverageStats(
       a.divisionCode.localeCompare(b.divisionCode),
     ),
     gapItemIds,
+    highImpactGaps,
+  };
+}
+
+// ── 8. Multi-Trade Parametric Breakdown QTO ("باقي الأعمال") ──────────────────
+
+export type MultiTradeQtoKind =
+  | "masonry_wall"
+  | "earthwork_trench_bulk"
+  | "waterproofing_area"
+  | "mep_pipe_cable_run";
+
+export interface MultiTradeQtoInput {
+  kind: MultiTradeQtoKind;
+  length_m: number;
+  width_or_thickness_m: number;
+  height_or_depth_m: number;
+  openings_deduction_m2?: number;
+  /** Upstand height for waterproofing parapet/skirting perimeter */
+  upstand_height_m?: number;
+  /** Swell/bulking factor for excavated soil haulage (e.g. 1.25) */
+  swell_factor?: number;
+  /** Single waste percentage */
+  waste_pct?: number;
+}
+
+export interface MultiTradeQtoResult {
+  kind: MultiTradeQtoKind;
+  primaryPayQty: number;
+  payUnit: string;
+  secondaryMetricLabel: string;
+  secondaryMetricVal: number;
+  lines: ScopedAnalysisLine[];
+  directUnitCost: number;
+}
+
+export function computeMultiTradeQto(input: MultiTradeQtoInput): MultiTradeQtoResult {
+  const L = Math.max(0, input.length_m);
+  const W = Math.max(0, input.width_or_thickness_m);
+  const H = Math.max(0, input.height_or_depth_m);
+
+  if (input.kind === "masonry_wall") {
+    const grossArea = roundTo(L * H, 4);
+    const netArea = roundTo(Math.max(0, grossArea - (input.openings_deduction_m2 ?? 0)), 4);
+    const waste = Math.max(0, input.waste_pct ?? 4);
+    const lines: ScopedAnalysisLine[] = [
+      {
+        resource_type: "material",
+        material_category: "primary",
+        description_ar: `بلوك أسمنتي (12.5 بلوكة/م² + هالك ${waste}%) — صافي ${netArea} م² بعد خصم الفتحات`,
+        description_en: `CMU block (12.5 pcs/m² + ${waste}% waste)`,
+        unit: "بلوكة",
+        quantity: 12.5,
+        waste_pct: waste,
+        unit_price: 4.5,
+        scope_tag: "masonry",
+        rate_kind: "reference",
+      },
+      {
+        resource_type: "material",
+        material_category: "accessory",
+        description_ar: "مونة أسمنت ورمل وشبك مباني وكانات أعمدة",
+        description_en: "Mortar, bed mesh & column ties",
+        unit: "م²",
+        quantity: 1,
+        unit_price: 12,
+        scope_tag: "masonry",
+        rate_kind: "reference",
+      },
+      {
+        resource_type: "labor",
+        description_ar: "مصنعية بناء ومعالجة",
+        description_en: "Mason crew labor",
+        unit: "م²",
+        quantity: 1,
+        unit_price: 26,
+        scope_tag: "masonry",
+        rate_kind: "reference",
+      },
+    ];
+    return {
+      kind: input.kind,
+      primaryPayQty: netArea,
+      payUnit: "م²",
+      secondaryMetricLabel: "إجمالي عدد البلوكات التقديري (قبل الهالك)",
+      secondaryMetricVal: roundTo(netArea * 12.5, 0),
+      lines,
+      directUnitCost: computeDirectUnitCost(lines).directUnitCost,
+    };
+  }
+
+  if (input.kind === "earthwork_trench_bulk") {
+    const bankVol = roundTo(L * W * H, 4);
+    const swell = Math.max(1, input.swell_factor ?? 1.25);
+    const looseVol = roundTo(bankVol * swell, 4);
+    const lines: ScopedAnalysisLine[] = [
+      {
+        resource_type: "equipment",
+        description_ar: `حفار + قلابات ترحيل بمعامل انتفاش ${swell} (${looseVol} م³ سائب لإجمالي ${bankVol} م³)`,
+        description_en: `Excavator & dump haulage (swell factor ${swell})`,
+        unit: "م³",
+        quantity: swell,
+        unit_price: 16,
+        scope_tag: "excavation_backfill",
+        rate_kind: "reference",
+      },
+      {
+        resource_type: "labor",
+        description_ar: "تسوية القاع وتحديد المناسيب المساحية",
+        description_en: "Trimming & survey crew",
+        unit: "م³",
+        quantity: 1,
+        unit_price: 6,
+        scope_tag: "excavation_backfill",
+        rate_kind: "reference",
+      },
+    ];
+    return {
+      kind: input.kind,
+      primaryPayQty: bankVol,
+      payUnit: "م³",
+      secondaryMetricLabel: "الحجم السائب للترحيل (م³)",
+      secondaryMetricVal: looseVol,
+      lines,
+      directUnitCost: computeDirectUnitCost(lines).directUnitCost,
+    };
+  }
+
+  if (input.kind === "waterproofing_area") {
+    const flatArea = roundTo(L * W, 4);
+    const perim = roundTo(2 * (L + W), 4);
+    const upstandArea = roundTo(perim * (input.upstand_height_m ?? 0.3), 4);
+    const totalContact = roundTo(flatArea + upstandArea, 4);
+    const upstandFactorPerM2 = flatArea > 0 ? roundTo(totalContact / flatArea, 4) : 1;
+    const waste = Math.max(0, input.waste_pct ?? 10);
+    const lines: ScopedAnalysisLine[] = [
+      {
+        resource_type: "material",
+        material_category: "primary",
+        description_ar: `لفائف عزل SBS 4 مم شاملة وزرة الارتفاع (${upstandFactorPerM2} م²/م² + هالك ركوب ${waste}%)`,
+        description_en: `SBS membrane incl. upstand (${upstandFactorPerM2} m²/m² + ${waste}% lap)`,
+        unit: "م²",
+        quantity: upstandFactorPerM2,
+        waste_pct: waste,
+        unit_price: 38,
+        scope_tag: "waterproofing",
+        rate_kind: "reference",
+      },
+      {
+        resource_type: "subcontractor",
+        description_ar: "تجهيز وبرايمر ولحام واختبار غمر 48 ساعة",
+        description_en: "Primer, torching & 48hr flood test",
+        unit: "م²",
+        quantity: upstandFactorPerM2,
+        unit_price: 22,
+        scope_tag: "waterproofing",
+        rate_kind: "reference",
+      },
+    ];
+    return {
+      kind: input.kind,
+      primaryPayQty: flatArea,
+      payUnit: "م²",
+      secondaryMetricLabel: "المساحة الفعلية شاملة الوزرات (م²)",
+      secondaryMetricVal: totalContact,
+      lines,
+      directUnitCost: computeDirectUnitCost(lines).directUnitCost,
+    };
+  }
+
+  // mep_pipe_cable_run
+  const totalRun = roundTo(L + H, 4); // horizontal + vertical drops
+  const waste = Math.max(0, input.waste_pct ?? 6);
+  const lines: ScopedAnalysisLine[] = [
+    {
+      resource_type: "material",
+      material_category: "primary",
+      description_ar: `توريد ماسورة/كابل المسار (1 م.ط صافي + هالك وصلات وانحناءات ${waste}%)`,
+      description_en: `Pipe/cable run supply (1 L.M. + ${waste}% termination/waste)`,
+      unit: "م.ط",
+      quantity: 1,
+      waste_pct: waste,
+      unit_price: 65,
+      scope_tag: "mep_electrical",
+      rate_kind: "reference",
+    },
+    {
+      resource_type: "material",
+      material_category: "accessory",
+      description_ar: "حوامل تعليق (Hangers/Tray) كل 1.5م وتثبيت",
+      description_en: "Supports & hangers allocation",
+      unit: "م.ط",
+      quantity: 1,
+      unit_price: 18,
+      scope_tag: "mep_electrical",
+      rate_kind: "reference",
+    },
+    {
+      resource_type: "labor",
+      description_ar: "فني تمديد وتثبيت واختبار عزل/ضغط",
+      description_en: "Installation & testing labor",
+      unit: "م.ط",
+      quantity: 1,
+      unit_price: 28,
+      scope_tag: "mep_electrical",
+      rate_kind: "reference",
+    },
+  ];
+  return {
+    kind: input.kind,
+    primaryPayQty: totalRun,
+    payUnit: "م.ط",
+    secondaryMetricLabel: "عدد حوامل التثبيت المقدرة (كل 1.5م)",
+    secondaryMetricVal: Math.ceil(totalRun / 1.5),
+    lines,
+    directUnitCost: computeDirectUnitCost(lines).directUnitCost,
   };
 }
 
