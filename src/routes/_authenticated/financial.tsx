@@ -29,8 +29,10 @@ import {
 import { fmtSAR, fmtNumber } from "@/lib/format";
 import { useLanguage } from "@/lib/i18n";
 import { computeProjectFinancials, type MarkupSettings, type ResourceCostInput } from "@/lib/estimation-calc";
+import { auditPreliminariesOverlap } from "@/lib/csi-assemblies-engine";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
-import { submitTenderVersion } from "@/lib/client-tender-service";
+import { getSubmittedTenderSnapshotsByProject, submitTenderVersion, type SubmittedTenderSnapshot } from "@/lib/client-tender-service";
+import * as XLSX from "xlsx";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/financial")({
@@ -49,6 +51,7 @@ function FinancialPage() {
   const qc = useQueryClient();
   const [vatRate, setVatRate] = useState<number>(15);
   const [isIssuing, setIsIssuing] = useState(false);
+  const [snapshotTick, setSnapshotTick] = useState(0);
 
   useRegisterPageActions({
     pageKey: "financial",
@@ -97,6 +100,7 @@ function FinancialPage() {
         .eq("id", projectId!);
 
       toast.success("تم اعتماد وإصدار العرض المالي وتثبيت لقطة التقديم بنجاح!");
+      setSnapshotTick((n) => n + 1);
       await qc.invalidateQueries({ queryKey: ["project_financial", projectId] });
       await qc.invalidateQueries({ queryKey: ["tenders"] });
     } catch (e: any) {
@@ -242,6 +246,61 @@ function FinancialPage() {
     { name: t("pa.subcontractor", "مقاول باطن"), value: financials.subcontractorCost || 1, color: "#8b5cf6" },
   ];
 
+  const prelimAudit = useMemo(
+    () =>
+      auditPreliminariesOverlap({
+        boqItems: (boqItems as any[]).map((b) => ({
+          id: b.id,
+          item_no: b.item_no,
+          description_ar: b.description_ar,
+          quantity: Number(b.quantity ?? 0),
+          is_group: b.is_group,
+          csi_division: b.sheet_name ?? b.item_no ?? null,
+          pricing_status: b.pricing_status ?? null,
+          material_cost: Number(b.material_cost ?? 0),
+          labor_cost: Number(b.labor_cost ?? 0),
+          equipment_cost: Number(b.equipment_cost ?? 0),
+          subcontractor_cost: Number(b.subcontractor_cost ?? 0),
+          selling_unit_rate: Number(b.manual_unit_price ?? 0),
+        })),
+        markupsByBoqId: markupsMap,
+      }),
+    [boqItems, markupsMap],
+  );
+
+  const submittedSnapshots = useMemo(() => {
+    void snapshotTick;
+    if (!projectId) return [] as SubmittedTenderSnapshot[];
+    return getSubmittedTenderSnapshotsByProject(projectId);
+  }, [projectId, snapshotTick]);
+
+  const exportFrozenSnapshot = (snap: SubmittedTenderSnapshot) => {
+    const aoa: (string | number)[][] = [
+      ["نسخة عطاء مقدمة ثابتة (Immutable Submission)", `v${snap.versionNo}`, snap.submittedAt.slice(0, 10)],
+      ["العميل", snap.clientName ?? "—", "العملة", snap.currency],
+      [],
+      ["رقم البند", "الوصف", "الوحدة", "الكمية", "المباشر/وحدة", "الخام/وحدة", "فئة البيع المعتمدة", "الإجمالي"],
+      ...snap.items.map((it) => [
+        it.itemNo,
+        it.descriptionAr,
+        it.unit ?? "",
+        it.quantity,
+        it.directUnitCost,
+        it.rawUnitSellingPrice,
+        it.approvedUnitRate,
+        it.lineSellingPrice,
+      ]),
+      [],
+      ["صافي قيمة العطاء قبل الضريبة", "", "", "", "", "", "", snap.netSellingPrice],
+      [`ضريبة القيمة المضافة (${snap.vatRate}%)`, "", "", "", "", "", "", snap.vatAmount],
+      ["الإجمالي النهائي شامل الضريبة", "", "", "", "", "", "", snap.grandTotalWithVat],
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, `Submission_v${snap.versionNo}`);
+    XLSX.writeFile(wb, `TenderSubmission_v${snap.versionNo}.xlsx`);
+  };
+
   if (!projectId) {
     return (
       <div className="p-6">
@@ -310,6 +369,14 @@ function FinancialPage() {
           </Link>
         </div>
       </div>
+
+      {/* Preliminaries vs Indirect Cost Double-Counting Warning (§3 & §6) */}
+      {prelimAudit.hasOverlapWarning && prelimAudit.message_ar && (
+        <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-700 dark:text-amber-300 flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>{prelimAudit.message_ar}</span>
+        </div>
+      )}
 
       {/* Unpriced Items Warning Banner */}
       {!financials.canIssueTender && financials.unpricedItemsCount > 0 && (
@@ -608,6 +675,53 @@ function FinancialPage() {
           </Card>
         </div>
       </div>
+
+      {/* Immutable Submitted Tender History (Preserved Regardless of Draft Price Revisions) */}
+      {submittedSnapshots.length > 0 && (
+        <Card className="border-border/60">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Lock className="h-4 w-4 text-emerald-500" />
+              سجل الإصدارات المقدمة الثابتة (Immutable Submissions History)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              يسترجع هذا السجل العطاءات المقدمة بقيمها التاريخية الثابتة حتى بعد تحديث أسعار الموردين في المسودات اللاحقة.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto rounded-md border border-border">
+              <table className="w-full text-xs tabular-nums">
+                <thead className="bg-muted/40">
+                  <tr>
+                    <th className="p-2 text-start">الإصدار</th>
+                    <th className="p-2 text-start">تاريخ التقديم</th>
+                    <th className="p-2 text-center">المباشر</th>
+                    <th className="p-2 text-center">صافي العطاء</th>
+                    <th className="p-2 text-center">الإجمالي بالضريبة</th>
+                    <th className="p-2 text-center">تصدير اللقطة</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {submittedSnapshots.map((snap) => (
+                    <tr key={snap.id}>
+                      <td className="p-2 font-mono font-bold text-primary">v{snap.versionNo}</td>
+                      <td className="p-2 text-muted-foreground">{snap.submittedAt.slice(0, 16).replace("T", " ")}</td>
+                      <td className="p-2 text-center">{fmtSAR(snap.totalDirectCost, language)}</td>
+                      <td className="p-2 text-center font-bold">{fmtSAR(snap.netSellingPrice, language)}</td>
+                      <td className="p-2 text-center font-bold text-emerald-600">{fmtSAR(snap.grandTotalWithVat, language)}</td>
+                      <td className="p-2 text-center">
+                        <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => exportFrozenSnapshot(snap)}>
+                          <Download className="h-3 w-3" /> Excel
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

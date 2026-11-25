@@ -251,6 +251,21 @@ export function getSubmittedTenderSnapshots(tenderId: string): SubmittedTenderSn
   );
 }
 
+export function getSubmittedTenderSnapshotsByProject(projectId: string): SubmittedTenderSnapshot[] {
+  const store = readSnapshotStore();
+  const seen = new Set<string>();
+  const out: SubmittedTenderSnapshot[] = [];
+  for (const list of Object.values(store)) {
+    for (const snap of list) {
+      if (snap.projectId === projectId && !seen.has(snap.id)) {
+        seen.add(snap.id);
+        out.push(snap);
+      }
+    }
+  }
+  return out.sort((a, b) => b.versionNo - a.versionNo || b.submittedAt.localeCompare(a.submittedAt));
+}
+
 export function getSubmittedTenderSnapshot(
   tenderId: string,
   versionNo?: number,

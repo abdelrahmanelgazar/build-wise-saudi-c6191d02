@@ -1087,6 +1087,64 @@ export function computeSignedBoqExtension(quantity: number, approvedUnitRate: nu
   return roundTo((Number(quantity) || 0) * Math.abs(Number(approvedUnitRate) || 0), 2);
 }
 
+// ── 10. Division 01 Preliminaries vs Indirect Overhead Audit (§3 & §6) ───────
+
+export interface PreliminariesOverlapAuditResult {
+  hasOverlapWarning: boolean;
+  explicitPreliminariesCount: number;
+  explicitPreliminariesTotal: number;
+  indirectMarkupAppliedOnOtherItems: number;
+  message_ar: string | null;
+}
+
+export function auditPreliminariesOverlap(params: {
+  boqItems: BoqCoverageCandidate[];
+  markupsByBoqId?: Map<string, { indirect_pct?: number }>;
+}): PreliminariesOverlapAuditResult {
+  let explicitPreliminariesCount = 0;
+  let explicitPreliminariesTotal = 0;
+  let indirectMarkupAppliedOnOtherItems = 0;
+
+  for (const item of params.boqItems) {
+    if (item.is_group) continue;
+    const div = extractCsiDivisionPrefix(item.csi_division ?? item.item_no);
+    const directUnit =
+      Number(item.material_cost ?? 0) +
+      Number(item.labor_cost ?? 0) +
+      Number(item.equipment_cost ?? 0) +
+      Number(item.subcontractor_cost ?? 0);
+    const qty = Number(item.quantity ?? 0);
+    const rate = Number(item.selling_unit_rate ?? 0) > 0 ? Number(item.selling_unit_rate) : directUnit;
+
+    if (div === "01" && item.pricing_status !== "included" && rate > 0) {
+      explicitPreliminariesCount++;
+      explicitPreliminariesTotal = roundTo(explicitPreliminariesTotal + qty * rate, 2);
+    } else if (div !== "01") {
+      const m = params.markupsByBoqId?.get(item.id);
+      const indirectPct = Number(m?.indirect_pct ?? 0);
+      if (indirectPct > 0 && directUnit > 0) {
+        indirectMarkupAppliedOnOtherItems = roundTo(
+          indirectMarkupAppliedOnOtherItems + qty * ((directUnit * indirectPct) / 100),
+          2,
+        );
+      }
+    }
+  }
+
+  const hasOverlapWarning = explicitPreliminariesTotal > 0 && indirectMarkupAppliedOnOtherItems > 0;
+  const message_ar = hasOverlapWarning
+    ? `تنبيه ازدواج التمهيديات: يحتوي جدول الكميات على (${explicitPreliminariesCount}) بند متطلبات عامة صريح بالقسم 01 بقيمة ${explicitPreliminariesTotal.toLocaleString("en-US")} ر.س، مع تحميل نسبة تكاليف غير مباشرة (${indirectMarkupAppliedOnOtherItems.toLocaleString("en-US")} ر.س) على باقي البنود. راجع عدم تكرار مصروفات الموقع.`
+    : null;
+
+  return {
+    hasOverlapWarning,
+    explicitPreliminariesCount,
+    explicitPreliminariesTotal,
+    indirectMarkupAppliedOnOtherItems,
+    message_ar,
+  };
+}
+
 // ── 7. 50-Template Legacy Inventory & Idempotent Migration Ledger (§5 #1) ──────
 
 export type LegacyTemplateDisposition =

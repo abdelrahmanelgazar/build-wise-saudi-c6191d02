@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   analyzeAssemblyScopes,
+  auditPreliminariesOverlap,
   buildLegacyTemplateDispositionLedger,
   computeConcreteElementQto,
   computeMultiTradeQto,
@@ -372,5 +373,60 @@ describe("CSI 01–10 Assemblies, Concrete QTO, and Scope Audit (§1–§5)", ()
 
     // 3. Signed deduction item extension preserves negative total
     expect(computeSignedBoqExtension(-5, 16)).toBe(-80);
+  });
+
+  it("includes all §2 concrete variants (Raft, Pile Caps, Circular Col, SOG, Hollow-Core, Composite Deck, Curing), §3 specialties, and detects Div 01 preliminaries vs indirect markup overlap", () => {
+    const all = getAllBreakdownTemplates();
+    for (const code of [
+      "03-30-12-RAFT",
+      "03-30-12-PCAP",
+      "03-30-13-CCOL",
+      "03-30-21-SOG",
+      "03-41-13-HCOR",
+      "03-30-26-CMDT",
+      "03-39-00-CURE",
+      "07-84-00-FSTP",
+      "09-63-40-MRBL",
+      "10-14-00-SIGN",
+    ]) {
+      expect(all.some((t) => t.code === code)).toBe(true);
+    }
+
+    // Audit overlap between priced Div 01 explicit item & indirect_pct > 0 on other BOQ items
+    const overlap = auditPreliminariesOverlap({
+      boqItems: [
+        {
+          id: "b1",
+          item_no: "01-10",
+          description_ar: "مكتب ومصاريف موقع",
+          quantity: 1,
+          csi_division: "01",
+          pricing_status: "priced",
+          material_cost: 50000,
+        },
+        {
+          id: "b2",
+          item_no: "03-10",
+          description_ar: "أعمدة خرسانية",
+          quantity: 100,
+          csi_division: "03",
+          material_cost: 500,
+        },
+      ],
+      markupsByBoqId: new Map([["b2", { indirect_pct: 5 }]]),
+    });
+    expect(overlap.hasOverlapWarning).toBe(true);
+    expect(overlap.explicitPreliminariesTotal).toBe(50000);
+    expect(overlap.indirectMarkupAppliedOnOtherItems).toBe(2500);
+
+    // No warning when indirect_pct is zeroed out
+    const clean = auditPreliminariesOverlap({
+      boqItems: [
+        { id: "b1", item_no: "01-10", description_ar: "مكتب", quantity: 1, csi_division: "01", material_cost: 50000 },
+        { id: "b2", item_no: "03-10", description_ar: "خرسانة", quantity: 100, csi_division: "03", material_cost: 500 },
+      ],
+      markupsByBoqId: new Map([["b2", { indirect_pct: 0 }]]),
+    });
+    expect(clean.hasOverlapWarning).toBe(false);
   });
 });
