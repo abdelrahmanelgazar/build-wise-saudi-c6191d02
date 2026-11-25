@@ -2,6 +2,7 @@ import { estimationClient } from "@/lib/estimation-client";
 import catalog from "./breakdown-catalog.json";
 import { readWorkspaceSetting, writeWorkspaceSetting } from "./workspace-settings";
 import { computeDirectUnitCost, computePricingPhase2, type ResourceCostInput } from "./estimation-calc";
+import { CSI_01_10_ASSEMBLIES } from "./csi-01-10-assemblies";
 import type { Database } from "@/integrations/supabase/types";
 
 export type BreakdownResourceType = "material" | "labor" | "equipment" | "subcontractor";
@@ -9,11 +10,15 @@ export type BreakdownResourceType = "material" | "labor" | "equipment" | "subcon
 export interface BreakdownResourceItem {
   id: string;
   resource_type: BreakdownResourceType;
+  material_category?: "primary" | "accessory";
   description_ar: string;
   description_en: string;
   unit: string;
   quantity: number;
+  waste_pct?: number;
   unit_price: number;
+  scope_tag?: string;
+  rate_kind?: string;
   notes?: string;
 }
 
@@ -31,6 +36,15 @@ export interface BreakdownTemplate {
   recommended_profit_pct: number;
   recommended_risk_pct: number;
   items: BreakdownResourceItem[];
+  assembly_kind?: "executable" | "reference_composite";
+  rate_kind?: "supply" | "install" | "composite" | "reference";
+  execution_method?: string;
+  included_scopes?: string[];
+  excluded_scopes?: string[];
+  provenance_note?: string;
+  legacy_id?: string;
+  csi_standard?: string;
+  version_no?: number;
   is_custom?: boolean;
   created_at?: string;
 }
@@ -200,25 +214,37 @@ const originalTemplates: BreakdownTemplate[] = [
   },
   {
     id: "tmpl-conc-c35",
-    code: "CONC-C35",
+    legacy_id: "tmpl-conc-c35",
+    code: "CONC-C35-REF",
     division: "Div. 03 - Concrete Works",
-    title_ar: "خرسانة مسلحة جاهزة رتبة C35 للقواعد والأساسات",
-    title_en: "Ready-Mix Reinforced Concrete C35 for Foundations",
-    description_ar: "توريد وصب خرسانة مسلحة C35 مقاومة للكبريتات SRC شاملة الضخ والدمك والمعالجة بالماء.",
-    description_en: "Supply and pour ready-mix C35 SRC sulfate resisting concrete including pumping, vibration and curing.",
+    title_ar: "مرجع تقديري مركّب: توريد وضخ وصب خرسانة C35 (بدون حديد أو شدة)",
+    title_en: "Composite Budget Reference: C35 Concrete Supply, Pump & Pour (Excl. Rebar/Formwork)",
+    description_ar: "مرجع تاريخي مركّب لتوريد وضخ وصب خرسانة C35 مقاومة للكبريتات SRC. تنبيه: لا يشمل حديد التسليح أو الشدات؛ استبدله بقوالب القسم 03 المفرغة النطاق أو اربطه بعروض الموردين قبل التقديم.",
+    description_en: "Historical composite budget reference (supply + pump + pour crew only). Excludes rebar and formwork; do not auto-apply as bare supply or full RC element rate.",
     unit: "m3",
     recommended_overhead_pct: 8,
     recommended_profit_pct: 10,
     recommended_risk_pct: 2,
+    assembly_kind: "reference_composite",
+    rate_kind: "reference",
+    execution_method: "مرجع تاريخي مركّب — يتطلب التحقق من عروض الموردين قبل التقديم",
+    included_scopes: ["concrete_supply", "pumping", "pouring_compaction"],
+    excluded_scopes: ["rebar_supply_fix", "formwork", "curing"],
+    provenance_note: "قالب موروث مُصحّح النطاق (§1): تم توثيق استبعاد الحديد والشدة ومنع اعتماده كسعر مادة خام فقط.",
+    csi_standard: "CSI MasterFormat 2020",
+    version_no: 2,
     items: [
       {
         id: "res-conc-mat-1",
         resource_type: "material",
-        description_ar: "خرسانة جاهزة SRC رتبة C35 محطة خلط معتمدة",
+        material_category: "primary",
+        description_ar: "خرسانة جاهزة SRC رتبة C35 محطة خلط معتمدة (مرجع مركّب — صافي 1 م³ + هالك 5%)",
         description_en: "Ready-mix SRC concrete C35 from approved batching plant",
         unit: "m3",
         quantity: 1.05,
         unit_price: 245.00,
+        scope_tag: "concrete_supply",
+        rate_kind: "reference",
       },
       {
         id: "res-conc-eq-1",
@@ -228,6 +254,8 @@ const originalTemplates: BreakdownTemplate[] = [
         unit: "m3",
         quantity: 1,
         unit_price: 25.00,
+        scope_tag: "pumping",
+        rate_kind: "reference",
       },
       {
         id: "res-conc-lab-1",
@@ -237,6 +265,8 @@ const originalTemplates: BreakdownTemplate[] = [
         unit: "m3",
         quantity: 1,
         unit_price: 30.00,
+        scope_tag: "pouring_compaction",
+        rate_kind: "reference",
       },
     ],
   },
@@ -309,6 +339,7 @@ const originalTemplates: BreakdownTemplate[] = [
 ];
 
 export const DEFAULT_BREAKDOWN_TEMPLATES: BreakdownTemplate[] = [
+  ...CSI_01_10_ASSEMBLIES,
   ...originalTemplates.map(template => ({
     ...template,
     items: template.items.map(item => ({
@@ -365,10 +396,12 @@ export function calculateBreakdownCost(
 ) {
   const mappedInputs: ResourceCostInput[] = template.items.map((item) => {
     const matCat = (item as any).material_category || (item as any).cell_styles?.material_category;
+    const wastePct = Number(item.waste_pct ?? 0);
     return {
       resource_type: (item.resource_type || (item as any).cost_type) as ResourceCostInput["resource_type"],
       quantity: Number(item.quantity) || 0,
       unit_price: Number(item.unit_price) || 0,
+      ...(wastePct > 0 ? { waste_pct: wastePct } : {}),
       ...(matCat ? { material_category: matCat as "primary" | "accessory" } : {}),
     };
   });
@@ -486,13 +519,21 @@ export async function applyTemplateToBoqItem({
       description_en: item.description_en || null,
       unit: item.unit,
       quantity: item.quantity,
+      waste_pct: Number(item.waste_pct ?? 0),
       unit_price: item.unit_price,
       sort_order: index + 1,
       material_category: (item as any).material_category || "primary",
+      scope_tag: item.scope_tag || null,
+      rate_kind: item.rate_kind || template.rate_kind || "reference",
+      execution_method: template.execution_method || null,
       line_note: item.notes || null,
       cell_styles: {
         notes: item.notes || null,
         material_category: (item as any).material_category || "primary",
+        scope_tag: item.scope_tag || null,
+        rate_kind: item.rate_kind || template.rate_kind || "reference",
+        assembly_id: template.id,
+        assembly_code: template.code,
       },
     }));
 
@@ -500,6 +541,26 @@ export async function applyTemplateToBoqItem({
       const { error: insErr } = await estimationClient.from("price_analysis_items").insert(inserts);
       if (insErr) throw insErr;
     }
+
+    // 2b. Persist assembly lineage & coverage record for CSI 01-10 reporting
+    await estimationClient
+      .from("assembly_coverage_records")
+      .upsert(
+        {
+          project_id: projectId,
+          boq_item_id: boqItemId,
+          user_id: userId,
+          assembly_id: template.id,
+          assembly_code: template.code,
+          assembly_version: template.version_no ?? 1,
+          csi_division: template.division,
+          coverage_status: template.assembly_kind === "reference_composite" ? "reference_only" : "matched",
+          included_scopes: template.included_scopes ?? [],
+          excluded_scopes: template.excluded_scopes ?? [],
+          evidence_note: template.provenance_note || null,
+        },
+        { onConflict: "project_id,boq_item_id" },
+      );
 
     // 3. Calculate totals using unified 4 markups
     const calc = calculateBreakdownCost(template);

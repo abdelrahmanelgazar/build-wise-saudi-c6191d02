@@ -129,6 +129,7 @@ export type Database = {
           created_at: string
           description_ar: string
           description_en: string | null
+          execution_method: string | null
           id: string
           line_note: string | null
           material_category: string | null
@@ -136,10 +137,14 @@ export type Database = {
           project_id: string | null
           quantity: number
           quote_id: string | null
+          quote_item_id: string | null
           quote_version: number | null
+          rate_kind: string | null
           resource_id: string | null
           resource_type: Database["public"]["Enums"]["resource_type"]
+          scope_tag: string | null
           sort_order: number
+          supplier_quote_id: string | null
           unit: string
           unit_price: number
           user_id: string
@@ -154,6 +159,7 @@ export type Database = {
           created_at?: string
           description_ar: string
           description_en?: string | null
+          execution_method?: string | null
           id?: string
           line_note?: string | null
           material_category?: string | null
@@ -161,10 +167,14 @@ export type Database = {
           project_id?: string | null
           quantity?: number
           quote_id?: string | null
+          quote_item_id?: string | null
           quote_version?: number | null
+          rate_kind?: string | null
           resource_id?: string | null
           resource_type: Database["public"]["Enums"]["resource_type"]
+          scope_tag?: string | null
           sort_order?: number
+          supplier_quote_id?: string | null
           unit: string
           unit_price?: number
           user_id: string
@@ -179,6 +189,7 @@ export type Database = {
           created_at?: string
           description_ar?: string
           description_en?: string | null
+          execution_method?: string | null
           id?: string
           line_note?: string | null
           material_category?: string | null
@@ -186,10 +197,14 @@ export type Database = {
           project_id?: string | null
           quantity?: number
           quote_id?: string | null
+          quote_item_id?: string | null
           quote_version?: number | null
+          rate_kind?: string | null
           resource_id?: string | null
           resource_type?: Database["public"]["Enums"]["resource_type"]
+          scope_tag?: string | null
           sort_order?: number
+          supplier_quote_id?: string | null
           unit?: string
           unit_price?: number
           user_id?: string
@@ -738,6 +753,186 @@ export type Database = {
           version_no: number
         }
         Update: never
+        Relationships: []
+      }
+      supplier_quotes: {
+        Row: {
+          city: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          delivery_terms: string | null
+          id: string
+          project_id: string | null
+          quote_date: string | null
+          quote_no: string | null
+          scope: string | null
+          status: string
+          supplier_name: string
+          transport_included: boolean
+          validity_date: string | null
+          vat_included: boolean
+          version_no: number
+          workspace_id: string
+        }
+        Insert: {
+          city?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          delivery_terms?: string | null
+          id?: string
+          project_id?: string | null
+          quote_date?: string | null
+          quote_no?: string | null
+          scope?: string | null
+          status?: string
+          supplier_name: string
+          transport_included?: boolean
+          validity_date?: string | null
+          vat_included?: boolean
+          version_no?: number
+          workspace_id: string
+        }
+        Update: {
+          city?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          delivery_terms?: string | null
+          id?: string
+          project_id?: string | null
+          quote_date?: string | null
+          quote_no?: string | null
+          scope?: string | null
+          status?: string
+          supplier_name?: string
+          transport_included?: boolean
+          validity_date?: string | null
+          vat_included?: boolean
+          version_no?: number
+          workspace_id?: string
+        }
+        Relationships: []
+      }
+      supplier_quote_items: {
+        Row: {
+          base_unit: string | null
+          city: string | null
+          created_at: string
+          id: string
+          min_order_charge: number
+          min_order_qty: number
+          pack_price: number
+          pack_size: number
+          pricing_unit: string
+          quote_id: string
+          resource_id: string | null
+          scope_tag: string | null
+          shift_hours: number
+          specification: string
+          terms: string | null
+          transport_included: boolean
+          unit_conversion_factor: number
+          unit_price: number
+          vat_included: boolean
+          waste_pct: number
+        }
+        Insert: {
+          base_unit?: string | null
+          city?: string | null
+          created_at?: string
+          id?: string
+          min_order_charge?: number
+          min_order_qty?: number
+          pack_price?: number
+          pack_size?: number
+          pricing_unit: string
+          quote_id: string
+          resource_id?: string | null
+          scope_tag?: string | null
+          shift_hours?: number
+          specification: string
+          terms?: string | null
+          transport_included?: boolean
+          unit_conversion_factor?: number
+          unit_price?: number
+          vat_included?: boolean
+          waste_pct?: number
+        }
+        Update: {
+          base_unit?: string | null
+          city?: string | null
+          created_at?: string
+          id?: string
+          min_order_charge?: number
+          min_order_qty?: number
+          pack_price?: number
+          pack_size?: number
+          pricing_unit?: string
+          quote_id?: string
+          resource_id?: string | null
+          scope_tag?: string | null
+          shift_hours?: number
+          specification?: string
+          terms?: string | null
+          transport_included?: boolean
+          unit_conversion_factor?: number
+          unit_price?: number
+          vat_included?: boolean
+          waste_pct?: number
+        }
+        Relationships: []
+      }
+      assembly_coverage_records: {
+        Row: {
+          assembly_code: string | null
+          assembly_id: string
+          assembly_version: number
+          boq_item_id: string
+          coverage_status: string
+          created_at: string
+          csi_division: string | null
+          evidence_note: string | null
+          excluded_scopes: Json
+          id: string
+          included_scopes: Json
+          project_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          assembly_code?: string | null
+          assembly_id: string
+          assembly_version?: number
+          boq_item_id: string
+          coverage_status?: string
+          created_at?: string
+          csi_division?: string | null
+          evidence_note?: string | null
+          excluded_scopes?: Json
+          id?: string
+          included_scopes?: Json
+          project_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          assembly_code?: string | null
+          assembly_id?: string
+          assembly_version?: number
+          boq_item_id?: string
+          coverage_status?: string
+          created_at?: string
+          csi_division?: string | null
+          evidence_note?: string | null
+          excluded_scopes?: Json
+          id?: string
+          included_scopes?: Json
+          project_id?: string
+          updated_at?: string
+          user_id?: string
+        }
         Relationships: []
       }
     }

@@ -21,8 +21,20 @@ const defaults = {
   tender_transitions: {},
   companies: {},
   company_client_links: {},
-  supplier_quotes: { currency: "SAR", version_no: 1 },
-  supplier_quote_items: { pack_size: 1, pack_price: 0, unit_price: 0, waste_pct: 0 },
+  supplier_quotes: { currency: "SAR", version_no: 1, status: "quoted", vat_included: false, transport_included: true },
+  supplier_quote_items: {
+    pack_size: 1,
+    pack_price: 0,
+    unit_price: 0,
+    waste_pct: 0,
+    unit_conversion_factor: 1,
+    vat_included: false,
+    transport_included: true,
+    min_order_qty: 0,
+    min_order_charge: 0,
+    shift_hours: 8,
+  },
+  assembly_coverage_records: { assembly_version: 1, coverage_status: "matched", included_scopes: [], excluded_scopes: [] },
   tender_submissions: { currency: "SAR", pricing_policy: "additive_v2", vat_rate: 15 },
   workspace_memberships: {},
 };
@@ -60,6 +72,7 @@ function deleteRelatedRows(database: Tables, table: Table, rows: Row[]) {
     remove("boq_items", "id", ids);
     remove("price_analysis_items", "boq_item_id", ids);
     remove("price_analysis_markup", "boq_item_id", ids);
+    remove("assembly_coverage_records", "boq_item_id", ids);
   }
   if (table === "resources") {
     for (const item of database.price_analysis_items ?? []) {

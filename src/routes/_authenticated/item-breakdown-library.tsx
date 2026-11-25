@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Layers,
@@ -18,7 +18,17 @@ import {
   Sparkles,
   Info,
   DollarSign,
+  AlertTriangle,
+  BarChart3,
 } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import {
+  computeConcreteElementQto,
+  computeProjectCoverageStats,
+  SCOPE_LABELS_AR,
+  type AssemblyScopeTag,
+  type ConcreteElementFamily,
+} from "@/lib/csi-assemblies-engine";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -89,7 +99,35 @@ function ItemBreakdownLibraryPage() {
 
   const [search, setSearch] = useState("");
   const [selectedDivision, setSelectedDivision] = useState<string>("all");
+  const [activeTab, setActiveTab] = useState<"library" | "qto" | "coverage">("library");
   const [templates, setTemplates] = useState<BreakdownTemplate[]>(() => getAllBreakdownTemplates());
+
+  // Parametric Concrete Division 03 QTO state (defaulting to §2 verification example)
+  const [qtoFamily, setQtoFamily] = useState<ConcreteElementFamily>("column");
+  const [qtoWidth, setQtoWidth] = useState<number>(0.4);
+  const [qtoLength, setQtoLength] = useState<number>(0.6);
+  const [qtoHeight, setQtoHeight] = useState<number>(3.0);
+  const [qtoCount, setQtoCount] = useState<number>(1);
+  const [qtoWastePct, setQtoWastePct] = useState<number>(3);
+  const [qtoRebarKg, setQtoRebarKg] = useState<number>(90);
+  const [qtoIncludeFormwork, setQtoIncludeFormwork] = useState<boolean>(true);
+  const [qtoIncludeRebar, setQtoIncludeRebar] = useState<boolean>(true);
+
+  const qtoResult = useMemo(
+    () =>
+      computeConcreteElementQto({
+        family: qtoFamily,
+        width_m: qtoWidth,
+        length_or_depth_m: qtoLength,
+        height_or_thickness_m: qtoHeight,
+        count: qtoCount,
+        concrete_waste_pct: qtoWastePct,
+        rebar_total_kg: qtoRebarKg,
+        include_formwork: qtoIncludeFormwork,
+        include_rebar: qtoIncludeRebar,
+      }),
+    [qtoFamily, qtoWidth, qtoLength, qtoHeight, qtoCount, qtoWastePct, qtoRebarKg, qtoIncludeFormwork, qtoIncludeRebar],
+  );
 
   // Apply dialog state
   const [applyModalOpen, setApplyModalOpen] = useState(false);
@@ -104,10 +142,10 @@ function ItemBreakdownLibraryPage() {
   const [previewTemplate, setPreviewTemplate] = useState<BreakdownTemplate | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Fetch project BOQ items for apply modal
+  // Fetch project BOQ items for apply modal and Coverage Registry
   const { data: boqItems = [] } = useQuery({
     queryKey: ["boq_items_for_apply", projectId],
-    enabled: !!projectId && applyModalOpen,
+    enabled: !!projectId && (applyModalOpen || activeTab === "coverage"),
     queryFn: async () => {
       if (!projectId) return [];
       const { data, error } = await estimationClient
@@ -121,6 +159,50 @@ function ItemBreakdownLibraryPage() {
       return data as BoqRow[];
     },
   });
+
+  const { data: coverageRecords = [] } = useQuery({
+    queryKey: ["assembly_coverage_records", projectId],
+    enabled: !!projectId && activeTab === "coverage",
+    queryFn: async () => {
+      if (!projectId) return [];
+      const { data, error } = await estimationClient
+        .from("assembly_coverage_records")
+        .select("*")
+        .eq("project_id", projectId);
+      if (error) return [];
+      return data as Database["public"]["Tables"]["assembly_coverage_records"]["Row"][];
+    },
+  });
+
+  const coverageReport = useMemo(() => {
+    const recordByBoqId = new Map(coverageRecords.map((r) => [r.boq_item_id, r]));
+    const availableDivisions = new Set(
+      templates.map((tmpl) => csiDivisionCode(tmpl.division)).filter((c): c is string => Boolean(c)),
+    );
+    return computeProjectCoverageStats(
+      boqItems.map((b) => {
+        const rec = recordByBoqId.get(b.id);
+        return {
+          id: b.id,
+          item_no: b.item_no,
+          description_ar: b.description_ar,
+          quantity: Number(b.quantity ?? 0),
+          is_group: b.is_group,
+          csi_division: rec?.csi_division ?? b.sheet_name ?? b.item_no ?? null,
+          pricing_status: b.pricing_status ?? null,
+          rate_source: b.rate_source ?? null,
+          material_cost: Number(b.material_cost ?? 0),
+          labor_cost: Number(b.labor_cost ?? 0),
+          equipment_cost: Number(b.equipment_cost ?? 0),
+          subcontractor_cost: Number(b.subcontractor_cost ?? 0),
+          selling_unit_rate: Number(b.manual_unit_price ?? b.imported_unit_rate ?? 0),
+          assembly_id: rec?.assembly_id ?? null,
+          quote_status: rec?.coverage_status === "reference_only" ? "reference" : null,
+        };
+      }),
+      availableDivisions,
+    );
+  }, [boqItems, coverageRecords, templates]);
 
   const hasUnclassified = templates.some((template) => !csiDivisionCode(template.division));
 
@@ -575,6 +657,261 @@ function ItemBreakdownLibraryPage() {
         </div>
       </div>
 
+      {/* Sub-navigation Tabs: Library vs Parametric Concrete QTO vs Coverage Registry */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-2">
+        <Button
+          size="sm"
+          variant={activeTab === "library" ? "default" : "outline"}
+          className="gap-1.5 text-xs"
+          onClick={() => setActiveTab("library")}
+        >
+          <Layers className="h-3.5 w-3.5" />
+          مكتبة القوالب التنفيذية (CSI 01–10)
+        </Button>
+        <Button
+          size="sm"
+          variant={activeTab === "qto" ? "default" : "outline"}
+          className="gap-1.5 text-xs"
+          onClick={() => setActiveTab("qto")}
+        >
+          <Calculator className="h-3.5 w-3.5" />
+          حاسبة الحصر الخرساني ومصفوفة القسم 03
+        </Button>
+        <Button
+          size="sm"
+          variant={activeTab === "coverage" ? "default" : "outline"}
+          className="gap-1.5 text-xs"
+          onClick={() => setActiveTab("coverage")}
+        >
+          <BarChart3 className="h-3.5 w-3.5" />
+          سجل تغطية المقايسات والفجوات
+        </Button>
+      </div>
+
+      {activeTab === "qto" && (
+        <Card className="border-primary/20">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Calculator className="h-4 w-4 text-primary" />
+              حاسبة الحصر الخرساني البارامترية — القسم 03 (م³، م² شدة، كجم حديد، وهالك واحد)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              تحسب الكميات الهندسية الصافية ومعامل التوريد والشدة والحديد دون ازدواجية في الهالك أو التكاليف غير المباشرة.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div>
+                <Label className="text-[11px]">العنصر الإنشائي</Label>
+                <Select value={qtoFamily} onValueChange={(v) => setQtoFamily(v as ConcreteElementFamily)}>
+                  <SelectTrigger className="h-8 text-xs mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="lean_concrete">خرسانة نظافة عادية</SelectItem>
+                    <SelectItem value="isolated_footing">قواعد منفصلة / مشتركة</SelectItem>
+                    <SelectItem value="raft_foundation">لبشة مسلحة</SelectItem>
+                    <SelectItem value="column">أعمدة ورقاب</SelectItem>
+                    <SelectItem value="retaining_wall">حوائط ساندة / قص / خزانات</SelectItem>
+                    <SelectItem value="beam">كمرات وجسور</SelectItem>
+                    <SelectItem value="grade_beam">ميدات وشدادات</SelectItem>
+                    <SelectItem value="solid_slab">بلاطات مصمتة / أعصاب</SelectItem>
+                    <SelectItem value="flat_slab">فلات سلاب / سقوط وتيجان</SelectItem>
+                    <SelectItem value="hollow_block_slab">هوردى / وافل</SelectItem>
+                    <SelectItem value="stairs_and_misc">سلالم وبروزات وملحقات</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[11px]">العرض (م)</Label>
+                <Input type="number" step="0.01" value={qtoWidth} onChange={(e) => setQtoWidth(Number(e.target.value) || 0)} className="h-8 text-xs mt-1" />
+              </div>
+              <div>
+                <Label className="text-[11px]">الطول / العمق (م)</Label>
+                <Input type="number" step="0.01" value={qtoLength} onChange={(e) => setQtoLength(Number(e.target.value) || 0)} className="h-8 text-xs mt-1" />
+              </div>
+              <div>
+                <Label className="text-[11px]">الارتفاع / السماكة (م)</Label>
+                <Input type="number" step="0.01" value={qtoHeight} onChange={(e) => setQtoHeight(Number(e.target.value) || 0)} className="h-8 text-xs mt-1" />
+              </div>
+              <div>
+                <Label className="text-[11px]">العدد</Label>
+                <Input type="number" step="1" min={1} value={qtoCount} onChange={(e) => setQtoCount(Math.max(1, Number(e.target.value) || 1))} className="h-8 text-xs mt-1" />
+              </div>
+              <div>
+                <Label className="text-[11px]">هالك الخرسانة % (مرة واحدة)</Label>
+                <Input type="number" step="0.5" value={qtoWastePct} onChange={(e) => setQtoWastePct(Number(e.target.value) || 0)} className="h-8 text-xs mt-1" />
+              </div>
+              <div>
+                <Label className="text-[11px]">إجمالي الحديد للعنصر (كجم)</Label>
+                <Input type="number" step="1" value={qtoRebarKg} onChange={(e) => setQtoRebarKg(Number(e.target.value) || 0)} className="h-8 text-xs mt-1" />
+              </div>
+              <div className="flex flex-col justify-end gap-1.5">
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" checked={qtoIncludeFormwork} onChange={(e) => setQtoIncludeFormwork(e.target.checked)} />
+                  <span>شامل الشدة</span>
+                </label>
+                <label className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" checked={qtoIncludeRebar} onChange={(e) => setQtoIncludeRebar(e.target.checked)} />
+                  <span>شامل الحديد</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 rounded-lg border bg-muted/30 p-3 text-xs">
+              <div>
+                <div className="text-muted-foreground text-[10px]">حجم الخرسانة الهندسي</div>
+                <div className="font-mono font-bold text-sm">{qtoResult.total_volume_m3} م³</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground text-[10px]">سطح تلامس الشدة</div>
+                <div className="font-mono font-bold text-sm">{qtoResult.formwork_contact_m2} م²</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground text-[10px]">معامل الشدة / م³</div>
+                <div className="font-mono font-bold text-sm text-primary">{qtoResult.formwork_m2_per_m3} م²/م³</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground text-[10px]">معدل الحديد / م³</div>
+                <div className="font-mono font-bold text-sm text-primary">{qtoResult.rebar_kg_per_m3} كجم/م³</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground text-[10px]">التكلفة المباشرة التقديرية / م³</div>
+                <div className="font-mono font-bold text-sm text-emerald-500">{qtoResult.directUnitCostPerM3.toFixed(2)} ر.س</div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[11px] text-muted-foreground">
+                النطاقات المشمولة: {qtoResult.included_scopes.map((s) => SCOPE_LABELS_AR[s]).join(" · ")}
+                {qtoResult.excluded_scopes.length > 0 && (
+                  <span className="text-amber-600 ms-2">
+                    | مستبعد: {qtoResult.excluded_scopes.map((s) => SCOPE_LABELS_AR[s]).join(" · ")}
+                  </span>
+                )}
+              </div>
+              <Button
+                size="sm"
+                className="gap-1.5 text-xs"
+                onClick={() =>
+                  handleOpenApply({
+                    id: `parametric-${qtoFamily}`,
+                    code: `03-QTO-${qtoFamily.toUpperCase()}`,
+                    division: "Div. 03 - Concrete Works",
+                    title_ar: `خرسانة ${qtoFamily} بارامترية (${qtoWidth}×${qtoLength}×${qtoHeight}م)`,
+                    title_en: `Parametric concrete ${qtoFamily}`,
+                    description_ar: `توليد بارامتري: حجم ${qtoResult.total_volume_m3} م³، شدة ${qtoResult.formwork_m2_per_m3} م²/م³، حديد ${qtoResult.rebar_kg_per_m3} كجم/م³.`,
+                    description_en: `Parametric assembly: ${qtoResult.total_volume_m3} m³`,
+                    unit: "م³",
+                    recommended_indirect_pct: 4,
+                    recommended_overhead_pct: 10,
+                    recommended_profit_pct: 10,
+                    recommended_risk_pct: 3,
+                    assembly_kind: "executable",
+                    rate_kind: "composite",
+                    included_scopes: qtoResult.included_scopes,
+                    excluded_scopes: qtoResult.excluded_scopes,
+                    items: qtoResult.lines.map((line, i) => ({
+                      id: `qto-line-${i + 1}`,
+                      resource_type: line.resource_type,
+                      ...(line.material_category ? { material_category: line.material_category } : {}),
+                      description_ar: line.description_ar ?? "",
+                      description_en: line.description_en ?? "",
+                      unit: line.unit ?? "م³",
+                      quantity: line.quantity,
+                      ...(line.waste_pct !== undefined ? { waste_pct: line.waste_pct } : {}),
+                      unit_price: line.unit_price,
+                      ...(line.scope_tag ? { scope_tag: String(line.scope_tag) } : {}),
+                      ...(line.rate_kind ? { rate_kind: String(line.rate_kind) } : {}),
+                    })),
+                  })
+                }
+              >
+                <ArrowRight className="h-3.5 w-3.5" />
+                تطبيق النتيجة البارامترية على بند بالمقايسة
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {activeTab === "coverage" && (
+        <Card className="border-primary/20">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <BarChart3 className="h-4 w-4 text-primary" />
+              سجل تغطية المقايسات وفجوات التسعير — الأقسام (CSI 01–10)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              يقيس نسبة تغطية بنود المشروع بعدد البنود وبقيمة العطاء بالريال السعودي، ويميز الأسعار الموثقة بعروض موردين عن المرجعية والمنتهية.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!projectId ? (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-xs text-amber-600">
+                اختر مشروعاً نشطاً من الشريط العلوي لعرض تقرير تغطية جدول الكميات.
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
+                  <div className="rounded-lg border p-3 bg-muted/20">
+                    <div className="text-muted-foreground text-[10px]">نسبة التغطية (بعد البنود)</div>
+                    <div className="font-mono font-bold text-lg text-primary">{coverageReport.countCoveragePct}%</div>
+                    <div className="text-[10px] text-muted-foreground">{coverageReport.coveredItems} من {coverageReport.totalItems} بند</div>
+                  </div>
+                  <div className="rounded-lg border p-3 bg-muted/20">
+                    <div className="text-muted-foreground text-[10px]">نسبة التغطية (بالقيمة ر.س)</div>
+                    <div className="font-mono font-bold text-lg text-emerald-500">{coverageReport.valueCoveragePct}%</div>
+                    <div className="text-[10px] text-muted-foreground">{coverageReport.coveredValue.toLocaleString("en-US", { maximumFractionDigits: 0 })} ر.س</div>
+                  </div>
+                  <div className="rounded-lg border p-3 bg-muted/20">
+                    <div className="text-muted-foreground text-[10px]">بنود الفجوات (Gaps)</div>
+                    <div className="font-mono font-bold text-lg text-amber-500">{coverageReport.gapItems}</div>
+                  </div>
+                  <div className="rounded-lg border p-3 bg-muted/20">
+                    <div className="text-muted-foreground text-[10px]">مرجعي فقط / غير مسعر</div>
+                    <div className="font-mono font-bold text-lg">{coverageReport.referenceOnlyItems} / {coverageReport.unpricedItems}</div>
+                  </div>
+                  <div className="rounded-lg border p-3 bg-muted/20">
+                    <div className="text-muted-foreground text-[10px]">عروض منتهية الصلاحية</div>
+                    <div className="font-mono font-bold text-lg text-destructive">{coverageReport.expiredItems}</div>
+                  </div>
+                </div>
+
+                {coverageReport.byDivision.length > 0 && (
+                  <div className="overflow-x-auto rounded-md border">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/40">
+                        <tr>
+                          <th className="p-2 text-start">القسم CSI</th>
+                          <th className="p-2 text-center">إجمالي البنود</th>
+                          <th className="p-2 text-center">المغطاة</th>
+                          <th className="p-2 text-center">الفجوات</th>
+                          <th className="p-2 text-center">نسبة العدد</th>
+                          <th className="p-2 text-center">نسبة القيمة</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {coverageReport.byDivision.map((row) => (
+                          <tr key={row.divisionCode} className="border-t">
+                            <td className="p-2 font-mono font-semibold">القسم {row.divisionCode}</td>
+                            <td className="p-2 text-center tabular-nums">{row.totalItems}</td>
+                            <td className="p-2 text-center tabular-nums text-emerald-600">{row.coveredItems}</td>
+                            <td className="p-2 text-center tabular-nums text-amber-600">{row.gapItems}</td>
+                            <td className="p-2 text-center tabular-nums">{row.countCoveragePct}%</td>
+                            <td className="p-2 text-center tabular-nums">{row.valueCoveragePct}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
         <div className="relative flex-1">
@@ -623,30 +960,45 @@ function ItemBreakdownLibraryPage() {
                   <Badge variant="outline" className="font-mono text-[11px] font-bold border-primary/40 text-primary">
                     {template.code}
                   </Badge>
-                  <div className="flex items-center gap-1.5">
-                    <Badge variant="secondary" className="text-[10px]">
-                      {template.unit}
-                    </Badge>
-                    {template.is_custom && (
-                      <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px]">
-                        {t("breakdown.customBadge", "مخصص")}
+                    <div className="flex items-center gap-1.5">
+                      {template.assembly_kind === "reference_composite" && (
+                        <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30 text-[10px] gap-1">
+                          <AlertTriangle className="h-2.5 w-2.5" />
+                          مرجع مركّب
+                        </Badge>
+                      )}
+                      <Badge variant="secondary" className="text-[10px]">
+                        {template.unit}
                       </Badge>
-                    )}
+                      {template.is_custom && (
+                        <Badge className="bg-amber-500/10 text-amber-500 border-amber-500/20 text-[10px]">
+                          {t("breakdown.customBadge", "مخصص")}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <CardTitle className="text-sm font-semibold line-clamp-2">
-                    {isEn ? template.title_en || template.title_ar : template.title_ar}
-                  </CardTitle>
-                  <CardDescription className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
-                    {csiDivisionLabel(template.division, language)}
-                  </CardDescription>
-                </div>
+                  <div>
+                    <CardTitle className="text-sm font-semibold line-clamp-2">
+                      {isEn ? template.title_en || template.title_ar : template.title_ar}
+                    </CardTitle>
+                    <CardDescription className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">
+                      {csiDivisionLabel(template.division, language)}
+                    </CardDescription>
+                  </div>
 
-                <p className="text-xs text-muted-foreground/90 line-clamp-2 leading-relaxed">
-                  {isEn ? template.description_en || template.description_ar : template.description_ar}
-                </p>
+                  <p className="text-xs text-muted-foreground/90 line-clamp-2 leading-relaxed">
+                    {isEn ? template.description_en || template.description_ar : template.description_ar}
+                  </p>
+                  {(template.included_scopes?.length || template.excluded_scopes?.length) ? (
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {template.excluded_scopes?.slice(0, 2).map((ex) => (
+                        <Badge key={ex} variant="outline" className="text-[9px] border-amber-500/30 text-amber-600">
+                          مستبعد: {SCOPE_LABELS_AR[ex as AssemblyScopeTag] ?? ex}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : null}
               </CardHeader>
 
               <CardContent className="p-4 pt-2 space-y-3">

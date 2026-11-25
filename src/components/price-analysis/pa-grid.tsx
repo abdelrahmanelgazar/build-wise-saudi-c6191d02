@@ -32,14 +32,14 @@ import { cn } from "@/lib/utils";
 import { fmtNumber, fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
 import { useActiveProjectId } from "@/lib/active-project";
-import { computeDirectUnitCost, computePricingPhase2 } from "@/lib/estimation-calc";
+import { computeDirectUnitCost, computePricingPhase2, roundTo } from "@/lib/estimation-calc";
+import { analyzeAssemblyScopes, type ScopedAnalysisLine } from "@/lib/csi-assemblies-engine";
 import { syncBoqItemBreakdownFromPa, clearManualPriceForBoqItem, restoreImportedRateForBoqItem } from "@/lib/pa-sync";
 import type { Database } from "@/integrations/supabase/types";
 import { ImportPaDialog } from "./import-pa-dialog";
 import { SelectQuoteDialog } from "./select-quote-dialog";
 import { exportPriceAnalysis } from "@/lib/pa-export";
 import { useLanguage } from "@/lib/i18n";
-import { roundTo } from "@/lib/estimation-calc";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
 type PaItem = Database["public"]["Tables"]["price_analysis_items"]["Row"];
@@ -146,6 +146,13 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
   });
 
   const directBreakdown = useMemo(() => computeDirectUnitCost(items as any), [items]);
+  const scopeAudit = useMemo(
+    () =>
+      analyzeAssemblyScopes(items as ScopedAnalysisLine[], {
+        boqQuantity: Number(boqItem.quantity ?? 0),
+      }),
+    [items, boqItem.quantity],
+  );
   const directCost = directBreakdown.directUnitCost;
   const indirect = Number(markup?.indirect_pct ?? 0);
   const overhead = Number(markup?.overhead_pct ?? 0);
@@ -473,6 +480,30 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
           </div>
         )}
 
+      {/* CSI Scope Conflict & Provenance Warnings (§4.3) */}
+      {scopeAudit.warnings.length > 0 && (
+        <div className="space-y-1 border-b border-border bg-muted/20 px-4 py-2 text-xs">
+          {scopeAudit.warnings.map((w) => (
+            <div
+              key={w.code}
+              className={cn(
+                "flex items-center justify-between gap-2 rounded px-2.5 py-1",
+                w.severity === "error"
+                  ? "bg-destructive/15 text-destructive font-semibold"
+                  : w.severity === "warning"
+                    ? "bg-amber-500/10 text-amber-600 dark:text-amber-300"
+                    : "bg-primary/10 text-primary",
+              )}
+            >
+              <span>{w.message_ar}</span>
+              <Badge variant="outline" className="text-[10px] shrink-0">
+                {w.code}
+              </Badge>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ══ Sheet ════════════════════════════════════════════════════════════ */}
       <div className="flex-1 overflow-auto">
         <div style={{ minWidth: totalW }} className="select-text">
@@ -642,9 +673,15 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
 
           {/* ── Resource Sections ── */}
           {TYPES.map((type) => {
+            const lineCostWithSingleWaste = (i: PaItem) => {
+              const qty = Number(i.quantity) || 0;
+              const price = Number(i.unit_price) || 0;
+              const waste = i.resource_type === "material" ? Number(i.waste_pct ?? 0) : 0;
+              return qty * (1 + waste / 100) * price;
+            };
             const sectionItems = items.filter((i) => i.resource_type === type);
             const subtotal     = sectionItems.reduce(
-              (s, i) => s + Number(i.quantity) * Number(i.unit_price), 0,
+              (s, i) => s + lineCostWithSingleWaste(i), 0,
             );
             const isCollapsed  = collapsed.has(type);
             const isMaterial   = type === "material";
@@ -652,12 +689,12 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
             // Material subcategories per plan §3 & §7: Primary vs Accessories
             const primaryItems   = isMaterial ? sectionItems.filter((i) => (i.cell_styles as any)?.material_category !== "accessory") : [];
             const accessoryItems = isMaterial ? sectionItems.filter((i) => (i.cell_styles as any)?.material_category === "accessory") : [];
-            const primaryTotal   = primaryItems.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0);
-            const accessoryTotal = accessoryItems.reduce((s, i) => s + Number(i.quantity) * Number(i.unit_price), 0);
+            const primaryTotal   = primaryItems.reduce((s, i) => s + lineCostWithSingleWaste(i), 0);
+            const accessoryTotal = accessoryItems.reduce((s, i) => s + lineCostWithSingleWaste(i), 0);
 
             const renderItemRow = (it: PaItem, idx: number) => {
               const cellStyles = ((it.cell_styles ?? {}) as CellStyles);
-              const total      = Number(it.quantity) * Number(it.unit_price);
+              const total      = lineCostWithSingleWaste(it);
               const noteVal    = (cellStyles as any)?.note ?? "";
               const isAccessory = (cellStyles as any)?.material_category === "accessory";
 
