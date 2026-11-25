@@ -74,6 +74,9 @@ function FinancialPage() {
       await submitTenderVersion({
         tenderId: targetTenderId,
         projectId: projectId!,
+        companyId: (project as any)?.company_id ?? null,
+        companyName: (project as any)?.company_name ?? null,
+        clientName: project?.client_name ?? null,
         expectedDraftVersion: 1,
         currentDraftVersion: 1,
         idempotencyKey: `issue-${projectId}-${Date.now()}`,

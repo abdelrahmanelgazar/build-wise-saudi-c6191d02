@@ -14,6 +14,7 @@ import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/
 import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedAiAssistantRouteImport } from './routes/_authenticated/ai-assistant'
 import { Route as AuthenticatedBoqRouteImport } from './routes/_authenticated/boq'
+import { Route as AuthenticatedCompaniesRouteImport } from './routes/_authenticated/companies'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedFinancialRouteImport } from './routes/_authenticated/financial'
 import { Route as AuthenticatedItemBreakdownLibraryRouteImport } from './routes/_authenticated/item-breakdown-library'
@@ -51,6 +52,11 @@ const AuthenticatedAiAssistantRoute =
 const AuthenticatedBoqRoute = AuthenticatedBoqRouteImport.update({
   id: '/boq',
   path: '/boq',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
+const AuthenticatedCompaniesRoute = AuthenticatedCompaniesRouteImport.update({
+  id: '/companies',
+  path: '/companies',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/auth': typeof AuthRoute
   '/ai-assistant': typeof AuthenticatedAiAssistantRoute
   '/boq': typeof AuthenticatedBoqRoute
+  '/companies': typeof AuthenticatedCompaniesRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/financial': typeof AuthenticatedFinancialRoute
   '/item-breakdown-library': typeof AuthenticatedItemBreakdownLibraryRoute
@@ -150,6 +157,7 @@ export interface FileRoutesByTo {
   '/auth': typeof AuthRoute
   '/ai-assistant': typeof AuthenticatedAiAssistantRoute
   '/boq': typeof AuthenticatedBoqRoute
+  '/companies': typeof AuthenticatedCompaniesRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/financial': typeof AuthenticatedFinancialRoute
   '/item-breakdown-library': typeof AuthenticatedItemBreakdownLibraryRoute
@@ -170,6 +178,7 @@ export interface FileRoutesById {
   '/auth': typeof AuthRoute
   '/_authenticated/ai-assistant': typeof AuthenticatedAiAssistantRoute
   '/_authenticated/boq': typeof AuthenticatedBoqRoute
+  '/_authenticated/companies': typeof AuthenticatedCompaniesRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/financial': typeof AuthenticatedFinancialRoute
   '/_authenticated/item-breakdown-library': typeof AuthenticatedItemBreakdownLibraryRoute
@@ -191,6 +200,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/ai-assistant'
     | '/boq'
+    | '/companies'
     | '/dashboard'
     | '/financial'
     | '/item-breakdown-library'
@@ -210,6 +220,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/ai-assistant'
     | '/boq'
+    | '/companies'
     | '/dashboard'
     | '/financial'
     | '/item-breakdown-library'
@@ -229,6 +240,7 @@ export interface FileRouteTypes {
     | '/auth'
     | '/_authenticated/ai-assistant'
     | '/_authenticated/boq'
+    | '/_authenticated/companies'
     | '/_authenticated/dashboard'
     | '/_authenticated/financial'
     | '/_authenticated/item-breakdown-library'
@@ -285,6 +297,13 @@ declare module '@tanstack/react-router' {
       path: '/boq'
       fullPath: '/boq'
       preLoaderRoute: typeof AuthenticatedBoqRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/companies': {
+      id: '/_authenticated/companies'
+      path: '/companies'
+      fullPath: '/companies'
+      preLoaderRoute: typeof AuthenticatedCompaniesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/dashboard': {
@@ -401,6 +420,7 @@ const AuthenticatedProjectsRouteWithChildren =
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedAiAssistantRoute: typeof AuthenticatedAiAssistantRoute
   AuthenticatedBoqRoute: typeof AuthenticatedBoqRoute
+  AuthenticatedCompaniesRoute: typeof AuthenticatedCompaniesRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedFinancialRoute: typeof AuthenticatedFinancialRoute
   AuthenticatedItemBreakdownLibraryRoute: typeof AuthenticatedItemBreakdownLibraryRoute
@@ -416,6 +436,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedAiAssistantRoute: AuthenticatedAiAssistantRoute,
   AuthenticatedBoqRoute: AuthenticatedBoqRoute,
+  AuthenticatedCompaniesRoute: AuthenticatedCompaniesRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedFinancialRoute: AuthenticatedFinancialRoute,
   AuthenticatedItemBreakdownLibraryRoute:

@@ -252,6 +252,267 @@ function ItemBreakdownLibraryPage() {
   const totalDirectForQty = (targetCalc?.directUnitCost || 0) * targetQty;
   const totalSellingForQty = (targetCalc?.unitSellingPrice || 0) * targetQty;
 
+  if (createModalOpen && editingTemplate) {
+    const totals = calculateBreakdownCost(editingTemplate);
+    return (
+      <section className="h-full overflow-y-auto space-y-4 p-4 md:p-6">
+        <h1 className="text-xl font-bold">{t(editorMode === "duplicate" ? "breakdown.duplicateTemplate" : editorMode === "new" ? "breakdown.addNewTemplate" : "breakdown.editTemplate")} — {editingTemplate.code}</h1>
+        <div className="flex flex-wrap gap-5 rounded border p-3 font-semibold">
+          <span>{t("breakdown.directCostPerUnit")} {totals.directUnitCost.toFixed(2)} {t("common.sar")}</span>
+          <span>{t("breakdown.sellingRatePerUnit")} {totals.unitSellingPrice.toFixed(2)} {t("common.sar")}</span>
+        </div>
+          {editingTemplate && (
+            <div className="space-y-4 py-2 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="template-code" className="font-semibold block mb-1">{t("common.code", "الكود")}:</label>
+                  <Input
+                    id="template-code"
+                    value={editingTemplate.code}
+                    onChange={(e) => setEditingTemplate({ ...editingTemplate, code: e.target.value })}
+                    className="text-xs font-mono"
+                    placeholder="e.g. BLK-150-SPEC"
+                  />
+                </div>
+                <div>
+                  <label className="font-semibold block mb-1">{t("common.unit", "الوحدة")}:</label>
+                  <Input
+                    value={editingTemplate.unit}
+                    onChange={(e) => setEditingTemplate({ ...editingTemplate, unit: e.target.value })}
+                    className="text-xs"
+                    placeholder="m2, m3, ton, item..."
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-semibold block mb-1">{t("breakdown.division", "القسم (Division)")}:</label>
+                <Select
+                  value={csiDivisionCode(editingTemplate.division) ?? "legacy"}
+                  onValueChange={(division) => setEditingTemplate({ ...editingTemplate, division })}
+                >
+                  <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {!csiDivisionCode(editingTemplate.division) && (
+                      <SelectItem value="legacy" disabled>
+                        {editingTemplate.division || t("common.unclassifiedDivision")}
+                      </SelectItem>
+                    )}
+                    {CSI_DIVISIONS.map(({ code, name_ar, name_en }) => (
+                      <SelectItem key={code} value={code}>
+                        {code} — {language === "ar" ? name_ar : name_en}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="font-semibold block mb-1">{t("breakdown.titleAr", "اسم البند (بالعربية)")}:</label>
+                <Input
+                  value={editingTemplate.title_ar}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, title_ar: e.target.value })}
+                  className="text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold block mb-1">{t("breakdown.titleEn", "اسم البند (بالإنجليزية)")}:</label>
+                <Input
+                  value={editingTemplate.title_en}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, title_en: e.target.value })}
+                  className="text-xs font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold block mb-1">{t("common.description", "التوصيف الفني")}:</label>
+                <Input
+                  value={editingTemplate.description_ar}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, description_ar: e.target.value })}
+                  className="text-xs"
+                />
+              </div>
+              <div>
+                <label htmlFor="template-description-en" className="font-semibold block mb-1">{t("breakdown.descriptionEn")}</label>
+                <Input
+                  id="template-description-en"
+                  value={editingTemplate.description_en}
+                  onChange={(e) => setEditingTemplate({ ...editingTemplate, description_en: e.target.value })}
+                  className="text-xs"
+                  dir="ltr"
+                />
+              </div>
+
+              {/* Resource Items */}
+              <div className="space-y-2 pt-2 border-t border-border">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold">{t("breakdown.resourceComponents", "مكونات الموارد لوحدة واحدة:")}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-[11px] gap-1"
+                    onClick={() => {
+                      setEditingTemplate({
+                        ...editingTemplate,
+                        items: [
+                          ...editingTemplate.items,
+                          {
+                            id: crypto.randomUUID(),
+                            resource_type: "material",
+                            description_ar: "مورد جديد",
+                            description_en: "New resource",
+                            unit: editingTemplate.unit,
+                            quantity: 1,
+                            unit_price: 10,
+                          },
+                        ],
+                      });
+                    }}
+                  >
+                    <Plus className="h-3 w-3" />
+                    {t("common.add", "إضافة مورد")}
+                  </Button>
+                </div>
+
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {editingTemplate.items.map((item, idx) => (
+                    <div key={item.id} className="flex flex-wrap items-center gap-2 rounded border border-border p-2 bg-muted/20">
+                      <Select
+                        value={item.resource_type}
+                        onValueChange={(resource_type: BreakdownResourceType) => updateResource(item.id, { resource_type })}
+                      >
+                        <SelectTrigger className="w-24 text-[10px] h-7">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(resourceLabels).map(([type, label]) => (
+                            <SelectItem key={type} value={type} className="text-xs">{t(label)}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      <Input
+                        value={item.description_ar}
+                        aria-label={t("common.description")}
+                        onChange={(e) => updateResource(item.id, { description_ar: e.target.value })}
+                        className="flex-1 text-xs h-7"
+                        placeholder={t("common.description")}
+                      />
+                      <Input
+                        value={item.unit}
+                        aria-label={t("common.unit")}
+                        placeholder={t("common.unit")}
+                        onChange={(e) => updateResource(item.id, { unit: e.target.value })}
+                        className="h-7 w-16 text-xs"
+                      />
+
+                      <Input
+                        type="number"
+                        value={item.quantity}
+                        aria-label={t("common.quantity")}
+                        onChange={(e) => updateResource(item.id, { quantity: Number(e.target.value) || 0 })}
+                        className="w-16 text-xs h-7 font-mono"
+                        placeholder={t("common.quantity")}
+                      />
+
+                      <Input
+                        type="number"
+                        value={item.unit_price}
+                        aria-label={t("breakdown.itemUnitPrice")}
+                        onChange={(e) => updateResource(item.id, { unit_price: Number(e.target.value) || 0 })}
+                        className="w-20 text-xs h-7 font-mono"
+                        placeholder={t("breakdown.itemUnitPrice")}
+                      />
+
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => {
+                          const updated = editingTemplate.items.filter((_, i) => i !== idx);
+                          setEditingTemplate({ ...editingTemplate, items: updated });
+                        }}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                      <div className="grid w-full grid-cols-2 gap-2">
+                        <Input
+                          value={item.description_en}
+                          aria-label={t("breakdown.resourceDescriptionEn")}
+                          placeholder={t("breakdown.resourceDescriptionEn")}
+                          onChange={(e) => updateResource(item.id, { description_en: e.target.value })}
+                          className="h-7 text-xs"
+                          dir="ltr"
+                        />
+                        <Input
+                          value={item.notes ?? ""}
+                          aria-label={t("common.notes")}
+                          placeholder={t("common.notes")}
+                          onChange={(e) => updateResource(item.id, { notes: e.target.value })}
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Recommended Markups */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-border">
+                <div>
+                  <label>{t("pa.indirectLabel")} (%)</label>
+                  <Input type="number" value={editingTemplate.recommended_indirect_pct ?? 0} onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_indirect_pct: Number(e.target.value) || 0 })} />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block">{t("financial.overhead", "مصاريف إدارية %")}:</label>
+                  <Input
+                    type="number"
+                    value={editingTemplate.recommended_overhead_pct}
+                    onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_overhead_pct: parseFloat(e.target.value) || 0 })}
+                    className="h-7 text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block">{t("financial.profit", "الأرباح %")}:</label>
+                  <Input
+                    type="number"
+                    value={editingTemplate.recommended_profit_pct}
+                    onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_profit_pct: parseFloat(e.target.value) || 0 })}
+                    className="h-7 text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground block">{t("financial.risk", "مخاطر %")}:</label>
+                  <Input
+                    type="number"
+                    value={editingTemplate.recommended_risk_pct}
+                    onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_risk_pct: parseFloat(e.target.value) || 0 })}
+                    className="h-7 text-xs font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+        <footer className="sticky bottom-0 flex gap-2 border-t bg-background p-3">
+            <Button variant="outline" size="sm" disabled={isSaving} onClick={() => setCreateModalOpen(false)}>
+              {t("common.cancel", "إلغاء")}
+            </Button>
+            <Button
+              size="sm"
+              disabled={isSaving}
+              onClick={handleSaveTemplate}
+            >
+              {isSaving ? t("common.saving") : t("common.save")}
+            </Button>
+        </footer>
+      </section>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col overflow-y-auto p-4 md:p-6 space-y-6">
       {/* Header */}
@@ -644,265 +905,6 @@ function ItemBreakdownLibraryPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Create / Edit Template Dialog */}
-      <Dialog open={createModalOpen} onOpenChange={(open) => { if (!isSaving) setCreateModalOpen(open); }}>
-        <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="text-base font-bold">
-              {t(editorMode === "edit" ? "breakdown.editTemplate" :
-                editorMode === "duplicate" ? "breakdown.duplicateTemplate" : "breakdown.createModalTitle")}
-            </DialogTitle>
-            <DialogDescription className="text-xs">
-              {t("breakdown.createModalDesc", "أدخل بيانات البند ومكونات موارده ومعدلات الاستهلاك لكل وحدة قياس.")}
-            </DialogDescription>
-          </DialogHeader>
-
-          {editingTemplate && (
-            <div className="space-y-4 py-2 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label htmlFor="template-code" className="font-semibold block mb-1">{t("common.code", "الكود")}:</label>
-                  <Input
-                    id="template-code"
-                    value={editingTemplate.code}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, code: e.target.value })}
-                    className="text-xs font-mono"
-                    placeholder="e.g. BLK-150-SPEC"
-                  />
-                </div>
-                <div>
-                  <label className="font-semibold block mb-1">{t("common.unit", "الوحدة")}:</label>
-                  <Input
-                    value={editingTemplate.unit}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, unit: e.target.value })}
-                    className="text-xs"
-                    placeholder="m2, m3, ton, item..."
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="font-semibold block mb-1">{t("breakdown.division", "القسم (Division)")}:</label>
-                <Select
-                  value={csiDivisionCode(editingTemplate.division) ?? "legacy"}
-                  onValueChange={(division) => setEditingTemplate({ ...editingTemplate, division })}
-                >
-                  <SelectTrigger className="text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {!csiDivisionCode(editingTemplate.division) && (
-                      <SelectItem value="legacy" disabled>
-                        {editingTemplate.division || t("common.unclassifiedDivision")}
-                      </SelectItem>
-                    )}
-                    {CSI_DIVISIONS.map(({ code, name_ar, name_en }) => (
-                      <SelectItem key={code} value={code}>
-                        {code} — {language === "ar" ? name_ar : name_en}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="font-semibold block mb-1">{t("breakdown.titleAr", "اسم البند (بالعربية)")}:</label>
-                <Input
-                  value={editingTemplate.title_ar}
-                  onChange={(e) => setEditingTemplate({ ...editingTemplate, title_ar: e.target.value })}
-                  className="text-xs"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold block mb-1">{t("breakdown.titleEn", "اسم البند (بالإنجليزية)")}:</label>
-                <Input
-                  value={editingTemplate.title_en}
-                  onChange={(e) => setEditingTemplate({ ...editingTemplate, title_en: e.target.value })}
-                  className="text-xs font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold block mb-1">{t("common.description", "التوصيف الفني")}:</label>
-                <Input
-                  value={editingTemplate.description_ar}
-                  onChange={(e) => setEditingTemplate({ ...editingTemplate, description_ar: e.target.value })}
-                  className="text-xs"
-                />
-              </div>
-              <div>
-                <label htmlFor="template-description-en" className="font-semibold block mb-1">{t("breakdown.descriptionEn")}</label>
-                <Input
-                  id="template-description-en"
-                  value={editingTemplate.description_en}
-                  onChange={(e) => setEditingTemplate({ ...editingTemplate, description_en: e.target.value })}
-                  className="text-xs"
-                  dir="ltr"
-                />
-              </div>
-
-              {/* Resource Items */}
-              <div className="space-y-2 pt-2 border-t border-border">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold">{t("breakdown.resourceComponents", "مكونات الموارد لوحدة واحدة:")}</span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-[11px] gap-1"
-                    onClick={() => {
-                      setEditingTemplate({
-                        ...editingTemplate,
-                        items: [
-                          ...editingTemplate.items,
-                          {
-                            id: crypto.randomUUID(),
-                            resource_type: "material",
-                            description_ar: "مورد جديد",
-                            description_en: "New resource",
-                            unit: editingTemplate.unit,
-                            quantity: 1,
-                            unit_price: 10,
-                          },
-                        ],
-                      });
-                    }}
-                  >
-                    <Plus className="h-3 w-3" />
-                    {t("common.add", "إضافة مورد")}
-                  </Button>
-                </div>
-
-                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                  {editingTemplate.items.map((item, idx) => (
-                    <div key={item.id} className="flex flex-wrap items-center gap-2 rounded border border-border p-2 bg-muted/20">
-                      <Select
-                        value={item.resource_type}
-                        onValueChange={(resource_type: BreakdownResourceType) => updateResource(item.id, { resource_type })}
-                      >
-                        <SelectTrigger className="w-24 text-[10px] h-7">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(resourceLabels).map(([type, label]) => (
-                            <SelectItem key={type} value={type} className="text-xs">{t(label)}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-
-                      <Input
-                        value={item.description_ar}
-                        aria-label={t("common.description")}
-                        onChange={(e) => updateResource(item.id, { description_ar: e.target.value })}
-                        className="flex-1 text-xs h-7"
-                        placeholder={t("common.description")}
-                      />
-                      <Input
-                        value={item.unit}
-                        aria-label={t("common.unit")}
-                        placeholder={t("common.unit")}
-                        onChange={(e) => updateResource(item.id, { unit: e.target.value })}
-                        className="h-7 w-16 text-xs"
-                      />
-
-                      <Input
-                        type="number"
-                        value={item.quantity}
-                        aria-label={t("common.quantity")}
-                        onChange={(e) => updateResource(item.id, { quantity: Number(e.target.value) || 0 })}
-                        className="w-16 text-xs h-7 font-mono"
-                        placeholder={t("common.quantity")}
-                      />
-
-                      <Input
-                        type="number"
-                        value={item.unit_price}
-                        aria-label={t("breakdown.itemUnitPrice")}
-                        onChange={(e) => updateResource(item.id, { unit_price: Number(e.target.value) || 0 })}
-                        className="w-20 text-xs h-7 font-mono"
-                        placeholder={t("breakdown.itemUnitPrice")}
-                      />
-
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => {
-                          const updated = editingTemplate.items.filter((_, i) => i !== idx);
-                          setEditingTemplate({ ...editingTemplate, items: updated });
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                      <div className="grid w-full grid-cols-2 gap-2">
-                        <Input
-                          value={item.description_en}
-                          aria-label={t("breakdown.resourceDescriptionEn")}
-                          placeholder={t("breakdown.resourceDescriptionEn")}
-                          onChange={(e) => updateResource(item.id, { description_en: e.target.value })}
-                          className="h-7 text-xs"
-                          dir="ltr"
-                        />
-                        <Input
-                          value={item.notes ?? ""}
-                          aria-label={t("common.notes")}
-                          placeholder={t("common.notes")}
-                          onChange={(e) => updateResource(item.id, { notes: e.target.value })}
-                          className="h-7 text-xs"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Recommended Markups */}
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border">
-                <div>
-                  <label className="text-[10px] text-muted-foreground block">{t("financial.overhead", "مصاريف إدارية %")}:</label>
-                  <Input
-                    type="number"
-                    value={editingTemplate.recommended_overhead_pct}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_overhead_pct: parseFloat(e.target.value) || 0 })}
-                    className="h-7 text-xs font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-muted-foreground block">{t("financial.profit", "الأرباح %")}:</label>
-                  <Input
-                    type="number"
-                    value={editingTemplate.recommended_profit_pct}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_profit_pct: parseFloat(e.target.value) || 0 })}
-                    className="h-7 text-xs font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] text-muted-foreground block">{t("financial.risk", "مخاطر %")}:</label>
-                  <Input
-                    type="number"
-                    value={editingTemplate.recommended_risk_pct}
-                    onChange={(e) => setEditingTemplate({ ...editingTemplate, recommended_risk_pct: parseFloat(e.target.value) || 0 })}
-                    className="h-7 text-xs font-mono"
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" size="sm" disabled={isSaving} onClick={() => setCreateModalOpen(false)}>
-              {t("common.cancel", "إلغاء")}
-            </Button>
-            <Button
-              size="sm"
-              disabled={isSaving}
-              onClick={handleSaveTemplate}
-            >
-              {isSaving ? t("common.saving") : t("common.save")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

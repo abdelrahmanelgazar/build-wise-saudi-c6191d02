@@ -1,0 +1,1927 @@
+[
+  {
+    "id": "tmpl-site-office-rental",
+    "code": "01-SITE-OFFICE-RENTAL",
+    "division": "01",
+    "title_ar": "تشغيل مكتب موقع مؤقت",
+    "title_en": "Site office rental",
+    "description_ar": "تشغيل مكتب موقع مؤقت، شاملاً كابينة مكتبية وخدمة تنظيف والعمالة المباشرة.",
+    "description_en": "Site office rental, including office cabin and cleaning service with direct labour.",
+    "unit": "month",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-site-office-rental-1",
+        "resource_type": "equipment",
+        "description_ar": "كابينة مكتبية",
+        "description_en": "Office cabin",
+        "unit": "month",
+        "quantity": 1,
+        "unit_price": 2200,
+        "notes": "صافي 1 month/month + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-site-office-rental-2",
+        "resource_type": "subcontractor",
+        "description_ar": "خدمة تنظيف",
+        "description_en": "Cleaning service",
+        "unit": "month",
+        "quantity": 1,
+        "unit_price": 450,
+        "notes": "صافي 1 month/month + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-site-office-rental-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 4,
+        "unit_price": 35,
+        "notes": "صافي 4 h/month + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 4, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-site-pantry-service",
+    "code": "01-SITE-PANTRY-SERVICE",
+    "division": "01",
+    "title_ar": "تشغيل بوفيه لخمسين فرداً لمدة 26 يوماً",
+    "title_en": "Site pantry service",
+    "description_ar": "تشغيل بوفيه لخمسين فرداً لمدة 26 يوماً، شاملاً ضيافة شاملة التحضير ومياه شرب.",
+    "description_en": "Site pantry service, including catered servings and bottled water.",
+    "unit": "month",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-site-pantry-service-1",
+        "resource_type": "subcontractor",
+        "description_ar": "ضيافة شاملة التحضير",
+        "description_en": "Catered servings",
+        "unit": "meal",
+        "quantity": 1300,
+        "unit_price": 12,
+        "notes": "صافي 1300 meal/month + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1300, waste 0% included."
+      },
+      {
+        "id": "tmpl-site-pantry-service-2",
+        "resource_type": "material",
+        "description_ar": "مياه شرب",
+        "description_en": "Bottled water",
+        "unit": "bottle",
+        "quantity": 1300,
+        "unit_price": 1,
+        "notes": "صافي 1300 bottle/month + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1300, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-temporary-fencing",
+    "code": "01-TEMPORARY-FENCING",
+    "division": "01",
+    "title_ar": "سياج مؤقت من ألواح معدنية ارتفاع مترين",
+    "title_en": "Temporary fencing",
+    "description_ar": "سياج مؤقت من ألواح معدنية ارتفاع مترين، شاملاً ألواح سياج وقوائم وقواعد والعمالة المباشرة.",
+    "description_en": "Temporary fencing, including fence panels and posts and bases with direct labour.",
+    "unit": "m",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-temporary-fencing-1",
+        "resource_type": "material",
+        "description_ar": "ألواح سياج",
+        "description_en": "Fence panels",
+        "unit": "m2",
+        "quantity": 2.06,
+        "unit_price": 30,
+        "notes": "صافي 2 m2/m + هالك 3% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 2, waste 3% included."
+      },
+      {
+        "id": "tmpl-temporary-fencing-2",
+        "resource_type": "material",
+        "description_ar": "قوائم وقواعد",
+        "description_en": "Posts and bases",
+        "unit": "set",
+        "quantity": 0.5,
+        "unit_price": 28,
+        "notes": "صافي 0.5 set/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.5, waste 0% included."
+      },
+      {
+        "id": "tmpl-temporary-fencing-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.45,
+        "unit_price": 35,
+        "notes": "صافي 0.45 h/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.45, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-temporary-generator-operation",
+    "code": "01-TEMPORARY-GENERATOR-OPERATION",
+    "division": "01",
+    "title_ar": "تشغيل مولد مؤقت 100 ك.ف.أ للوردية",
+    "title_en": "Temporary generator operation",
+    "description_ar": "تشغيل مولد مؤقت 100 ك.ف.أ للوردية، شاملاً إيجار مولد جاف وديزل بفرض 15 لتر للساعة والعمالة المباشرة.",
+    "description_en": "Temporary generator operation, including dry generator hire and diesel at 15 l per hour with direct labour.",
+    "unit": "shift",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-temporary-generator-operation-1",
+        "resource_type": "equipment",
+        "description_ar": "إيجار مولد جاف",
+        "description_en": "Dry generator hire",
+        "unit": "day",
+        "quantity": 1,
+        "unit_price": 230,
+        "notes": "صافي 1 day/shift + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-temporary-generator-operation-2",
+        "resource_type": "material",
+        "description_ar": "ديزل بفرض 15 لتر للساعة",
+        "description_en": "Diesel at 15 L per hour",
+        "unit": "L",
+        "quantity": 120,
+        "unit_price": 2,
+        "notes": "صافي 120 L/shift + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 120, waste 0% included."
+      },
+      {
+        "id": "tmpl-temporary-generator-operation-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 1,
+        "unit_price": 35,
+        "notes": "صافي 1 h/shift + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-waste-skip-removal",
+    "code": "01-WASTE-SKIP-REMOVAL",
+    "division": "01",
+    "title_ar": "رفع حاوية مخلفات موقع",
+    "title_en": "Waste skip removal",
+    "description_ar": "رفع حاوية مخلفات موقع، شاملاً نقل وتفريغ حاوية وأكياس تجميع والعمالة المباشرة.",
+    "description_en": "Waste skip removal, including haul and tip skip and waste sacks with direct labour.",
+    "unit": "trip",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-waste-skip-removal-1",
+        "resource_type": "subcontractor",
+        "description_ar": "نقل وتفريغ حاوية",
+        "description_en": "Haul and tip skip",
+        "unit": "trip",
+        "quantity": 1,
+        "unit_price": 380,
+        "notes": "صافي 1 trip/trip + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-waste-skip-removal-2",
+        "resource_type": "material",
+        "description_ar": "أكياس تجميع",
+        "description_en": "Waste sacks",
+        "unit": "each",
+        "quantity": 20,
+        "unit_price": 1,
+        "notes": "صافي 20 each/trip + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 20, waste 0% included."
+      },
+      {
+        "id": "tmpl-waste-skip-removal-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 2,
+        "unit_price": 35,
+        "notes": "صافي 2 h/trip + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 2, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-tile-strip-out",
+    "code": "02-TILE-STRIP-OUT",
+    "division": "02",
+    "title_ar": "إزالة بلاط قائم وجمع الأنقاض",
+    "title_en": "Tile strip-out",
+    "description_ar": "إزالة بلاط قائم وجمع الأنقاض، شاملاً مطرقة تكسير وأكياس مخلفات والعمالة المباشرة.",
+    "description_en": "Tile strip-out, including breaker and rubble sacks with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-tile-strip-out-1",
+        "resource_type": "equipment",
+        "description_ar": "مطرقة تكسير",
+        "description_en": "Breaker",
+        "unit": "h",
+        "quantity": 0.12,
+        "unit_price": 14,
+        "notes": "صافي 0.12 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.12, waste 0% included."
+      },
+      {
+        "id": "tmpl-tile-strip-out-2",
+        "resource_type": "material",
+        "description_ar": "أكياس مخلفات",
+        "description_en": "Rubble sacks",
+        "unit": "each",
+        "quantity": 2,
+        "unit_price": 1,
+        "notes": "صافي 2 each/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 2, waste 0% included."
+      },
+      {
+        "id": "tmpl-tile-strip-out-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.45,
+        "unit_price": 35,
+        "notes": "صافي 0.45 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.45, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-bulk-excavation",
+    "code": "31-BULK-EXCAVATION",
+    "division": "31",
+    "title_ar": "حفر تربة عادية وتجميعها بجوار الحفر",
+    "title_en": "Bulk excavation",
+    "description_ar": "حفر تربة عادية وتجميعها بجوار الحفر، شاملاً حفار هيدروليكي ولودر للتجميع والعمالة المباشرة.",
+    "description_en": "Bulk excavation, including excavator and loader for stockpiling with direct labour.",
+    "unit": "m3",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-bulk-excavation-1",
+        "resource_type": "equipment",
+        "description_ar": "حفار هيدروليكي",
+        "description_en": "Excavator",
+        "unit": "h",
+        "quantity": 0.06,
+        "unit_price": 180,
+        "notes": "صافي 0.06 h/m3 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.06, waste 0% included."
+      },
+      {
+        "id": "tmpl-bulk-excavation-2",
+        "resource_type": "equipment",
+        "description_ar": "لودر للتجميع",
+        "description_en": "Loader for stockpiling",
+        "unit": "h",
+        "quantity": 0.03,
+        "unit_price": 140,
+        "notes": "صافي 0.03 h/m3 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.03, waste 0% included."
+      },
+      {
+        "id": "tmpl-bulk-excavation-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.08,
+        "unit_price": 35,
+        "notes": "صافي 0.08 h/m3 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.08, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-compacted-granular-fill",
+    "code": "31-COMPACTED-GRANULAR-FILL",
+    "division": "31",
+    "title_ar": "ردم حبيبي مورّد ومدموك",
+    "title_en": "Compacted granular fill",
+    "description_ar": "ردم حبيبي مورّد ومدموك، شاملاً ردم مفكك لكل متر مكعب مدموك ورصاصة والعمالة المباشرة.",
+    "description_en": "Compacted granular fill, including loose fill per compacted cube and roller with direct labour.",
+    "unit": "m3",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-compacted-granular-fill-1",
+        "resource_type": "material",
+        "description_ar": "ردم مفكك لكل متر مكعب مدموك",
+        "description_en": "Loose fill per compacted cube",
+        "unit": "m3",
+        "quantity": 1.224,
+        "unit_price": 45,
+        "notes": "صافي 1.2 m3/m3 + هالك 2% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1.2, waste 2% included."
+      },
+      {
+        "id": "tmpl-compacted-granular-fill-2",
+        "resource_type": "equipment",
+        "description_ar": "رصاصة",
+        "description_en": "Roller",
+        "unit": "h",
+        "quantity": 0.06,
+        "unit_price": 115,
+        "notes": "صافي 0.06 h/m3 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.06, waste 0% included."
+      },
+      {
+        "id": "tmpl-compacted-granular-fill-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.18,
+        "unit_price": 35,
+        "notes": "صافي 0.18 h/m3 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.18, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-concrete-kerbs",
+    "code": "32-CONCRETE-KERBS",
+    "division": "32",
+    "title_ar": "تركيب بردورات خرسانية على فرشة",
+    "title_en": "Concrete kerbs",
+    "description_ar": "تركيب بردورات خرسانية على فرشة، شاملاً بردورة مسبقة الصب وخرسانة فرشة والعمالة المباشرة.",
+    "description_en": "Concrete kerbs, including precast kerb and bedding concrete with direct labour.",
+    "unit": "m",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-concrete-kerbs-1",
+        "resource_type": "material",
+        "description_ar": "بردورة مسبقة الصب",
+        "description_en": "Precast kerb",
+        "unit": "m",
+        "quantity": 1.03,
+        "unit_price": 27,
+        "notes": "صافي 1 m/m + هالك 3% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 3% included."
+      },
+      {
+        "id": "tmpl-concrete-kerbs-2",
+        "resource_type": "material",
+        "description_ar": "خرسانة فرشة",
+        "description_en": "Bedding concrete",
+        "unit": "m3",
+        "quantity": 0.045,
+        "unit_price": 220,
+        "notes": "صافي 0.045 m3/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.045, waste 0% included."
+      },
+      {
+        "id": "tmpl-concrete-kerbs-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.48,
+        "unit_price": 35,
+        "notes": "صافي 0.48 h/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.48, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-interlock-paving",
+    "code": "32-INTERLOCK-PAVING",
+    "division": "32",
+    "title_ar": "تركيب إنترلوك 60 مم فوق أساس مجهز",
+    "title_en": "Interlock paving",
+    "description_ar": "تركيب إنترلوك 60 مم فوق أساس مجهز، شاملاً بلاط إنترلوك ورمل فرشة وفواصل والعمالة المباشرة.",
+    "description_en": "Interlock paving, including interlocking pavers and bedding and joint sand with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-interlock-paving-1",
+        "resource_type": "material",
+        "description_ar": "بلاط إنترلوك",
+        "description_en": "Interlocking pavers",
+        "unit": "m2",
+        "quantity": 1.04,
+        "unit_price": 35,
+        "notes": "صافي 1 m2/m2 + هالك 4% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 4% included."
+      },
+      {
+        "id": "tmpl-interlock-paving-2",
+        "resource_type": "material",
+        "description_ar": "رمل فرشة وفواصل",
+        "description_en": "Bedding and joint sand",
+        "unit": "m3",
+        "quantity": 0.04,
+        "unit_price": 62,
+        "notes": "صافي 0.04 m3/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.04, waste 0% included."
+      },
+      {
+        "id": "tmpl-interlock-paving-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.55,
+        "unit_price": 35,
+        "notes": "صافي 0.55 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.55, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-topsoil-placement",
+    "code": "32-TOPSOIL-PLACEMENT",
+    "division": "32",
+    "title_ar": "فرش تربة زراعية بسمك 200 مم",
+    "title_en": "Topsoil placement",
+    "description_ar": "فرش تربة زراعية بسمك 200 مم، شاملاً تربة زراعية ولودر صغير والعمالة المباشرة.",
+    "description_en": "Topsoil placement, including topsoil and skid steer with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-topsoil-placement-1",
+        "resource_type": "material",
+        "description_ar": "تربة زراعية",
+        "description_en": "Topsoil",
+        "unit": "m3",
+        "quantity": 0.21,
+        "unit_price": 70,
+        "notes": "صافي 0.2 m3/m2 + هالك 5% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.2, waste 5% included."
+      },
+      {
+        "id": "tmpl-topsoil-placement-2",
+        "resource_type": "equipment",
+        "description_ar": "لودر صغير",
+        "description_en": "Skid steer",
+        "unit": "h",
+        "quantity": 0.025,
+        "unit_price": 95,
+        "notes": "صافي 0.025 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.025, waste 0% included."
+      },
+      {
+        "id": "tmpl-topsoil-placement-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.15,
+        "unit_price": 35,
+        "notes": "صافي 0.15 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.15, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-lean-concrete-blinding",
+    "code": "03-LEAN-CONCRETE-BLINDING",
+    "division": "03",
+    "title_ar": "صب خرسانة نظافة بلا تسليح",
+    "title_en": "Lean concrete blinding",
+    "description_ar": "صب خرسانة نظافة بلا تسليح، شاملاً خرسانة نظافة وهزاز والعمالة المباشرة.",
+    "description_en": "Lean concrete blinding, including blinding concrete and vibrator with direct labour.",
+    "unit": "m3",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-lean-concrete-blinding-1",
+        "resource_type": "material",
+        "description_ar": "خرسانة نظافة",
+        "description_en": "Blinding concrete",
+        "unit": "m3",
+        "quantity": 1.03,
+        "unit_price": 195,
+        "notes": "صافي 1 m3/m3 + هالك 3% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 3% included."
+      },
+      {
+        "id": "tmpl-lean-concrete-blinding-2",
+        "resource_type": "material",
+        "description_ar": "هزاز",
+        "description_en": "Vibrator",
+        "unit": "h",
+        "quantity": 0.2,
+        "unit_price": 12,
+        "notes": "صافي 0.2 h/m3 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.2, waste 0% included."
+      },
+      {
+        "id": "tmpl-lean-concrete-blinding-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.9,
+        "unit_price": 35,
+        "notes": "صافي 0.9 h/m3 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.9, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-rebar-fixing",
+    "code": "03-REBAR-FIXING",
+    "division": "03",
+    "title_ar": "قص وثني وتثبيت حديد تسليح",
+    "title_en": "Rebar fixing",
+    "description_ar": "قص وثني وتثبيت حديد تسليح، شاملاً حديد تسليح وسلك رباط والعمالة المباشرة.",
+    "description_en": "Rebar fixing, including rebar and tie wire with direct labour.",
+    "unit": "t",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-rebar-fixing-1",
+        "resource_type": "material",
+        "description_ar": "حديد تسليح",
+        "description_en": "Rebar",
+        "unit": "kg",
+        "quantity": 1030,
+        "unit_price": 3,
+        "notes": "صافي 1000 kg/t + هالك 3% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1000, waste 3% included."
+      },
+      {
+        "id": "tmpl-rebar-fixing-2",
+        "resource_type": "material",
+        "description_ar": "سلك رباط",
+        "description_en": "Tie wire",
+        "unit": "kg",
+        "quantity": 12,
+        "unit_price": 5,
+        "notes": "صافي 12 kg/t + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 12, waste 0% included."
+      },
+      {
+        "id": "tmpl-rebar-fixing-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 16,
+        "unit_price": 35,
+        "notes": "صافي 16 h/t + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 16, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-slab-formwork",
+    "code": "03-SLAB-FORMWORK",
+    "division": "03",
+    "title_ar": "شدات لبلاطة أفقية لكل متر سطح تماس",
+    "title_en": "Slab formwork",
+    "description_ar": "شدات لبلاطة أفقية لكل متر سطح تماس، شاملاً خشب أبلكاش موزع على 6 استخدامات وإيجار دعامات والعمالة المباشرة.",
+    "description_en": "Slab formwork, including plywood apportioned over six uses and prop rental with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-slab-formwork-1",
+        "resource_type": "material",
+        "description_ar": "خشب أبلكاش موزع على 6 استخدامات",
+        "description_en": "Plywood apportioned over six uses",
+        "unit": "m2",
+        "quantity": 0.18036,
+        "unit_price": 52,
+        "notes": "صافي 0.167 m2/m2 + هالك 8% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.167, waste 8% included."
+      },
+      {
+        "id": "tmpl-slab-formwork-2",
+        "resource_type": "material",
+        "description_ar": "إيجار دعامات",
+        "description_en": "Prop rental",
+        "unit": "set-day",
+        "quantity": 5,
+        "unit_price": 2,
+        "notes": "صافي 5 set-day/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 5, waste 0% included."
+      },
+      {
+        "id": "tmpl-slab-formwork-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.85,
+        "unit_price": 35,
+        "notes": "صافي 0.85 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.85, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-steel-handrail",
+    "code": "05-STEEL-HANDRAIL",
+    "division": "05",
+    "title_ar": "درابزين فولاذي مطلي بارتفاع متر",
+    "title_en": "Steel handrail",
+    "description_ar": "درابزين فولاذي مطلي بارتفاع متر، شاملاً قطاعات فولاذ وصفائح تثبيت ومراسي والعمالة المباشرة.",
+    "description_en": "Steel handrail, including steel sections and baseplate and anchors with direct labour.",
+    "unit": "m",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-steel-handrail-1",
+        "resource_type": "material",
+        "description_ar": "قطاعات فولاذ",
+        "description_en": "Steel sections",
+        "unit": "kg",
+        "quantity": 12.6,
+        "unit_price": 4.8,
+        "notes": "صافي 12 kg/m + هالك 5% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 12, waste 5% included."
+      },
+      {
+        "id": "tmpl-steel-handrail-2",
+        "resource_type": "material",
+        "description_ar": "صفائح تثبيت ومراسي",
+        "description_en": "Baseplate and anchors",
+        "unit": "set",
+        "quantity": 0.7,
+        "unit_price": 18,
+        "notes": "صافي 0.7 set/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.7, waste 0% included."
+      },
+      {
+        "id": "tmpl-steel-handrail-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 1.4,
+        "unit_price": 35,
+        "notes": "صافي 1.4 h/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1.4, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-plywood-backing",
+    "code": "06-PLYWOOD-BACKING",
+    "division": "06",
+    "title_ar": "تدعيم حائط بألواح أبلكاش 18 مم",
+    "title_en": "Plywood backing",
+    "description_ar": "تدعيم حائط بألواح أبلكاش 18 مم، شاملاً ألواح أبلكاش ومسامير تثبيت والعمالة المباشرة.",
+    "description_en": "Plywood backing, including plywood sheets and fixings with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-plywood-backing-1",
+        "resource_type": "material",
+        "description_ar": "ألواح أبلكاش",
+        "description_en": "Plywood sheets",
+        "unit": "m2",
+        "quantity": 1.07,
+        "unit_price": 48,
+        "notes": "صافي 1 m2/m2 + هالك 7% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 7% included."
+      },
+      {
+        "id": "tmpl-plywood-backing-2",
+        "resource_type": "material",
+        "description_ar": "مسامير تثبيت",
+        "description_en": "Fixings",
+        "unit": "each",
+        "quantity": 12,
+        "unit_price": 0.35,
+        "notes": "صافي 12 each/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 12, waste 0% included."
+      },
+      {
+        "id": "tmpl-plywood-backing-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.45,
+        "unit_price": 35,
+        "notes": "صافي 0.45 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.45, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-rigid-roof-insulation",
+    "code": "07-RIGID-ROOF-INSULATION",
+    "division": "07",
+    "title_ar": "عزل حراري للأسطح بألواح 50 مم",
+    "title_en": "Rigid roof insulation",
+    "description_ar": "عزل حراري للأسطح بألواح 50 مم، شاملاً ألواح XPS ولاصق ألواح والعمالة المباشرة.",
+    "description_en": "Rigid roof insulation, including xps boards and board adhesive with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-rigid-roof-insulation-1",
+        "resource_type": "material",
+        "description_ar": "ألواح XPS",
+        "description_en": "XPS boards",
+        "unit": "m2",
+        "quantity": 1.05,
+        "unit_price": 28,
+        "notes": "صافي 1 m2/m2 + هالك 5% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 5% included."
+      },
+      {
+        "id": "tmpl-rigid-roof-insulation-2",
+        "resource_type": "material",
+        "description_ar": "لاصق ألواح",
+        "description_en": "Board adhesive",
+        "unit": "kg",
+        "quantity": 0.6,
+        "unit_price": 5,
+        "notes": "صافي 0.6 kg/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.6, waste 0% included."
+      },
+      {
+        "id": "tmpl-rigid-roof-insulation-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.22,
+        "unit_price": 35,
+        "notes": "صافي 0.22 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.22, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-cementitious-waterproofing",
+    "code": "07-CEMENTITIOUS-WATERPROOFING",
+    "division": "07",
+    "title_ar": "عزل إسمنتي مرن بطبقتين",
+    "title_en": "Cementitious waterproofing",
+    "description_ar": "عزل إسمنتي مرن بطبقتين، شاملاً مادة عزل إسمنتية وشريط زوايا موزع والعمالة المباشرة.",
+    "description_en": "Cementitious waterproofing, including cementitious coating and joint tape allowance with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-cementitious-waterproofing-1",
+        "resource_type": "material",
+        "description_ar": "مادة عزل إسمنتية",
+        "description_en": "Cementitious coating",
+        "unit": "kg",
+        "quantity": 3.15,
+        "unit_price": 7,
+        "notes": "صافي 3 kg/m2 + هالك 5% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 3, waste 5% included."
+      },
+      {
+        "id": "tmpl-cementitious-waterproofing-2",
+        "resource_type": "material",
+        "description_ar": "شريط زوايا موزع",
+        "description_en": "Joint tape allowance",
+        "unit": "m",
+        "quantity": 0.25,
+        "unit_price": 5,
+        "notes": "صافي 0.25 m/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.25, waste 0% included."
+      },
+      {
+        "id": "tmpl-cementitious-waterproofing-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.42,
+        "unit_price": 35,
+        "notes": "صافي 0.42 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.42, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-joint-sealing",
+    "code": "07-JOINT-SEALING",
+    "division": "07",
+    "title_ar": "سد فواصل تمدد 20 × 10 مم",
+    "title_en": "Joint sealing",
+    "description_ar": "سد فواصل تمدد 20 × 10 مم، شاملاً مانع تسرب مرن وحبل حشو والعمالة المباشرة.",
+    "description_en": "Joint sealing, including elastomeric sealant and backing rod with direct labour.",
+    "unit": "m",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-joint-sealing-1",
+        "resource_type": "material",
+        "description_ar": "مانع تسرب مرن",
+        "description_en": "Elastomeric sealant",
+        "unit": "L",
+        "quantity": 0.22,
+        "unit_price": 52,
+        "notes": "صافي 0.2 L/m + هالك 10% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.2, waste 10% included."
+      },
+      {
+        "id": "tmpl-joint-sealing-2",
+        "resource_type": "material",
+        "description_ar": "حبل حشو",
+        "description_en": "Backing rod",
+        "unit": "m",
+        "quantity": 1.03,
+        "unit_price": 2,
+        "notes": "صافي 1.03 m/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1.03, waste 0% included."
+      },
+      {
+        "id": "tmpl-joint-sealing-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.18,
+        "unit_price": 35,
+        "notes": "صافي 0.18 h/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.18, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-single-steel-door-set",
+    "code": "08-SINGLE-STEEL-DOOR-SET",
+    "division": "08",
+    "title_ar": "باب فولاذي مفرد بإطار وملحقات",
+    "title_en": "Single steel door set",
+    "description_ar": "باب فولاذي مفرد بإطار وملحقات، شاملاً ضلفة وإطار وطقم مفصلات وقفل والعمالة المباشرة.",
+    "description_en": "Single steel door set, including leaf and frame and hinges and lock with direct labour.",
+    "unit": "each",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-single-steel-door-set-1",
+        "resource_type": "material",
+        "description_ar": "ضلفة وإطار",
+        "description_en": "Leaf and frame",
+        "unit": "set",
+        "quantity": 1,
+        "unit_price": 780,
+        "notes": "صافي 1 set/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-single-steel-door-set-2",
+        "resource_type": "material",
+        "description_ar": "طقم مفصلات وقفل",
+        "description_en": "Hinges and lock",
+        "unit": "set",
+        "quantity": 1,
+        "unit_price": 175,
+        "notes": "صافي 1 set/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-single-steel-door-set-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 3.5,
+        "unit_price": 35,
+        "notes": "صافي 3.5 h/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 3.5, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-aluminium-glazed-window",
+    "code": "08-ALUMINIUM-GLAZED-WINDOW",
+    "division": "08",
+    "title_ar": "نافذة ألمنيوم بزجاج مزدوج",
+    "title_en": "Aluminium glazed window",
+    "description_ar": "نافذة ألمنيوم بزجاج مزدوج، شاملاً وحدة نافذة مصنعة ومانع تسرب محيطي والعمالة المباشرة.",
+    "description_en": "Aluminium glazed window, including fabricated window and perimeter sealant with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-aluminium-glazed-window-1",
+        "resource_type": "material",
+        "description_ar": "وحدة نافذة مصنعة",
+        "description_en": "Fabricated window",
+        "unit": "m2",
+        "quantity": 1,
+        "unit_price": 450,
+        "notes": "صافي 1 m2/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-aluminium-glazed-window-2",
+        "resource_type": "material",
+        "description_ar": "مانع تسرب محيطي",
+        "description_en": "Perimeter sealant",
+        "unit": "L",
+        "quantity": 0.22,
+        "unit_price": 55,
+        "notes": "صافي 0.22 L/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.22, waste 0% included."
+      },
+      {
+        "id": "tmpl-aluminium-glazed-window-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 1.1,
+        "unit_price": 35,
+        "notes": "صافي 1.1 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1.1, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-porcelain-floor-tiling",
+    "code": "09-PORCELAIN-FLOOR-TILING",
+    "division": "09",
+    "title_ar": "بلاط بورسلان أرضيات على سطح جاهز",
+    "title_en": "Porcelain floor tiling",
+    "description_ar": "بلاط بورسلان أرضيات على سطح جاهز، شاملاً بورسلان ولاصق وروبة والعمالة المباشرة.",
+    "description_en": "Porcelain floor tiling, including porcelain tiles and adhesive and grout mix with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-porcelain-floor-tiling-1",
+        "resource_type": "material",
+        "description_ar": "بورسلان",
+        "description_en": "Porcelain tiles",
+        "unit": "m2",
+        "quantity": 1.07,
+        "unit_price": 52,
+        "notes": "صافي 1 m2/m2 + هالك 7% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 7% included."
+      },
+      {
+        "id": "tmpl-porcelain-floor-tiling-2",
+        "resource_type": "material",
+        "description_ar": "لاصق وروبة",
+        "description_en": "Adhesive and grout mix",
+        "unit": "kg",
+        "quantity": 5,
+        "unit_price": 2.3,
+        "notes": "صافي 5 kg/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 5, waste 0% included."
+      },
+      {
+        "id": "tmpl-porcelain-floor-tiling-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.75,
+        "unit_price": 35,
+        "notes": "صافي 0.75 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.75, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-emulsion-paint",
+    "code": "09-EMULSION-PAINT",
+    "division": "09",
+    "title_ar": "دهان داخلي وجهين فوق برايمر",
+    "title_en": "Emulsion paint",
+    "description_ar": "دهان داخلي وجهين فوق برايمر، شاملاً دهان نهائي وبرايمر والعمالة المباشرة.",
+    "description_en": "Emulsion paint, including finish paint and primer with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-emulsion-paint-1",
+        "resource_type": "material",
+        "description_ar": "دهان نهائي",
+        "description_en": "Finish paint",
+        "unit": "L",
+        "quantity": 0.231,
+        "unit_price": 23,
+        "notes": "صافي 0.22 L/m2 + هالك 5% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.22, waste 5% included."
+      },
+      {
+        "id": "tmpl-emulsion-paint-2",
+        "resource_type": "material",
+        "description_ar": "برايمر",
+        "description_en": "Primer",
+        "unit": "L",
+        "quantity": 0.1,
+        "unit_price": 12,
+        "notes": "صافي 0.1 L/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.1, waste 0% included."
+      },
+      {
+        "id": "tmpl-emulsion-paint-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.28,
+        "unit_price": 35,
+        "notes": "صافي 0.28 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.28, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-suspended-mineral-ceiling",
+    "code": "09-SUSPENDED-MINERAL-CEILING",
+    "division": "09",
+    "title_ar": "سقف معلق بلاطات معدنية ليفية 600 مم",
+    "title_en": "Suspended mineral ceiling",
+    "description_ar": "سقف معلق بلاطات معدنية ليفية 600 مم، شاملاً بلاطات ألياف معدنية وشبكة وتعليقات والعمالة المباشرة.",
+    "description_en": "Suspended mineral ceiling, including mineral fibre tiles and grid and hangers with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-suspended-mineral-ceiling-1",
+        "resource_type": "material",
+        "description_ar": "بلاطات ألياف معدنية",
+        "description_en": "Mineral fibre tiles",
+        "unit": "m2",
+        "quantity": 1.05,
+        "unit_price": 34,
+        "notes": "صافي 1 m2/m2 + هالك 5% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 5% included."
+      },
+      {
+        "id": "tmpl-suspended-mineral-ceiling-2",
+        "resource_type": "material",
+        "description_ar": "شبكة وتعليقات",
+        "description_en": "Grid and hangers",
+        "unit": "m2",
+        "quantity": 1,
+        "unit_price": 16,
+        "notes": "صافي 1 m2/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-suspended-mineral-ceiling-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.55,
+        "unit_price": 35,
+        "notes": "صافي 0.55 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.55, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-gypsum-partition",
+    "code": "09-GYPSUM-PARTITION",
+    "division": "09",
+    "title_ar": "قاطع جبسي بلوح واحد لكل وجه",
+    "title_en": "Gypsum partition",
+    "description_ar": "قاطع جبسي بلوح واحد لكل وجه، شاملاً ألواح جبس وقوائم ومسارات ومثبتات والعمالة المباشرة.",
+    "description_en": "Gypsum partition, including gypsum board and studs tracks and fixings with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-gypsum-partition-1",
+        "resource_type": "material",
+        "description_ar": "ألواح جبس",
+        "description_en": "Gypsum board",
+        "unit": "m2",
+        "quantity": 2.14,
+        "unit_price": 17,
+        "notes": "صافي 2 m2/m2 + هالك 7% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 2, waste 7% included."
+      },
+      {
+        "id": "tmpl-gypsum-partition-2",
+        "resource_type": "material",
+        "description_ar": "قوائم ومسارات ومثبتات",
+        "description_en": "Studs tracks and fixings",
+        "unit": "m2",
+        "quantity": 1,
+        "unit_price": 22,
+        "notes": "صافي 1 m2/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-gypsum-partition-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.9,
+        "unit_price": 35,
+        "notes": "صافي 0.9 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.9, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-vinyl-flooring",
+    "code": "09-VINYL-FLOORING",
+    "division": "09",
+    "title_ar": "أرضية فينيل ملصوقة 2 مم",
+    "title_en": "Vinyl flooring",
+    "description_ar": "أرضية فينيل ملصوقة 2 مم، شاملاً لفائف فينيل ولاصق والعمالة المباشرة.",
+    "description_en": "Vinyl flooring, including vinyl rolls and adhesive with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-vinyl-flooring-1",
+        "resource_type": "material",
+        "description_ar": "لفائف فينيل",
+        "description_en": "Vinyl rolls",
+        "unit": "m2",
+        "quantity": 1.06,
+        "unit_price": 58,
+        "notes": "صافي 1 m2/m2 + هالك 6% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 6% included."
+      },
+      {
+        "id": "tmpl-vinyl-flooring-2",
+        "resource_type": "material",
+        "description_ar": "لاصق",
+        "description_en": "Adhesive",
+        "unit": "kg",
+        "quantity": 0.32,
+        "unit_price": 18,
+        "notes": "صافي 0.32 kg/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.32, waste 0% included."
+      },
+      {
+        "id": "tmpl-vinyl-flooring-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.35,
+        "unit_price": 35,
+        "notes": "صافي 0.35 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.35, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-wall-protection-rail",
+    "code": "10-WALL-PROTECTION-RAIL",
+    "division": "10",
+    "title_ar": "حاجز حماية جداري",
+    "title_en": "Wall protection rail",
+    "description_ar": "حاجز حماية جداري، شاملاً قطاع حماية جداري وحوامل وأطراف والعمالة المباشرة.",
+    "description_en": "Wall protection rail, including wall guard profile and brackets and ends with direct labour.",
+    "unit": "m",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-wall-protection-rail-1",
+        "resource_type": "material",
+        "description_ar": "قطاع حماية جداري",
+        "description_en": "Wall guard profile",
+        "unit": "m",
+        "quantity": 1.04,
+        "unit_price": 80,
+        "notes": "صافي 1 m/m + هالك 4% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 4% included."
+      },
+      {
+        "id": "tmpl-wall-protection-rail-2",
+        "resource_type": "material",
+        "description_ar": "حوامل وأطراف",
+        "description_en": "Brackets and ends",
+        "unit": "set",
+        "quantity": 1,
+        "unit_price": 14,
+        "notes": "صافي 1 set/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-wall-protection-rail-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.35,
+        "unit_price": 35,
+        "notes": "صافي 0.35 h/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.35, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-roller-blinds",
+    "code": "12-ROLLER-BLINDS",
+    "division": "12",
+    "title_ar": "ستائر رول يدوية",
+    "title_en": "Roller blinds",
+    "description_ar": "ستائر رول يدوية، شاملاً ستارة مفصلة وحوامل والعمالة المباشرة.",
+    "description_en": "Roller blinds, including fabricated blind and brackets with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-roller-blinds-1",
+        "resource_type": "material",
+        "description_ar": "ستارة مفصلة",
+        "description_en": "Fabricated blind",
+        "unit": "m2",
+        "quantity": 1,
+        "unit_price": 115,
+        "notes": "صافي 1 m2/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-roller-blinds-2",
+        "resource_type": "material",
+        "description_ar": "حوامل",
+        "description_en": "Brackets",
+        "unit": "pair",
+        "quantity": 0.5,
+        "unit_price": 12,
+        "notes": "صافي 0.5 pair/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.5, waste 0% included."
+      },
+      {
+        "id": "tmpl-roller-blinds-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.4,
+        "unit_price": 35,
+        "notes": "صافي 0.4 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.4, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-sprinkler-head-fitting",
+    "code": "21-SPRINKLER-HEAD-FITTING",
+    "division": "21",
+    "title_ar": "تركيب رأس رشاش على نقطة جاهزة",
+    "title_en": "Sprinkler head fitting",
+    "description_ar": "تركيب رأس رشاش على نقطة جاهزة، شاملاً رأس رشاش وحلقة تشطيب ومانع تسرب والعمالة المباشرة.",
+    "description_en": "Sprinkler head fitting, including sprinkler head and escutcheon and seal with direct labour.",
+    "unit": "each",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-sprinkler-head-fitting-1",
+        "resource_type": "material",
+        "description_ar": "رأس رشاش",
+        "description_en": "Sprinkler head",
+        "unit": "each",
+        "quantity": 1,
+        "unit_price": 35,
+        "notes": "صافي 1 each/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-sprinkler-head-fitting-2",
+        "resource_type": "material",
+        "description_ar": "حلقة تشطيب ومانع تسرب",
+        "description_en": "Escutcheon and seal",
+        "unit": "set",
+        "quantity": 1,
+        "unit_price": 5,
+        "notes": "صافي 1 set/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-sprinkler-head-fitting-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.35,
+        "unit_price": 35,
+        "notes": "صافي 0.35 h/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.35, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-cold-water-ppr-pipe",
+    "code": "22-COLD-WATER-PPR-PIPE",
+    "division": "22",
+    "title_ar": "ماسورة مياه PPR قطر 25 مم",
+    "title_en": "Cold water PPR pipe",
+    "description_ar": "ماسورة مياه PPR قطر 25 مم، شاملاً مواسير PPR ووصلات وحوامل والعمالة المباشرة.",
+    "description_en": "Cold water PPR pipe, including ppr pipe and fittings and clips with direct labour.",
+    "unit": "m",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-cold-water-ppr-pipe-1",
+        "resource_type": "material",
+        "description_ar": "مواسير PPR",
+        "description_en": "PPR pipe",
+        "unit": "m",
+        "quantity": 1.04,
+        "unit_price": 9,
+        "notes": "صافي 1 m/m + هالك 4% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 4% included."
+      },
+      {
+        "id": "tmpl-cold-water-ppr-pipe-2",
+        "resource_type": "material",
+        "description_ar": "وصلات وحوامل",
+        "description_en": "Fittings and clips",
+        "unit": "set",
+        "quantity": 0.5,
+        "unit_price": 7,
+        "notes": "صافي 0.5 set/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.5, waste 0% included."
+      },
+      {
+        "id": "tmpl-cold-water-ppr-pipe-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.32,
+        "unit_price": 35,
+        "notes": "صافي 0.32 h/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.32, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-drain-pipe-110-mm",
+    "code": "22-DRAIN-PIPE-110-MM",
+    "division": "22",
+    "title_ar": "ماسورة صرف داخلية قطر 110 مم",
+    "title_en": "Drain pipe 110 mm",
+    "description_ar": "ماسورة صرف داخلية قطر 110 مم، شاملاً مواسير صرف ووصلات ومشابك والعمالة المباشرة.",
+    "description_en": "Drain pipe 110 mm, including drain pipe and couplings and clamps with direct labour.",
+    "unit": "m",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-drain-pipe-110-mm-1",
+        "resource_type": "material",
+        "description_ar": "مواسير صرف",
+        "description_en": "Drain pipe",
+        "unit": "m",
+        "quantity": 1.04,
+        "unit_price": 24,
+        "notes": "صافي 1 m/m + هالك 4% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 4% included."
+      },
+      {
+        "id": "tmpl-drain-pipe-110-mm-2",
+        "resource_type": "material",
+        "description_ar": "وصلات ومشابك",
+        "description_en": "Couplings and clamps",
+        "unit": "set",
+        "quantity": 0.5,
+        "unit_price": 16,
+        "notes": "صافي 0.5 set/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.5, waste 0% included."
+      },
+      {
+        "id": "tmpl-drain-pipe-110-mm-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.45,
+        "unit_price": 35,
+        "notes": "صافي 0.45 h/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.45, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-washbasin-installation",
+    "code": "22-WASHBASIN-INSTALLATION",
+    "division": "22",
+    "title_ar": "تركيب حوض مع خلاط على تمديدات جاهزة",
+    "title_en": "Washbasin installation",
+    "description_ar": "تركيب حوض مع خلاط على تمديدات جاهزة، شاملاً حوض خزفي وخلاط وسيفون ووصلات والعمالة المباشرة.",
+    "description_en": "Washbasin installation, including ceramic basin and mixer trap and tails with direct labour.",
+    "unit": "each",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-washbasin-installation-1",
+        "resource_type": "material",
+        "description_ar": "حوض خزفي",
+        "description_en": "Ceramic basin",
+        "unit": "each",
+        "quantity": 1,
+        "unit_price": 210,
+        "notes": "صافي 1 each/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-washbasin-installation-2",
+        "resource_type": "material",
+        "description_ar": "خلاط وسيفون ووصلات",
+        "description_en": "Mixer trap and tails",
+        "unit": "kit",
+        "quantity": 1,
+        "unit_price": 170,
+        "notes": "صافي 1 kit/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-washbasin-installation-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 2.4,
+        "unit_price": 35,
+        "notes": "صافي 2.4 h/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 2.4, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-floor-drain",
+    "code": "22-FLOOR-DRAIN",
+    "division": "22",
+    "title_ar": "بالوعة أرضية بغطاء ستانلس",
+    "title_en": "Floor drain",
+    "description_ar": "بالوعة أرضية بغطاء ستانلس، شاملاً جسم وغطاء بالوعة ووصلة ومونة تثبيت والعمالة المباشرة.",
+    "description_en": "Floor drain, including drain and grate and connector and bedding with direct labour.",
+    "unit": "each",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-floor-drain-1",
+        "resource_type": "material",
+        "description_ar": "جسم وغطاء بالوعة",
+        "description_en": "Drain and grate",
+        "unit": "each",
+        "quantity": 1,
+        "unit_price": 68,
+        "notes": "صافي 1 each/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-floor-drain-2",
+        "resource_type": "material",
+        "description_ar": "وصلة ومونة تثبيت",
+        "description_en": "Connector and bedding",
+        "unit": "kit",
+        "quantity": 1,
+        "unit_price": 12,
+        "notes": "صافي 1 kit/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-floor-drain-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.65,
+        "unit_price": 35,
+        "notes": "صافي 0.65 h/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.65, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-galvanised-ductwork",
+    "code": "23-GALVANISED-DUCTWORK",
+    "division": "23",
+    "title_ar": "تصنيع وتركيب مجرى صاج 0.8 مم حسب المساحة المطورة",
+    "title_en": "Galvanised ductwork",
+    "description_ar": "تصنيع وتركيب مجرى صاج 0.8 مم حسب المساحة المطورة، شاملاً صاج مجلفن وفلنجات وتعليقات والعمالة المباشرة.",
+    "description_en": "Galvanised ductwork, including galvanised sheet and flanges and hangers with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-galvanised-ductwork-1",
+        "resource_type": "material",
+        "description_ar": "صاج مجلفن",
+        "description_en": "Galvanised sheet",
+        "unit": "kg",
+        "quantity": 7.0336,
+        "unit_price": 6,
+        "notes": "صافي 6.28 kg/m2 + هالك 12% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 6.28, waste 12% included."
+      },
+      {
+        "id": "tmpl-galvanised-ductwork-2",
+        "resource_type": "material",
+        "description_ar": "فلنجات وتعليقات",
+        "description_en": "Flanges and hangers",
+        "unit": "kit",
+        "quantity": 1,
+        "unit_price": 14,
+        "notes": "صافي 1 kit/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-galvanised-ductwork-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.95,
+        "unit_price": 35,
+        "notes": "صافي 0.95 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.95, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-duct-insulation",
+    "code": "23-DUCT-INSULATION",
+    "division": "23",
+    "title_ar": "عزل مجرى هواء خارجي بصوف زجاجي 25 مم داخل المبنى",
+    "title_en": "Duct insulation",
+    "description_ar": "عزل مجرى هواء خارجي بصوف زجاجي 25 مم داخل المبنى، شاملاً عازل بوجه ألمنيوم وشريط ولاصق والعمالة المباشرة.",
+    "description_en": "Duct insulation, including foil-faced insulation and tape and adhesive with direct labour.",
+    "unit": "m2",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-duct-insulation-1",
+        "resource_type": "material",
+        "description_ar": "عازل بوجه ألمنيوم",
+        "description_en": "Foil-faced insulation",
+        "unit": "m2",
+        "quantity": 1.08,
+        "unit_price": 16,
+        "notes": "صافي 1 m2/m2 + هالك 8% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 8% included."
+      },
+      {
+        "id": "tmpl-duct-insulation-2",
+        "resource_type": "material",
+        "description_ar": "شريط ولاصق",
+        "description_en": "Tape and adhesive",
+        "unit": "set",
+        "quantity": 1,
+        "unit_price": 4,
+        "notes": "صافي 1 set/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-duct-insulation-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.32,
+        "unit_price": 35,
+        "notes": "صافي 0.32 h/m2 + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.32, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-supply-air-diffuser",
+    "code": "23-SUPPLY-AIR-DIFFUSER",
+    "division": "23",
+    "title_ar": "ناشر هواء سقفي 600 مم",
+    "title_en": "Supply air diffuser",
+    "description_ar": "ناشر هواء سقفي 600 مم، شاملاً ناشر هواء ومرابط وجوان والعمالة المباشرة.",
+    "description_en": "Supply air diffuser, including diffuser and fixings and gasket with direct labour.",
+    "unit": "each",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-supply-air-diffuser-1",
+        "resource_type": "material",
+        "description_ar": "ناشر هواء",
+        "description_en": "Diffuser",
+        "unit": "each",
+        "quantity": 1,
+        "unit_price": 125,
+        "notes": "صافي 1 each/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-supply-air-diffuser-2",
+        "resource_type": "material",
+        "description_ar": "مرابط وجوان",
+        "description_en": "Fixings and gasket",
+        "unit": "kit",
+        "quantity": 1,
+        "unit_price": 12,
+        "notes": "صافي 1 kit/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-supply-air-diffuser-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.65,
+        "unit_price": 35,
+        "notes": "صافي 0.65 h/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.65, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-pvc-electrical-conduit",
+    "code": "26-PVC-ELECTRICAL-CONDUIT",
+    "division": "26",
+    "title_ar": "ماسورة كهرباء PVC قطر 25 مم على السطح",
+    "title_en": "PVC electrical conduit",
+    "description_ar": "ماسورة كهرباء PVC قطر 25 مم على السطح، شاملاً ماسورة PVC وأكواع ومشابك والعمالة المباشرة.",
+    "description_en": "PVC electrical conduit, including pvc conduit and bends and saddles with direct labour.",
+    "unit": "m",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-pvc-electrical-conduit-1",
+        "resource_type": "material",
+        "description_ar": "ماسورة PVC",
+        "description_en": "PVC conduit",
+        "unit": "m",
+        "quantity": 1.04,
+        "unit_price": 3.8,
+        "notes": "صافي 1 m/m + هالك 4% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 4% included."
+      },
+      {
+        "id": "tmpl-pvc-electrical-conduit-2",
+        "resource_type": "material",
+        "description_ar": "أكواع ومشابك",
+        "description_en": "Bends and saddles",
+        "unit": "set",
+        "quantity": 0.6,
+        "unit_price": 3,
+        "notes": "صافي 0.6 set/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.6, waste 0% included."
+      },
+      {
+        "id": "tmpl-pvc-electrical-conduit-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.18,
+        "unit_price": 35,
+        "notes": "صافي 0.18 h/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.18, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-power-cable-pull",
+    "code": "26-POWER-CABLE-PULL",
+    "division": "26",
+    "title_ar": "سحب كابل نحاس 4 × 16 مم² بمسار مجهز",
+    "title_en": "Power cable pull",
+    "description_ar": "سحب كابل نحاس 4 × 16 مم² بمسار مجهز، شاملاً كابل قدرة نحاسي ومستهلكات سحب وترقيم والعمالة المباشرة.",
+    "description_en": "Power cable pull, including copper power cable and pulling and id supplies with direct labour.",
+    "unit": "m",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-power-cable-pull-1",
+        "resource_type": "material",
+        "description_ar": "كابل قدرة نحاسي",
+        "description_en": "Copper power cable",
+        "unit": "m",
+        "quantity": 1.03,
+        "unit_price": 42,
+        "notes": "صافي 1 m/m + هالك 3% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 3% included."
+      },
+      {
+        "id": "tmpl-power-cable-pull-2",
+        "resource_type": "material",
+        "description_ar": "مستهلكات سحب وترقيم",
+        "description_en": "Pulling and ID supplies",
+        "unit": "set",
+        "quantity": 0.1,
+        "unit_price": 12,
+        "notes": "صافي 0.1 set/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.1, waste 0% included."
+      },
+      {
+        "id": "tmpl-power-cable-pull-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.24,
+        "unit_price": 35,
+        "notes": "صافي 0.24 h/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.24, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-led-panel",
+    "code": "26-LED-PANEL",
+    "division": "26",
+    "title_ar": "لوحة إنارة LED مقاس 600 مم",
+    "title_en": "LED panel",
+    "description_ar": "لوحة إنارة LED مقاس 600 مم، شاملاً وحدة إنارة بدرايفر ومرابط وتوصيلات والعمالة المباشرة.",
+    "description_en": "LED panel, including luminaire with driver and fixings and leads with direct labour.",
+    "unit": "each",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-led-panel-1",
+        "resource_type": "material",
+        "description_ar": "وحدة إنارة بدرايفر",
+        "description_en": "Luminaire with driver",
+        "unit": "each",
+        "quantity": 1,
+        "unit_price": 115,
+        "notes": "صافي 1 each/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-led-panel-2",
+        "resource_type": "material",
+        "description_ar": "مرابط وتوصيلات",
+        "description_en": "Fixings and leads",
+        "unit": "kit",
+        "quantity": 1,
+        "unit_price": 10,
+        "notes": "صافي 1 kit/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-led-panel-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.6,
+        "unit_price": 35,
+        "notes": "صافي 0.6 h/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.6, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-socket-outlet",
+    "code": "26-SOCKET-OUTLET",
+    "division": "26",
+    "title_ar": "مقبس مفرد على دائرة جاهزة",
+    "title_en": "Socket outlet",
+    "description_ar": "مقبس مفرد على دائرة جاهزة، شاملاً مقبس وواجهة وعلبة تثبيت والعمالة المباشرة.",
+    "description_en": "Socket outlet, including socket and faceplate and back box with direct labour.",
+    "unit": "each",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-socket-outlet-1",
+        "resource_type": "material",
+        "description_ar": "مقبس وواجهة",
+        "description_en": "Socket and faceplate",
+        "unit": "each",
+        "quantity": 1,
+        "unit_price": 32,
+        "notes": "صافي 1 each/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-socket-outlet-2",
+        "resource_type": "material",
+        "description_ar": "علبة تثبيت",
+        "description_en": "Back box",
+        "unit": "each",
+        "quantity": 1,
+        "unit_price": 5,
+        "notes": "صافي 1 each/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-socket-outlet-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.35,
+        "unit_price": 35,
+        "notes": "صافي 0.35 h/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.35, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-data-outlet-termination",
+    "code": "27-DATA-OUTLET-TERMINATION",
+    "division": "27",
+    "title_ar": "إنهاء وفحص نقطة شبكة Cat6 دون الكابل",
+    "title_en": "Data outlet termination",
+    "description_ar": "إنهاء وفحص نقطة شبكة Cat6 دون الكابل، شاملاً جاك وواجهة وفحص وترقيم والعمالة المباشرة.",
+    "description_en": "Data outlet termination, including jack and faceplate and test and label supplies with direct labour.",
+    "unit": "each",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-data-outlet-termination-1",
+        "resource_type": "material",
+        "description_ar": "جاك وواجهة",
+        "description_en": "Jack and faceplate",
+        "unit": "set",
+        "quantity": 1,
+        "unit_price": 42,
+        "notes": "صافي 1 set/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-data-outlet-termination-2",
+        "resource_type": "material",
+        "description_ar": "فحص وترقيم",
+        "description_en": "Test and label supplies",
+        "unit": "set",
+        "quantity": 1,
+        "unit_price": 4,
+        "notes": "صافي 1 set/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-data-outlet-termination-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.4,
+        "unit_price": 35,
+        "notes": "صافي 0.4 h/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.4, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-smoke-detector",
+    "code": "28-SMOKE-DETECTOR",
+    "division": "28",
+    "title_ar": "كاشف دخان على حلقة جاهزة يشمل اختبار نقطة",
+    "title_en": "Smoke detector",
+    "description_ar": "كاشف دخان على حلقة جاهزة يشمل اختبار نقطة، شاملاً كاشف وقاعدة ومثبتات وتعريف والعمالة المباشرة.",
+    "description_en": "Smoke detector, including detector and base and fixings and id with direct labour.",
+    "unit": "each",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-smoke-detector-1",
+        "resource_type": "material",
+        "description_ar": "كاشف وقاعدة",
+        "description_en": "Detector and base",
+        "unit": "set",
+        "quantity": 1,
+        "unit_price": 120,
+        "notes": "صافي 1 set/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-smoke-detector-2",
+        "resource_type": "material",
+        "description_ar": "مثبتات وتعريف",
+        "description_en": "Fixings and ID",
+        "unit": "kit",
+        "quantity": 1,
+        "unit_price": 5,
+        "notes": "صافي 1 kit/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 0% included."
+      },
+      {
+        "id": "tmpl-smoke-detector-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.65,
+        "unit_price": 35,
+        "notes": "صافي 0.65 h/each + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.65, waste 0% included."
+      }
+    ]
+  },
+  {
+    "id": "tmpl-buried-water-pipe",
+    "code": "33-BURIED-WATER-PIPE",
+    "division": "33",
+    "title_ar": "ماسورة مياه HDPE قطر 90 مم داخل خندق جاهز",
+    "title_en": "Buried water pipe",
+    "description_ar": "ماسورة مياه HDPE قطر 90 مم داخل خندق جاهز، شاملاً ماسورة HDPE ووصلات لحام والعمالة المباشرة.",
+    "description_en": "Buried water pipe, including hdpe pipe and fusion fittings with direct labour.",
+    "unit": "m",
+    "recommended_overhead_pct": 0,
+    "recommended_profit_pct": 0,
+    "recommended_risk_pct": 0,
+    "items": [
+      {
+        "id": "tmpl-buried-water-pipe-1",
+        "resource_type": "material",
+        "description_ar": "ماسورة HDPE",
+        "description_en": "HDPE pipe",
+        "unit": "m",
+        "quantity": 1.03,
+        "unit_price": 32,
+        "notes": "صافي 1 m/m + هالك 3% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 1, waste 3% included."
+      },
+      {
+        "id": "tmpl-buried-water-pipe-2",
+        "resource_type": "material",
+        "description_ar": "وصلات لحام",
+        "description_en": "Fusion fittings",
+        "unit": "each",
+        "quantity": 0.15,
+        "unit_price": 45,
+        "notes": "صافي 0.15 each/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.15, waste 0% included."
+      },
+      {
+        "id": "tmpl-buried-water-pipe-3",
+        "resource_type": "labor",
+        "description_ar": "ساعات عمل مباشرة",
+        "description_en": "Direct labour hours",
+        "unit": "h",
+        "quantity": 0.38,
+        "unit_price": 35,
+        "notes": "صافي 0.38 h/m + هالك 0% ضمن الكمية. سعر افتراضي للتقدير (SAR) | Budget assumption, net 0.38, waste 0% included."
+      }
+    ]
+  }
+]

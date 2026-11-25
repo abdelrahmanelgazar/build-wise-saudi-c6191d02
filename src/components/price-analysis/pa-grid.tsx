@@ -33,7 +33,7 @@ import { fmtNumber, fmtSAR } from "@/lib/format";
 import { toast } from "sonner";
 import { useActiveProjectId } from "@/lib/active-project";
 import { computeDirectUnitCost, computePricingPhase2 } from "@/lib/estimation-calc";
-import { syncBoqItemBreakdownFromPa } from "@/lib/pa-sync";
+import { syncBoqItemBreakdownFromPa, clearManualPriceForBoqItem, restoreImportedRateForBoqItem } from "@/lib/pa-sync";
 import type { Database } from "@/integrations/supabase/types";
 import { ImportPaDialog } from "./import-pa-dialog";
 import { SelectQuoteDialog } from "./select-quote-dialog";
@@ -334,6 +334,45 @@ export function PaGrid({ boqItem }: { boqItem: BoqRow }) {
           <span>{t("pa.quantityLabel", "الكمية:")} <strong className="text-foreground">{fmtNumber(boqItem.quantity, 2)}</strong> {boqItem.unit}</span>
           <span className="text-border">·</span>
           <span>{t("pa.sellingPriceLabel", "سعر البيع:")} <strong className="text-primary font-bold">{fmtSAR(selling, language)}</strong></span>
+          <Badge variant="outline" className="text-[10px]">
+            {boqItem.is_included_elsewhere
+              ? "مشمول في بند آخر"
+              : Number(boqItem.manual_unit_price ?? 0) > 0
+                ? "المصدر: سعر يدوي"
+                : items.length > 0
+                  ? "المصدر: تحليل الأسعار"
+                  : boqItem.rate_source === "imported"
+                    ? "المصدر: مستورد"
+                    : "غير مسعّر"}
+          </Badge>
+          {Number(boqItem.manual_unit_price ?? 0) > 0 && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-[10px] text-amber-600"
+              onClick={async () => {
+                await clearManualPriceForBoqItem(boqItem.id);
+                await qc.invalidateQueries({ queryKey: ["boq_items"] });
+                toast.success("تم إلغاء السعر اليدوي والعودة إلى التحليل");
+              }}
+            >
+              إلغاء السعر اليدوي
+            </Button>
+          )}
+          {items.length === 0 && Number(boqItem.imported_unit_rate ?? 0) > 0 && boqItem.rate_source !== "imported" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-[10px] text-primary"
+              onClick={async () => {
+                await restoreImportedRateForBoqItem(boqItem.id);
+                await qc.invalidateQueries({ queryKey: ["boq_items"] });
+                toast.success("تمت استعادة السعر المستورد كمرجع نشط");
+              }}
+            >
+              استعادة السعر المستورد ({fmtSAR(Number(boqItem.imported_unit_rate), language)})
+            </Button>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5">

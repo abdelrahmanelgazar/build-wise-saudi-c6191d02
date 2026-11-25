@@ -1,5 +1,7 @@
 import { estimationClient } from "@/lib/estimation-client";
+import catalog from "./breakdown-catalog.json";
 import { readWorkspaceSetting, writeWorkspaceSetting } from "./workspace-settings";
+import { computeDirectUnitCost, computePricingPhase2, type ResourceCostInput } from "./estimation-calc";
 import type { Database } from "@/integrations/supabase/types";
 
 export type BreakdownResourceType = "material" | "labor" | "equipment" | "subcontractor";
@@ -35,7 +37,7 @@ export interface BreakdownTemplate {
 
 const STORAGE_KEY = "taqdiri:item_breakdown_library:custom";
 
-export const DEFAULT_BREAKDOWN_TEMPLATES: BreakdownTemplate[] = [
+const originalTemplates: BreakdownTemplate[] = [
   {
     id: "tmpl-rc-foundations",
     code: "CONC-RC-FDN",
@@ -306,6 +308,17 @@ export const DEFAULT_BREAKDOWN_TEMPLATES: BreakdownTemplate[] = [
   },
 ];
 
+export const DEFAULT_BREAKDOWN_TEMPLATES: BreakdownTemplate[] = [
+  ...originalTemplates.map(template => ({
+    ...template,
+    items: template.items.map(item => ({
+      ...item,
+      notes: [item.notes, "سعر استرشادي من مكتبة تقديري السابقة (SAR). الكمية تشمل السماحات الواردة بالنموذج. Legacy library budget allowance."].filter(Boolean).join(" "),
+    })),
+  })),
+  ...(catalog as BreakdownTemplate[]),
+];
+
 export function getCustomTemplates(): BreakdownTemplate[] {
   if (typeof window === "undefined") return [];
   try {
@@ -350,68 +363,56 @@ export function calculateBreakdownCost(
     risk_pct?: number;
   }
 ) {
-  let materialCost = 0;
-  let primaryMaterialCost = 0;
-  let accessoryMaterialCost = 0;
-  let laborCost = 0;
-  let equipmentCost = 0;
-  let subcontractorCost = 0;
-
-  template.items.forEach((item) => {
-    const total = (item.quantity || 0) * (item.unit_price || 0);
-    const type = item.resource_type || (item as any).cost_type;
-    const cat = (item as any).material_category || (item as any).cell_styles?.material_category;
-    switch (type) {
-      case "material":
-        materialCost += total;
-        if (cat === "accessory") {
-          accessoryMaterialCost += total;
-        } else {
-          primaryMaterialCost += total;
-        }
-        break;
-      case "labor":
-        laborCost += total;
-        break;
-      case "equipment":
-        equipmentCost += total;
-        break;
-      case "subcontractor":
-        subcontractorCost += total;
-        break;
-    }
+  const mappedInputs: ResourceCostInput[] = template.items.map((item) => {
+    const matCat = (item as any).material_category || (item as any).cell_styles?.material_category;
+    return {
+      resource_type: (item.resource_type || (item as any).cost_type) as ResourceCostInput["resource_type"],
+      quantity: Number(item.quantity) || 0,
+      unit_price: Number(item.unit_price) || 0,
+      ...(matCat ? { material_category: matCat as "primary" | "accessory" } : {}),
+    };
   });
 
-  const directUnitCost = materialCost + laborCost + equipmentCost + subcontractorCost;
+  const direct = computeDirectUnitCost(mappedInputs);
 
   const indirectPct = markups?.indirect_pct ?? template.recommended_indirect_pct ?? 0;
   const overheadPct = markups?.overhead_pct ?? template.recommended_overhead_pct ?? 0;
   const profitPct = markups?.profit_pct ?? template.recommended_profit_pct ?? 0;
   const riskPct = markups?.risk_pct ?? template.recommended_risk_pct ?? 0;
 
+  const p2 = computePricingPhase2({
+    directUnitCost: direct.directUnitCost,
+    quantity: 1,
+    markups: {
+      indirect_pct: indirectPct,
+      overhead_pct: overheadPct,
+      risk_pct: riskPct,
+      profit_pct: profitPct,
+      pricing_policy: "additive_v2",
+      round_up_rate: true,
+    },
+  });
+
   const totalMarkupPct = indirectPct + overheadPct + profitPct + riskPct;
-  const rawSellingPrice = directUnitCost * (1 + totalMarkupPct / 100);
-  const unitSellingPrice = rawSellingPrice > 0 ? Math.ceil(rawSellingPrice) : 0;
-  const roundingDifference = unitSellingPrice - rawSellingPrice;
 
   return {
-    materialCost,
-    primaryMaterialCost,
-    accessoryMaterialCost,
-    laborCost,
-    equipmentCost,
-    subcontractorCost,
-    directUnitCost,
+    materialCost: direct.materialCost,
+    primaryMaterialCost: direct.primaryMaterialCost,
+    accessoryMaterialCost: direct.accessoryMaterialCost,
+    laborCost: direct.laborCost,
+    equipmentCost: direct.equipmentCost,
+    subcontractorCost: direct.subcontractorCost,
+    directUnitCost: p2.directUnitCost,
     indirectPct,
     overheadPct,
     profitPct,
     riskPct,
     totalMarkupPct,
-    rawSellingPrice,
-    rawUnitSellingRate: rawSellingPrice,
-    unitSellingPrice,
-    unitSellingRate: unitSellingPrice,
-    roundingDifference,
+    rawSellingPrice: p2.rawUnitSellingPrice,
+    rawUnitSellingRate: p2.rawUnitSellingPrice,
+    unitSellingPrice: p2.approvedUnitRate,
+    unitSellingRate: p2.approvedUnitRate,
+    roundingDifference: p2.roundingDifferencePerUnit,
   };
 }
 
@@ -487,6 +488,8 @@ export async function applyTemplateToBoqItem({
       quantity: item.quantity,
       unit_price: item.unit_price,
       sort_order: index + 1,
+      material_category: (item as any).material_category || "primary",
+      line_note: item.notes || null,
       cell_styles: {
         notes: item.notes || null,
         material_category: (item as any).material_category || "primary",
@@ -501,7 +504,7 @@ export async function applyTemplateToBoqItem({
     // 3. Calculate totals using unified 4 markups
     const calc = calculateBreakdownCost(template);
 
-    // 4. Update boq_item cached cost values
+    // 4. Update boq_item cached cost values + explicit Section 7 rate_source
     const { error: boqUpdErr } = await estimationClient
       .from("boq_items")
       .update({
@@ -509,6 +512,8 @@ export async function applyTemplateToBoqItem({
         labor_cost: calc.laborCost,
         equipment_cost: calc.equipmentCost,
         subcontractor_cost: calc.subcontractorCost,
+        rate_source: "analysis",
+        pricing_status: calc.directUnitCost > 0 ? "priced" : "unpriced",
       })
       .eq("id", boqItemId);
 

@@ -30,7 +30,9 @@ import {
   Hammer,
   Truck,
   Pencil,
+  Menu,
 } from "lucide-react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { estimationClient } from "@/lib/estimation-client";
 import { isLocalDevelopment } from "@/lib/local-development";
@@ -216,16 +218,22 @@ function AppShellInner({ children }: { children: ReactNode }) {
 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
     dashboard: false,
+    companies: false,
     clients: false,
     projects: false,
     resources: false,
   });
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // Restore active branch & open ancestors automatically from URL
   useEffect(() => {
     setExpanded((prev) => {
       const next = { ...prev };
       if (pathname.startsWith("/dashboard")) next["dashboard"] = true;
+      if (pathname.startsWith("/companies")) {
+        next["companies"] = true;
+        if (urlCompany) next[`companies:company:${urlCompany}`] = true;
+      }
       if (pathname.startsWith("/clients")) {
         next["clients"] = true;
         if (urlCompany) next[`clients:company:${urlCompany}`] = true;
@@ -357,13 +365,10 @@ function AppShellInner({ children }: { children: ReactNode }) {
   return (
     // Sidebar automatically aligns with active reading direction: Right in Arabic (RTL), Left in English (LTR).
     <div dir={direction} className="flex min-h-screen w-full bg-background text-foreground">
-      {/* Directional Hierarchical Sidebar */}
+      {/* Directional Hierarchical Sidebar (desktop) */}
       <aside
         dir={direction}
-        className={cn(
-          "sticky top-0 flex h-screen w-68 shrink-0 flex-col bg-sidebar",
-          direction === "rtl" ? "border-l border-sidebar-border" : "border-r border-sidebar-border",
-        )}
+        className="sticky top-0 hidden md:flex h-screen w-68 shrink-0 flex-col border-e border-sidebar-border bg-sidebar"
       >
         <div className="flex h-14 items-center gap-2.5 border-b border-sidebar-border px-4">
           <img src={taqdiriMark} alt="" width={32} height={32} />
@@ -564,6 +569,120 @@ function AppShellInner({ children }: { children: ReactNode }) {
               )}
             </li>
 
+            {/* 1.5 الشركات (Standalone Companies Section §4) */}
+            <li>
+              <div
+                className={cn(
+                  "flex items-center justify-between gap-1 rounded-md px-2 py-1.5 transition-colors",
+                  pathname.startsWith("/companies")
+                    ? "bg-primary/15 text-primary ring-1 ring-primary/20 font-medium"
+                    : "text-sidebar-foreground hover:bg-sidebar-accent",
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => guardedNavigate("/companies", "الشركات")}
+                  className="flex flex-1 items-center gap-2 text-start text-sm"
+                >
+                  <Briefcase className="h-4 w-4 shrink-0" />
+                  <span className="truncate">الشركات</span>
+                </button>
+                <TreeToggleArrow
+                  isOpen={Boolean(expanded["companies"])}
+                  onToggle={() => toggleNode("companies")}
+                  direction={direction}
+                  label="توسيع قائمة الشركات"
+                />
+              </div>
+
+              {expanded["companies"] && (
+                <ul className="mt-1 space-y-0.5 border-s border-border/60 ms-3 ps-2">
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => guardedNavigate("/companies", "الشركات — عام")}
+                      className={cn(
+                        "flex w-full items-center rounded px-2 py-1 text-start hover:bg-sidebar-accent",
+                        pathname === "/companies" && !urlCompany && "text-primary font-medium",
+                      )}
+                    >
+                      عام
+                    </button>
+                  </li>
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => guardedNavigate("/companies?new=1", "إضافة شركة")}
+                      className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-start text-[11px] text-primary hover:bg-sidebar-accent font-medium"
+                    >
+                      <Plus className="h-3 w-3 shrink-0" />
+                      <span>إضافة شركة</span>
+                    </button>
+                  </li>
+                  {companyTree.map((c) => {
+                    const compKey = `companies:company:${c.companyName}`;
+                    const compOpen = Boolean(expanded[compKey]);
+                    return (
+                      <li key={`comp-${c.companyName}`}>
+                        <div className="flex items-center justify-between gap-0.5 rounded px-2 py-1 hover:bg-sidebar-accent">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              guardedNavigate(
+                                `/companies?company=${encodeURIComponent(c.companyName)}`,
+                                c.companyName,
+                              )
+                            }
+                            className={cn(
+                              "flex flex-1 items-center gap-1.5 text-start truncate",
+                              pathname.startsWith("/companies") && urlCompany === c.companyName && "text-primary font-medium",
+                            )}
+                          >
+                            <Building2 className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{c.companyName}</span>
+                          </button>
+                          <TreeToggleArrow
+                            isOpen={compOpen}
+                            onToggle={() => toggleNode(compKey)}
+                            direction={direction}
+                            label={`توسيع ${c.companyName}`}
+                          />
+                        </div>
+                        {compOpen && (
+                          <ul className="ms-2 border-s border-border/50 ps-2 space-y-0.5">
+                            {c.owners.map((o) => (
+                              <li key={`comp-owner-${o.ownerKey}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (o.clientId) {
+                                      guardedNavigate(
+                                        `/clients/${o.clientId}?company=${encodeURIComponent(c.companyName)}`,
+                                        o.ownerName,
+                                      );
+                                    } else {
+                                      guardedNavigate(
+                                        `/clients?company=${encodeURIComponent(c.companyName)}&owner=${encodeURIComponent(o.ownerName)}`,
+                                        o.ownerName,
+                                      );
+                                    }
+                                  }}
+                                  className="flex w-full items-center gap-1.5 rounded px-2 py-1 text-start text-[11px] hover:bg-sidebar-accent"
+                                >
+                                  <Users className="h-3 w-3 shrink-0 text-muted-foreground" />
+                                  <span className="truncate">{o.ownerName}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
+
             {/* 2. العملاء */}
             <li>
               <div
@@ -669,7 +788,10 @@ function AppShellInner({ children }: { children: ReactNode }) {
                                       type="button"
                                       onClick={() => {
                                         if (o.clientId) {
-                                          guardedNavigate(`/clients/${o.clientId}`, o.ownerName);
+                                          guardedNavigate(
+                                            `/clients/${o.clientId}?company=${encodeURIComponent(c.companyName)}`,
+                                            o.ownerName,
+                                          );
                                         } else {
                                           guardedNavigate(
                                             `/clients?company=${encodeURIComponent(c.companyName)}&owner=${encodeURIComponent(o.ownerName)}`,
@@ -931,18 +1053,86 @@ function AppShellInner({ children }: { children: ReactNode }) {
 
       {/* Main area */}
       <div dir={direction} className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-background/80 px-6 backdrop-blur">
-          <div className="relative flex-1 max-w-md">
-            <Search
-              className={cn(
-                "pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground",
-                direction === "rtl" ? "right-3" : "left-3",
-              )}
-            />
-            <Input
-              placeholder={t("nav.searchPlaceholder", "ابحث في البنود، الموارد، المناقصات…")}
-              className={cn("h-9 text-sm", direction === "rtl" ? "pr-9" : "pl-9")}
-            />
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-background/80 px-4 md:px-6 backdrop-blur">
+          <div className="flex items-center gap-2 flex-1 max-w-md">
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="md:hidden shrink-0" aria-label="فتح القائمة">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent
+                side={direction === "rtl" ? "right" : "left"}
+                dir={direction}
+                className="w-72 p-3 overflow-y-auto"
+              >
+                <div className="mb-3 flex items-center gap-2 border-b border-border pb-3">
+                  <img src={taqdiriMark} alt="" width={28} height={28} />
+                  <span className="font-bold text-sm">{t("nav.brand", "تقديري")}</span>
+                </div>
+                <div className="mb-3">
+                  <ProjectSwitcher projects={projects} />
+                </div>
+                <div className="space-y-1 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => { setMobileNavOpen(false); guardedNavigate("/dashboard", "لوحة التحكم"); }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-start hover:bg-accent"
+                  >
+                    <LayoutDashboard className="h-4 w-4" /> <span>{t("nav.dashboard", "لوحة التحكم")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMobileNavOpen(false); guardedNavigate("/companies", "الشركات"); }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-start hover:bg-accent"
+                  >
+                    <Briefcase className="h-4 w-4" /> <span>الشركات</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMobileNavOpen(false); guardedNavigate("/clients", "العملاء"); }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-start hover:bg-accent"
+                  >
+                    <Building2 className="h-4 w-4" /> <span>{t("nav.clients", "العملاء")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMobileNavOpen(false); guardedNavigate("/projects", "المشاريع"); }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-start hover:bg-accent"
+                  >
+                    <FileText className="h-4 w-4" /> <span>{t("nav.projects", "المشاريع")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMobileNavOpen(false); guardedNavigate("/resources", "عروض الأسعار"); }}
+                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-start hover:bg-accent"
+                  >
+                    <Database className="h-4 w-4" /> <span>{t("nav.resources", "عروض الأسعار")}</span>
+                  </button>
+                  {SECONDARY_NAV_ITEMS.map((item) => {
+                    const Icon = item.icon;
+                    const label = t(item.translationKey, item.defaultLabel);
+                    return (
+                      <button
+                        key={`mob-${item.to}`}
+                        type="button"
+                        onClick={() => { setMobileNavOpen(false); guardedNavigate(item.to, label); }}
+                        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-start hover:bg-accent"
+                      >
+                        <Icon className="h-4 w-4" /> <span>{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </SheetContent>
+            </Sheet>
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder={t("nav.searchPlaceholder", "ابحث في البنود، الموارد، المناقصات…")}
+                className="h-9 text-sm ps-9"
+              />
+            </div>
           </div>
 
           {/* Global Save & Refresh + Status Badges */}

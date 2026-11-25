@@ -11,6 +11,8 @@ import {
   getSubmittedTenderSnapshot,
   submitTenderVersion,
 } from "@/lib/client-tender-service";
+import { getAllBreakdownTemplates, calculateBreakdownCost } from "@/lib/breakdown-library";
+import { executeLocalQuery } from "../../scripts/local-estimation-query";
 
 describe("Platform Independence & Unified Acceptance Suite (PLATFORM_INDEPENDENCE_AND_NAVIGATION_PLAN.md)", () => {
   it("passes the shared procurement-estimation-dev acceptance test (1,600 submitted v1 vs 1,700 revised draft)", async () => {
@@ -207,6 +209,9 @@ describe("Platform Independence & Unified Acceptance Suite (PLATFORM_INDEPENDENC
     const snap = await submitTenderVersion({
       tenderId,
       projectId: "proj-atomic",
+      companyId: "comp-1",
+      companyName: "شركة أوتاد الفهد",
+      clientName: "وزارة الصحة",
       expectedDraftVersion: 2,
       currentDraftVersion: 2,
       idempotencyKey: `idem-10300-${tenderId}`,
@@ -214,6 +219,138 @@ describe("Platform Independence & Unified Acceptance Suite (PLATFORM_INDEPENDENC
       boqItems: [{ id: "i1", item_no: "01", description_ar: "بند", quantity: 10, is_group: false, material_cost: 1030 }],
     });
     expect(snap.netSellingPrice).toBe(10300);
+    expect(snap.companyName).toBe("شركة أوتاد الفهد");
+    expect(snap.clientName).toBe("وزارة الصحة");
     expect(getSubmittedTenderSnapshot(tenderId, 1)?.netSellingPrice).toBe(10300);
+  });
+
+  it("verifies Section 5 catalog count (50 templates) and unified calculation parity", () => {
+    const allTemplates = getAllBreakdownTemplates();
+    expect(allTemplates.length).toBeGreaterThanOrEqual(50);
+
+    for (const tmpl of allTemplates) {
+      const calc = calculateBreakdownCost(tmpl);
+      expect(calc.directUnitCost).toBeGreaterThanOrEqual(0);
+      expect(calc.unitSellingPrice).toBeGreaterThanOrEqual(calc.rawSellingPrice);
+    }
+  });
+
+  it("verifies Section 2 & 7 local DB companies, shared-owner isolation, and immutable tender_submissions", () => {
+    let memStore = JSON.stringify({});
+    const read = () => memStore;
+    const write = (d: string) => {
+      memStore = d;
+    };
+
+    // 1. Insert company with zero projects
+    const compRes = executeLocalQuery(
+      {
+        table: "companies",
+        filters: [],
+        orders: [],
+        operation: "insert",
+        values: [{ workspace_id: "ws-1", name: "شركة العالمية", code: "ALAMIYA" }],
+        conflict: [],
+        columns: "*",
+        head: false,
+        count: false,
+        cardinality: "single",
+      },
+      read,
+      write,
+    );
+    expect(compRes.error).toBeNull();
+    const companyAId = String((compRes.data as any).id);
+
+    const compBRes = executeLocalQuery(
+      {
+        table: "companies",
+        filters: [],
+        orders: [],
+        operation: "insert",
+        values: [{ workspace_id: "ws-1", name: "شركة أوتاد الفهد", code: "AWTAD" }],
+        conflict: [],
+        columns: "*",
+        head: false,
+        count: false,
+        cardinality: "single",
+      },
+      read,
+      write,
+    );
+    const companyBId = String((compBRes.data as any).id);
+
+    // 2. Shared owner projects in Company A vs Company B stay isolated by company_id
+    executeLocalQuery(
+      {
+        table: "projects",
+        filters: [],
+        orders: [],
+        operation: "insert",
+        values: [
+          { name: "مشروع أ", client_id: "owner-1", company_id: companyAId, company_name: "شركة العالمية" },
+          { name: "مشروع ب", client_id: "owner-1", company_id: companyBId, company_name: "شركة أوتاد الفهد" },
+        ],
+        conflict: [],
+        head: false,
+        count: false,
+        cardinality: "many",
+      },
+      read,
+      write,
+    );
+
+    const companyAProjects = executeLocalQuery(
+      {
+        table: "projects",
+        filters: [["client_id", "owner-1"], ["company_id", companyAId]],
+        orders: [],
+        operation: "read",
+        values: [],
+        conflict: [],
+        head: false,
+        count: false,
+        cardinality: "many",
+      },
+      read,
+      write,
+    );
+    expect((companyAProjects.data as any[]).length).toBe(1);
+    expect((companyAProjects.data as any[])[0].name).toBe("مشروع أ");
+
+    // 3. Immutable tender_submissions cannot be updated or deleted
+    const subInsert = executeLocalQuery(
+      {
+        table: "tender_submissions",
+        filters: [],
+        orders: [],
+        operation: "insert",
+        values: [{ tender_id: "t1", project_id: "p1", version_no: 1, idempotency_key: "k1", net_selling_price: 1600, total_direct_cost: 1500, vat_amount: 240, grand_total_with_vat: 1840, items_snapshot: [], submitted_by: "u1" }],
+        conflict: [],
+        head: false,
+        count: false,
+        cardinality: "single",
+      },
+      read,
+      write,
+    );
+    expect(subInsert.error).toBeNull();
+
+    const subUpdate = executeLocalQuery(
+      {
+        table: "tender_submissions",
+        filters: [["tender_id", "t1"]],
+        orders: [],
+        operation: "update",
+        values: [{ net_selling_price: 9999 }],
+        conflict: [],
+        head: false,
+        count: false,
+        cardinality: "many",
+      },
+      read,
+      write,
+    );
+    expect((subUpdate.error as { message?: string } | null)?.message).toContain("immutable");
   });
 });

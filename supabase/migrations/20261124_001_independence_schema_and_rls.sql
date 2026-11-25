@@ -34,7 +34,10 @@ ALTER TABLE public.projects
 ALTER TABLE public.boq_items
   ADD COLUMN IF NOT EXISTS note text,
   ADD COLUMN IF NOT EXISTS manual_unit_price numeric(14,4),
-  ADD COLUMN IF NOT EXISTS is_included_elsewhere boolean NOT NULL DEFAULT false;
+  ADD COLUMN IF NOT EXISTS is_included_elsewhere boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS rate_source text CHECK (rate_source IN ('analysis', 'manual', 'imported', 'none')),
+  ADD COLUMN IF NOT EXISTS pricing_status text CHECK (pricing_status IN ('priced', 'unpriced', 'included')),
+  ADD COLUMN IF NOT EXISTS imported_unit_rate numeric(14,4);
 
 UPDATE public.boq_items
 SET note = COALESCE(note, cell_styles->>'note')

@@ -55,6 +55,7 @@ export const Route = createFileRoute("/_authenticated/boq")({
 function buildTree(
   rows: BoqRow[],
   paSellingRates: Map<string, number>,
+  paItemIdsWithAnalysis: Set<string>,
   sheetTotals?: Record<string, number>
 ): TreeNode[] {
   const map = new Map<string, TreeNode>();
@@ -85,16 +86,26 @@ function buildTree(
         n.rolledTotal = sheetTotals[n.description_ar] ?? 0;
         n.unitRate = Number(n.quantity) ? n.rolledTotal / Number(n.quantity) : n.rolledTotal;
       } else {
-        // Prefer the unit selling price computed from price analysis when present (even if 0);
-        // otherwise fall back to the per-row cost breakdown columns.
+        // Section 7 contract:
+        // 1. Included elsewhere -> 0
+        // 2. Active manual unit price -> manual_unit_price
+        // 3. Analysis source (or has PA lines) -> PA selling rate (0 if empty/unpriced)
+        // 4. Imported / fallback stored costs
         const fromPa = paSellingRates.get(n.id);
-        n.unitRate =
-          typeof fromPa === "number"
-            ? fromPa
-            : Number(n.material_cost ?? 0) +
-              Number(n.labor_cost ?? 0) +
-              Number(n.equipment_cost ?? 0) +
-              Number(n.subcontractor_cost ?? 0);
+        const hasAnalysis = n.rate_source === "analysis" || paItemIdsWithAnalysis.has(n.id);
+        if (n.is_included_elsewhere) {
+          n.unitRate = 0;
+        } else if (Number(n.manual_unit_price ?? 0) > 0) {
+          n.unitRate = Number(n.manual_unit_price);
+        } else if (hasAnalysis) {
+          n.unitRate = typeof fromPa === "number" ? fromPa : 0;
+        } else {
+          n.unitRate =
+            Number(n.material_cost ?? 0) +
+            Number(n.labor_cost ?? 0) +
+            Number(n.equipment_cost ?? 0) +
+            Number(n.subcontractor_cost ?? 0);
+        }
         n.rolledTotal = n.unitRate * Number(n.quantity ?? 0);
       }
     }
@@ -258,18 +269,19 @@ function BoqPage() {
       });
       selling.set(id, res.unitSellingPrice);
     });
-    return { direct, selling };
+    const paIds = new Set<string>(grouped.keys());
+    return { direct, selling, paIds };
   }, [paItems, paMarkups]);
 
   const sheetTotals = useMemo(() => {
     const totals: Record<string, number> = {};
     for (const name of sheetNames) {
       const rowsForSheet = rows.filter(r => (r.sheet_name || "Sheet1") === name);
-      const builtTree = buildTree(rowsForSheet, paRates.selling);
+      const builtTree = buildTree(rowsForSheet, paRates.selling, paRates.paIds);
       totals[name] = builtTree.reduce((s, n) => s + n.rolledTotal, 0);
     }
     return totals;
-  }, [rows, sheetNames, paRates.selling]);
+  }, [rows, sheetNames, paRates.selling, paRates.paIds]);
 
   useMemo(() => {
     if (activeRows.length && expanded.size === 0) {
@@ -278,7 +290,7 @@ function BoqPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRows.length]);
 
-  const tree = useMemo(() => buildTree(activeRows, paRates.selling, sheetTotals), [activeRows, paRates.selling, sheetTotals]);
+  const tree = useMemo(() => buildTree(activeRows, paRates.selling, paRates.paIds, sheetTotals), [activeRows, paRates.selling, paRates.paIds, sheetTotals]);
   const grandTotal = tree.reduce((s, n) => s + n.rolledTotal, 0);
   const itemsCount = activeRows.filter((r) => !r.is_group).length;
   const groupsCount = activeRows.filter((r) => r.is_group).length;
@@ -289,12 +301,14 @@ function BoqPage() {
       .reduce((sum, r) => {
         const paDirect = paRates.direct.get(r.id);
         const unitCost =
-          typeof paDirect === "number"
-            ? paDirect
-            : Number(r.material_cost ?? 0) +
-              Number(r.labor_cost ?? 0) +
-              Number(r.equipment_cost ?? 0) +
-              Number(r.subcontractor_cost ?? 0);
+          r.is_included_elsewhere
+            ? 0
+            : r.rate_source === "analysis" || paRates.paIds.has(r.id)
+              ? (typeof paDirect === "number" ? paDirect : 0)
+              : Number(r.material_cost ?? 0) +
+                Number(r.labor_cost ?? 0) +
+                Number(r.equipment_cost ?? 0) +
+                Number(r.subcontractor_cost ?? 0);
         return sum + unitCost * Number(r.quantity ?? 0);
       }, 0);
   }, [activeRows, paRates.direct]);

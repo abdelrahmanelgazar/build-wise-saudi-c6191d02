@@ -332,16 +332,22 @@ export function CompaniesManager({
         throw new Error("اختر عميلاً أو أنشئ عميلاً جديداً");
       }
 
-      // Link company <-> client if real company
+      // Link company <-> client if real company and obtain link ID
+      let linkId: string | null = null;
       if (companyId) {
-        await estimationClient.from("company_client_links").upsert(
-          {
-            workspace_id: DEFAULT_WORKSPACE_ID,
-            company_id: companyId,
-            client_id: targetClientId,
-          } as any,
-          { onConflict: "workspace_id,company_id,client_id" } as any,
-        );
+        const { data: linkRow } = await estimationClient
+          .from("company_client_links")
+          .upsert(
+            {
+              workspace_id: DEFAULT_WORKSPACE_ID,
+              company_id: companyId,
+              client_id: targetClientId,
+            } as any,
+            { onConflict: "workspace_id,company_id,client_id" } as any,
+          )
+          .select("id")
+          .maybeSingle();
+        linkId = (linkRow as any)?.id ?? null;
       }
 
       // Attach selected existing projects to this company & client
@@ -350,6 +356,7 @@ export function CompaniesManager({
           .from("projects")
           .update({
             company_id: companyId,
+            company_client_link_id: linkId,
             company_name: companyName === "شركة غير محددة" ? null : companyName,
             client_id: targetClientId,
             client_name: targetClientName,
@@ -365,6 +372,7 @@ export function CompaniesManager({
           user_id: userId,
           name: newProjectTitle.trim(),
           company_id: companyId,
+          company_client_link_id: linkId,
           company_name: companyName === "شركة غير محددة" ? null : companyName,
           client_id: targetClientId,
           client_name: targetClientName,
@@ -730,6 +738,25 @@ export function CompaniesManager({
                 placeholder="اكتب اسم المشروع الجديد لإنشائه وربطه تلقائياً…"
               />
             </div>
+
+            {selectedProjectIds.size > 0 && (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-2.5 space-y-1 text-[11px]">
+                <div className="font-semibold text-amber-700 dark:text-amber-300">
+                  معاينة أثر النقل ({selectedProjectIds.size} مشروع محدد):
+                </div>
+                {projects
+                  .filter((p) => selectedProjectIds.has(p.id))
+                  .map((p) => (
+                    <div key={p.id} className="flex items-center justify-between gap-2 text-muted-foreground">
+                      <span className="truncate font-medium text-foreground">{p.name}</span>
+                      <span className="shrink-0">
+                        {p.company_name || "غير محددة"} ({p.client_name || "—"}) ←{" "}
+                        <strong className="text-primary">{linkingCompany?.name}</strong>
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
 
           <DialogFooter className="gap-2">

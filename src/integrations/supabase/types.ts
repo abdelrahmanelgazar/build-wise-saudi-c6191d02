@@ -22,6 +22,7 @@ export type Database = {
           description_en: string | null
           equipment_cost: number | null
           id: string
+          imported_unit_rate: number | null
           is_group: boolean
           is_included_elsewhere: boolean | null
           item_no: string
@@ -31,8 +32,10 @@ export type Database = {
           material_cost: number | null
           note: string | null
           parent_id: string | null
+          pricing_status: string | null
           project_id: string | null
           quantity: number | null
+          rate_source: string | null
           raw_row: Json | null
           sheet_name: string | null
           sort_order: number
@@ -48,6 +51,7 @@ export type Database = {
           description_en?: string | null
           equipment_cost?: number | null
           id?: string
+          imported_unit_rate?: number | null
           is_group?: boolean
           is_included_elsewhere?: boolean | null
           item_no: string
@@ -57,8 +61,10 @@ export type Database = {
           material_cost?: number | null
           note?: string | null
           parent_id?: string | null
+          pricing_status?: string | null
           project_id?: string | null
           quantity?: number | null
+          rate_source?: string | null
           raw_row?: Json | null
           sheet_name?: string | null
           sort_order?: number
@@ -74,6 +80,7 @@ export type Database = {
           description_en?: string | null
           equipment_cost?: number | null
           id?: string
+          imported_unit_rate?: number | null
           is_group?: boolean
           is_included_elsewhere?: boolean | null
           item_no?: string
@@ -83,8 +90,10 @@ export type Database = {
           material_cost?: number | null
           note?: string | null
           parent_id?: string | null
+          pricing_status?: string | null
           project_id?: string | null
           quantity?: number | null
+          rate_source?: string | null
           raw_row?: Json | null
           sheet_name?: string | null
           sort_order?: number

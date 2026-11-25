@@ -196,6 +196,9 @@ export interface SubmittedTenderSnapshot {
   id: string;
   tenderId: string;
   projectId: string;
+  companyId?: string | null;
+  companyName?: string | null;
+  clientName?: string | null;
   versionNo: number;
   idempotencyKey: string;
   currency: string;
@@ -263,6 +266,9 @@ export function getSubmittedTenderSnapshot(
 export async function submitTenderVersion(params: {
   tenderId: string;
   projectId: string;
+  companyId?: string | null;
+  companyName?: string | null;
+  clientName?: string | null;
   expectedDraftVersion?: number;
   currentDraftVersion?: number;
   idempotencyKey: string;
@@ -291,6 +297,9 @@ export async function submitTenderVersion(params: {
   const {
     tenderId,
     projectId,
+    companyId = null,
+    companyName = null,
+    clientName = null,
     expectedDraftVersion = 1,
     currentDraftVersion = expectedDraftVersion,
     idempotencyKey,
@@ -390,6 +399,9 @@ export async function submitTenderVersion(params: {
     id: crypto.randomUUID ? crypto.randomUUID() : `sub-${Date.now()}`,
     tenderId,
     projectId,
+    companyId,
+    companyName,
+    clientName,
     versionNo: nextVersion,
     idempotencyKey,
     currency,

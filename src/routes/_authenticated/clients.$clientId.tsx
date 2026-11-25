@@ -1,6 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { z } from "zod";
 import {
   Building2,
   ArrowRight,
@@ -43,6 +44,10 @@ import { fmtSAR, fmtNumber } from "@/lib/format";
 import { useLanguage } from "@/lib/i18n";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
+const clientDetailSearchSchema = z.object({
+  company: z.string().optional(),
+});
+
 export const Route = createFileRoute("/_authenticated/clients/$clientId")({
   head: () => ({
     meta: [
@@ -50,11 +55,13 @@ export const Route = createFileRoute("/_authenticated/clients/$clientId")({
       { name: "description", content: "عرض تفاصيل العميل والجهة المالكة والمشاريع والمنافسات المرتبطة به." },
     ],
   }),
+  validateSearch: clientDetailSearchSchema,
   component: ClientDetailPage,
 });
 
 function ClientDetailPage() {
   const { clientId } = Route.useParams();
+  const { company: companyFilter } = Route.useSearch();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { language } = useLanguage();
@@ -62,7 +69,7 @@ function ClientDetailPage() {
   useRegisterPageActions({
     pageKey: `client-${clientId}`,
     hasEditableState: true,
-    queryKeys: [["client", clientId], ["client_projects", clientId], ["client_tenders", clientId]],
+    queryKeys: [["client", clientId], ["client_projects", clientId, companyFilter], ["client_tenders", clientId, companyFilter]],
   });
 
   const [contactDialogOpen, setContactDialogOpen] = useState(false);
@@ -87,9 +94,9 @@ function ClientDetailPage() {
     },
   });
 
-  // Fetch client projects
+  // Fetch client projects (strictly scoped by selected company when navigating from a company branch)
   const { data: projects = [], isLoading: projectsLoading } = useQuery({
-    queryKey: ["client_projects", clientId],
+    queryKey: ["client_projects", clientId, companyFilter ?? "all"],
     enabled: !!client,
     queryFn: async () => {
       const { data, error } = await estimationClient
@@ -98,7 +105,15 @@ function ClientDetailPage() {
         .order("created_at", { ascending: false });
       if (error) throw error;
       const list = ((data as unknown) as Array<Record<string, any>> | null) ?? [];
-      return list.filter((p) => p["client_id"] === clientId || p["client_name"] === client?.name);
+      return list.filter((p) => {
+        const matchesClient = p["client_id"] === clientId || p["client_name"] === client?.name;
+        if (!matchesClient) return false;
+        if (companyFilter) {
+          const pComp = String(p["company_name"] || "").trim() || "شركة غير محددة";
+          return pComp === companyFilter;
+        }
+        return true;
+      });
     },
   });
 
