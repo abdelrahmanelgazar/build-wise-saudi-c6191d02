@@ -1189,6 +1189,40 @@ function AppShellInner({ children }: { children: ReactNode }) {
                   >
                     <Database className="h-4 w-4" /> <span>{t("nav.resources", "عروض الأسعار")}</span>
                   </button>
+                  <div className="space-y-0.5 rounded-md border border-border/60 p-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMobileNavOpen(false);
+                        guardedNavigate("/item-breakdown-library", t("nav.itemBreakdownLibrary", "مكتبة نماذج البنود"));
+                      }}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-start font-medium hover:bg-accent"
+                    >
+                      <Layers className="h-4 w-4 text-primary" />
+                      <span>{t("nav.itemBreakdownLibrary", "مكتبة نماذج البنود")}</span>
+                    </button>
+                    <div className="ms-3 space-y-0.5 border-s border-border/60 ps-2">
+                      {TEMPLATE_LIBRARY_SUB_ITEMS.map((sub) => (
+                        <button
+                          key={`mob-lib-${sub.view}`}
+                          type="button"
+                          onClick={() => {
+                            setMobileNavOpen(false);
+                            guardedNavigate(
+                              `/item-breakdown-library?view=${sub.view}`,
+                              t(sub.labelKey as any, sub.defaultLabel),
+                            );
+                          }}
+                          className="flex w-full items-center justify-between gap-2 rounded px-2 py-1 text-start text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                        >
+                          <span className="truncate">{t(sub.labelKey as any, sub.defaultLabel)}</span>
+                          <Badge variant="secondary" className="h-4 px-1 text-[9px] font-mono">
+                            {templateLibrarySummary.countsByView[sub.view]}
+                          </Badge>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {SECONDARY_NAV_ITEMS.map((item) => {
                     const Icon = item.icon;
                     const label = t(item.translationKey, item.defaultLabel);

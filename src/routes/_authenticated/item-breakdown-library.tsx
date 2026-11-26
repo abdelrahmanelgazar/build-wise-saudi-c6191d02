@@ -84,6 +84,7 @@ import {
   calculateUndergroundTankAssembly,
   calculateTimePhasedHistogramCost,
 } from "@/lib/assemblies-and-indirect-engine";
+import { ProjectHierarchyTree, type HierarchySelection } from "@/components/knowledge/project-hierarchy-tree";
 import type { Database } from "@/integrations/supabase/types";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 
@@ -276,15 +277,24 @@ function ItemBreakdownLibraryPage() {
   }, [boqItems, coverageRecords, templates]);
 
   const hasUnclassified = templates.some((template) => !csiDivisionCode(template.division));
+  const [libraryHierarchy, setLibraryHierarchy] = useState<HierarchySelection>({
+    companyName: null,
+    ownerName: null,
+    projectId: null,
+    projectName: null,
+    tenderId: null,
+    tenderTitle: null,
+  });
 
   const unifiedLibraryQuery = useMemo(
     () =>
       queryKnowledgeTemplatesTree({
         view: libraryView,
         division: selectedDivision,
+        ...(libraryView === "by_project" && libraryHierarchy.projectId ? { projectId: libraryHierarchy.projectId } : {}),
         search,
       }),
-    [libraryView, selectedDivision, search, templates],
+    [libraryView, selectedDivision, libraryHierarchy.projectId, search, templates],
   );
   const filteredTemplates = useMemo(
     () => unifiedLibraryQuery.records.map((r) => r.template),
@@ -980,6 +990,10 @@ function ItemBreakdownLibraryPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {activeTab === "library" && libraryView === "by_project" && (
+        <ProjectHierarchyTree selected={libraryHierarchy} onSelect={setLibraryHierarchy} />
       )}
 
       {activeTab === "library" && libraryView === "indirect_cost" && (

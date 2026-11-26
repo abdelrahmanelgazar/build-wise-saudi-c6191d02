@@ -9,6 +9,7 @@
 | 3 | `20261125_003_v2_excel_tender_rfi_ai.sql` | `20261125000003_v2_excel_tender_rfi_ai.sql` | يُطبّق بعد 002 |
 | 4 | — (جديد لتغطية فحص §2) | `20261126000004_rls_completeness_and_atomic_submit_rpc.sql` | يستكمل سياسات RLS للجداول الأربعة ويضيف دالة التقديم الذرية `submit_tender_version` |
 | 5 | — (جديد للمرحلة V3.0) | `20261126000005_tender_knowledge_and_assurance_v3.sql` | مكتبة المعرفة، أدلة الأسعار، التعليقات، فحوص الجاهزية، المقارنات الموحدة، فروق BOQ، وسجل التدقيق |
+| 6 | — (جديد للتحقق الخادمي) | `20261126000006_server_recompute_submit_rpc.sql` | إعادة حساب إجماليات `submit_tender_version` داخل PostgreSQL والتحقق من الجاهزية وبصمة ملف التقديم + Storage bucket |
 
 ## أوامر التنفيذ في بيئة التجربة ثم الإنتاج
 

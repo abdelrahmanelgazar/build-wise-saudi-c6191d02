@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, it, expect, beforeEach } from "vitest";
+import { computeSha256Hex, uploadSubmissionArtifact } from "../lib/submission-storage";
 import { executeLocalQuery } from "../../scripts/local-estimation-query";
 import { computePricingPhase2, resolveBoqItemPricing, roundUpRate } from "../lib/estimation-calc";
 import {
@@ -561,5 +564,45 @@ describe("DEV-307..DEV-311 — Readiness, Holds, Quote Normalization, BOQ Diff &
     });
     expect(snap1.netSellingPrice).toBe(1110);
     expect(snap1.exportSha256).toBe("abc123");
+  });
+
+  it("blocks unit-changed BOQ diff until engineer decision, blocks RD-06 indirect double-counting, hashes artifacts, and validates server submit RPC migration", async () => {
+    const unitDiff = compareBoqRevisions(
+      [{ id: "o1", item_no: "03-05", description_ar: "خرسانة جدران", unit: "m3", quantity: 100, unitRate: 400 }],
+      [{ id: "n1", item_no: "03-05", description_ar: "خرسانة جدران", unit: "m2", quantity: 300, unitRate: 150 }],
+    );
+    expect(unitDiff.mappings[0]?.changeType).toBe("UnitChanged");
+    expect(unitDiff.mappings[0]?.requiresEngineerDecision).toBe(true);
+    expect(unitDiff.summary.unresolvedCount).toBe(1);
+
+    const blockedReadiness = evaluateTenderReadiness({
+      tenderId: "t-rd06",
+      boqItems: [],
+      indirectDoubleCountWarnings: ["ازدواج التحميل (TC-317): طاقم الإشراف"],
+      unresolvedBoqDiffCount: unitDiff.summary.unresolvedCount,
+    });
+    expect(blockedReadiness.overallState).toBe("NOT_READY");
+    expect(blockedReadiness.findings.some((f) => f.ruleCode === "RD-06")).toBe(true);
+    expect(blockedReadiness.findings.some((f) => f.ruleCode === "RD-09")).toBe(true);
+
+    const digest = await computeSha256Hex("taqdiri-submission-workbook");
+    expect(digest.length).toBeGreaterThanOrEqual(8);
+    const artifact = await uploadSubmissionArtifact({
+      projectId: "proj-1",
+      tenderId: "t-1",
+      versionNo: 2,
+      fileName: "Tender Offer v2.xlsx",
+      bytes: new Uint8Array([80, 75, 3, 4]),
+    });
+    expect(artifact.sha256.length).toBeGreaterThanOrEqual(8);
+    expect(artifact.storagePath).toContain("v2_Tender_Offer_v2.xlsx");
+
+    const sql = readFileSync(
+      resolve(process.cwd(), "supabase/migrations/20261126000006_server_recompute_submit_rpc.sql"),
+      "utf8",
+    );
+    expect(sql).toContain("FROM public.boq_items b");
+    expect(sql).toContain("readiness_runs");
+    expect(sql).toContain("'tender-documents'");
   });
 });

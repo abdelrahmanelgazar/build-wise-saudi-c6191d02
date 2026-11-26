@@ -35,6 +35,7 @@ import { useLanguage } from "@/lib/i18n";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 import { SupplierQuotesPanel } from "@/components/resources/supplier-quotes-panel";
 import { listAllPriceEvidence } from "@/lib/knowledge-library-service";
+import { ProjectHierarchyTree, type HierarchySelection } from "@/components/knowledge/project-hierarchy-tree";
 
 type ResourceRow = Database["public"]["Tables"]["resources"]["Row"] & {
   name_en?: string | null;
@@ -427,19 +428,32 @@ function PriceEvidenceLibraryView({
   search: string;
   csiFilter: string;
 }) {
+  const [hierarchy, setHierarchy] = useState<HierarchySelection>({
+    companyName: null,
+    ownerName: null,
+    projectId: mode === "by_project" ? projectId : null,
+    projectName: null,
+    tenderId: null,
+    tenderTitle: null,
+  });
+
+  const activeFilterProjectId = mode === "by_project" ? (hierarchy.projectId ?? undefined) : undefined;
+
   const entries = useMemo(
     () =>
       listAllPriceEvidence({
-        ...(mode === "by_project" ? { projectId, scope: "project" as const } : {}),
+        ...(activeFilterProjectId ? { projectId: activeFilterProjectId } : {}),
+        ...(mode === "by_project" ? { scope: "project" as const } : {}),
         ...(mode === "typical_assembly_offers" ? { scope: "typical_assembly" as const } : {}),
         csiDivision: csiFilter,
         search,
       }),
-    [mode, projectId, search, csiFilter],
+    [mode, activeFilterProjectId, search, csiFilter],
   );
 
   return (
     <div className="space-y-3">
+      {mode === "by_project" && <ProjectHierarchyTree selected={hierarchy} onSelect={setHierarchy} />}
       <div className="rounded-lg border border-border bg-card p-4">
         <h2 className="text-sm font-bold">
           {mode === "price_evidence"

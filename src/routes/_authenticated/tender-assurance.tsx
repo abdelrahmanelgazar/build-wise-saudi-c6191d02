@@ -45,6 +45,12 @@ import {
   type HoldStatus,
   type TenderHoldRecord,
 } from "@/lib/tender-assurance-engine";
+import {
+  allocateIndirectCostPool,
+  calculateTimePhasedHistogramCost,
+  detectIndirectDoubleCounting,
+} from "@/lib/assemblies-and-indirect-engine";
+import { uploadSubmissionArtifact } from "@/lib/submission-storage";
 import type { Database } from "@/integrations/supabase/types";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
@@ -93,10 +99,27 @@ function TenderAssurancePage() {
   const [selectedOfferChoice, setSelectedOfferChoice] = useState<string>("offer-b");
   const [selectionRationale, setSelectionRationale] = useState("مطابقة فنية كاملة وأقل تكلفة مقارنة موحّدة (260 ر.س/م³).");
 
-  // BOQ Revision Diff Sandbox / Live Comparison (DEV-310)
+  // BOQ Revision Diff Sandbox / Live Excel Rev.N+1 Upload (DEV-310)
   const [diffQtyFactor, setDiffQtyFactor] = useState<number>(1.0);
+  const [uploadedRevLines, setUploadedRevLines] = useState<BoqRevisionLine[] | null>(null);
+  const [uploadedRevName, setUploadedRevName] = useState<string>("");
   const [diffDecisionMap, setDiffDecisionMap] = useState<Record<string, "approved_transfer" | "new_analysis">>({});
   const [isLocking, setIsLocking] = useState(false);
+
+  // Indirect Cost Builder State (DEV-306)
+  const [indTitle, setIndTitle] = useState("طاقم الإشراف الهندسي للموقع");
+  const [indScopeId, setIndScopeId] = useState("site_staff");
+  const [indRecoveryMode, setIndRecoveryMode] = useState<"preliminaries_boq" | "distributed_overhead" | "separate_commercial">("preliminaries_boq");
+  const [indMonths, setIndMonths] = useState(12);
+  const [indCount, setIndCount] = useState(2);
+  const [indMonthlyRate, setIndMonthlyRate] = useState(15000);
+  const [localIndirectLines, setLocalIndirectLines] = useState<Array<{
+    id: string;
+    costScopeId: string;
+    title_ar: string;
+    recovery_mode: "preliminaries_boq" | "distributed_overhead" | "separate_commercial";
+    totalCost: number;
+  }>>([]);
 
   const { data: project } = useQuery({
     queryKey: ["assurance_project", projectId],
@@ -209,7 +232,7 @@ function TenderAssurancePage() {
         rowIndex: idx + 1,
       };
     });
-    const newLines: BoqRevisionLine[] = oldLines.map((o) => ({
+    const newLines: BoqRevisionLine[] = uploadedRevLines ?? oldLines.map((o) => ({
       ...o,
       quantity: roundTo(o.quantity * diffQtyFactor, 2),
     }));
@@ -220,9 +243,40 @@ function TenderAssurancePage() {
     }));
     const unresolvedCount = mappings.filter((m) => m.requiresEngineerDecision && m.engineerDecision === "pending").length;
     return { mappings, summary: { ...rawDiff.summary, unresolvedCount } };
-  }, [boqItems, paByBoq, markupsByBoq, diffQtyFactor, diffDecisionMap]);
+  }, [boqItems, paByBoq, markupsByBoq, diffQtyFactor, uploadedRevLines, diffDecisionMap]);
 
   const effectiveTenderId = activeTenderId ?? projectId ?? "baseline";
+
+  const indirectAudit = useMemo(() => {
+    const hasExplicitPrelim = boqItems.some((b) => !b.is_group && (b.item_no?.startsWith("01") || b.sheet_name?.includes("01")));
+    const hasIndirectPct = Array.from(markupsByBoq.values()).some((m) => Number(m.indirect_pct ?? 0) > 0);
+    return detectIndirectDoubleCounting({
+      indirectLines: localIndirectLines,
+      hasExplicitPrelimBoqItems: hasExplicitPrelim,
+      itemsHaveIndirectPct: hasIndirectPct,
+    });
+  }, [localIndirectLines, boqItems, markupsByBoq]);
+
+  const indirectPoolTotal = useMemo(
+    () => localIndirectLines.reduce((s, l) => s + l.totalCost, 0),
+    [localIndirectLines],
+  );
+
+  const indirectAllocations = useMemo(
+    () =>
+      allocateIndirectCostPool(
+        indirectPoolTotal,
+        boqItems
+          .filter((b) => !b.is_group)
+          .map((b) => ({
+            boqItemId: b.id,
+            directCostTotal:
+              Number(b.quantity ?? 0) *
+              (Number(b.material_cost ?? 0) + Number(b.labor_cost ?? 0) + Number(b.equipment_cost ?? 0) + Number(b.subcontractor_cost ?? 0)),
+          })),
+      ),
+    [indirectPoolTotal, boqItems],
+  );
 
   const readiness = useMemo(
     () =>
@@ -234,8 +288,9 @@ function TenderAssurancePage() {
         markupsByBoqId: markupsByBoq,
         holds,
         unresolvedBoqDiffCount: boqDiffResult.summary.unresolvedCount,
+        indirectDoubleCountWarnings: indirectAudit.warnings,
       }),
-    [effectiveTenderId, asOfDate, boqItems, paByBoq, markupsByBoq, holds, boqDiffResult.summary.unresolvedCount],
+    [effectiveTenderId, asOfDate, boqItems, paByBoq, markupsByBoq, holds, boqDiffResult.summary.unresolvedCount, indirectAudit.warnings],
   );
 
   const comparisonOffers = useMemo(
@@ -391,7 +446,14 @@ function TenderAssurancePage() {
         })),
       );
       XLSX.utils.book_append_sheet(wb, ws, "Submission_BOQ");
-      const shaHex = `sha256-${readiness.inputHash}-${exportPayload.length}`;
+      const wbArray = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
+      const storedDoc = await uploadSubmissionArtifact({
+        projectId,
+        tenderId: effectiveTenderId,
+        versionNo: 1,
+        fileName: `Taqdiri_Approved_${effectiveTenderId.slice(0, 8)}.xlsx`,
+        bytes: new Uint8Array(wbArray),
+      });
 
       const snap = await approveAndLockTenderSubmission({
         tenderId: effectiveTenderId,
@@ -405,7 +467,7 @@ function TenderAssurancePage() {
         readiness,
         currentEstimateInputHash: readiness.inputHash,
         exportReconciled: true,
-        exportSha256: shaHex,
+        exportSha256: storedDoc.sha256,
         idempotencyKey: `lock-${effectiveTenderId}-${readiness.inputHash}`,
         boqItems: boqItems as any[],
         paItemsByBoqId: paByBoq,
@@ -413,7 +475,9 @@ function TenderAssurancePage() {
       });
 
       XLSX.writeFile(wb, `Taqdiri_Approved_v${snap.versionNo}.xlsx`);
-      toast.success(`تم اعتماد وقفل نسخة التقديم #${snap.versionNo} ومطابقة ملف Excel (${fmtSAR(snap.netSellingPrice)}) بنجاح!`);
+      toast.success(
+        `تم اعتماد وقفل نسخة التقديم #${snap.versionNo} (${fmtSAR(snap.netSellingPrice)}) مع بصمة SHA-256 (${storedDoc.sha256.slice(0, 12)}) وحفظ المرجع (${storedDoc.storagePath})!`,
+      );
     } catch (err: any) {
       toast.error(err?.message || "تعذر قفل واعتماد التقديم");
     } finally {
@@ -495,7 +559,8 @@ function TenderAssurancePage() {
           <TabsTrigger value="holds" className="text-xs">2. البنود المعلّقة Holds ({holds.length})</TabsTrigger>
           <TabsTrigger value="comparison" className="text-xs">3. تسوية ومقارنة العروض</TabsTrigger>
           <TabsTrigger value="boq-diff" className="text-xs">4. فروق مراجعات المقايسة</TabsTrigger>
-          <TabsTrigger value="submission" className="text-xs">5. الاعتماد ومطابقة Excel</TabsTrigger>
+          <TabsTrigger value="indirects" className="text-xs">5. التكاليف غير المباشرة وتوزيعها</TabsTrigger>
+          <TabsTrigger value="submission" className="text-xs">6. الاعتماد ومطابقة Excel</TabsTrigger>
         </TabsList>
 
         <TabsContent value="readiness" className="space-y-3">
@@ -698,14 +763,66 @@ function TenderAssurancePage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-xs">
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs">معامل تغير الكميات للمراجعة الجديدة:</Label>
-                  <Input type="number" step="0.05" value={diffQtyFactor} onChange={(e) => setDiffQtyFactor(Number(e.target.value) || 1)} className="h-7 w-24 text-xs" />
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">معامل محاكاة:</Label>
+                    <Input
+                      type="number"
+                      step="0.05"
+                      value={diffQtyFactor}
+                      onChange={(e) => {
+                        setUploadedRevLines(null);
+                        setDiffQtyFactor(Number(e.target.value) || 1);
+                      }}
+                      className="h-7 w-20 text-xs"
+                    />
+                  </div>
+                  <label className="inline-flex cursor-pointer items-center gap-1.5 rounded border border-border bg-background px-2.5 py-1 text-[11px] font-medium hover:bg-accent">
+                    <FileSpreadsheet className="h-3.5 w-3.5 text-primary" />
+                    <span>رفع ملف Excel Rev.N+1</span>
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (!file) return;
+                        try {
+                          const buf = await file.arrayBuffer();
+                          const wb = XLSX.read(buf);
+                          const sheet = wb.Sheets[wb.SheetNames[0]!];
+                          if (!sheet) throw new Error("ملف فارغ");
+                          const rawRows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet);
+                          const parsed: BoqRevisionLine[] = rawRows
+                            .map((r, idx) => ({
+                              id: `rev2-${idx + 1}`,
+                              item_no: String(r["رقم البند"] ?? r["Item No"] ?? r["item_no"] ?? `${idx + 1}`),
+                              description_ar: String(r["التوصيف"] ?? r["Description"] ?? r["description_ar"] ?? ""),
+                              unit: String(r["الوحدة"] ?? r["Unit"] ?? r["unit"] ?? "وحدة"),
+                              quantity: Number(r["الكمية"] ?? r["Quantity"] ?? r["qty"] ?? 0) || 0,
+                              unitRate: Number(r["الفئة"] ?? r["Rate"] ?? r["unit_rate"] ?? 0) || 0,
+                              rowIndex: idx + 1,
+                            }))
+                            .filter((r) => r.description_ar.trim().length > 0);
+                          setUploadedRevLines(parsed);
+                          setUploadedRevName(file.name);
+                          toast.success(`تم استيراد (${parsed.length}) بنداً من مراجعة ${file.name} للمطابقة.`);
+                        } catch (err: any) {
+                          toast.error(err?.message || "تعذر قراءة ملف مراجعة المقايسة");
+                        }
+                      }}
+                    />
+                  </label>
+                  {uploadedRevName && <Badge variant="secondary">{uploadedRevName}</Badge>}
                 </div>
-                <div>أثر الكمية: <strong className="font-mono text-primary">{fmtSAR(boqDiffResult.summary.quantityEffectTotal)}</strong></div>
-                <div>أثر السعر: <strong className="font-mono">{fmtSAR(boqDiffResult.summary.rateEffectTotal)}</strong></div>
-                <div>صافي الفرق: <strong className="font-mono">{fmtSAR(boqDiffResult.summary.netDelta)}</strong></div>
+                <div className="flex flex-wrap gap-3">
+                  <span>أثر الكمية: <strong className="font-mono text-primary">{fmtSAR(boqDiffResult.summary.quantityEffectTotal)}</strong></span>
+                  <span>أثر السعر: <strong className="font-mono">{fmtSAR(boqDiffResult.summary.rateEffectTotal)}</strong></span>
+                  <span>صافي الفرق: <strong className="font-mono">{fmtSAR(boqDiffResult.summary.netDelta)}</strong></span>
+                  <span>معلق للمهندس: <strong className="font-mono text-amber-600">{boqDiffResult.summary.unresolvedCount}</strong></span>
+                </div>
               </div>
               <div className="max-h-72 overflow-y-auto rounded-md border">
                 <table className="w-full text-[11px] tabular-nums">
@@ -717,6 +834,7 @@ function TenderAssurancePage() {
                       <th className="p-2 text-center">أثر الكمية</th>
                       <th className="p-2 text-center">أثر السعر</th>
                       <th className="p-2 text-center">إجمالي الفرق</th>
+                      <th className="p-2 text-center">قرار المهندس</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -728,10 +846,114 @@ function TenderAssurancePage() {
                         <td className="p-2 text-center font-mono">{fmtSAR(m.quantityEffect)}</td>
                         <td className="p-2 text-center font-mono">{fmtSAR(m.rateEffect)}</td>
                         <td className="p-2 text-center font-mono font-bold">{fmtSAR(m.totalDelta)}</td>
+                        <td className="p-2 text-center">
+                          {m.requiresEngineerDecision ? (
+                            <div className="flex justify-center gap-1">
+                              <Button
+                                size="sm"
+                                variant={m.engineerDecision === "approved_transfer" ? "default" : "outline"}
+                                className="h-5 text-[9px] px-1.5"
+                                onClick={() => setDiffDecisionMap((p) => ({ ...p, [m.mappingId]: "approved_transfer" }))}
+                              >
+                                اعتماد النقل
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant={m.engineerDecision === "new_analysis" ? "secondary" : "outline"}
+                                className="h-5 text-[9px] px-1.5"
+                                onClick={() => setDiffDecisionMap((p) => ({ ...p, [m.mappingId]: "new_analysis" }))}
+                              >
+                                تحليل جديد
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">تلقائي</span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="indirects" className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">إعداد وتوزيع التكاليف غير المباشرة ومنع الازدواج (DEV-306)</CardTitle>
+              <CardDescription className="text-[11px]">
+                تُحسب من المعدل × العدد × المدة، وتُمنع من التكرار إذا كان البند مدرجاً في التمهيديات مع نسبة indirect_pct.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+                <div className="col-span-2">
+                  <Label className="text-[10px]">بيان التكلفة غير المباشرة</Label>
+                  <Input value={indTitle} onChange={(e) => setIndTitle(e.target.value)} className="mt-1 h-7 text-xs" />
+                </div>
+                <div>
+                  <Label className="text-[10px]">مسار الاسترداد</Label>
+                  <Select value={indRecoveryMode} onValueChange={(v) => setIndRecoveryMode(v as any)}>
+                    <SelectTrigger className="mt-1 h-7 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="preliminaries_boq">بنود تمهيديات BOQ</SelectItem>
+                      <SelectItem value="distributed_overhead">توزيع على المباشر</SelectItem>
+                      <SelectItem value="separate_commercial">بند تجاري مستقل</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-[10px]">الشهور</Label>
+                  <Input type="number" value={indMonths} onChange={(e) => setIndMonths(Number(e.target.value) || 0)} className="mt-1 h-7 text-xs" />
+                </div>
+                <div>
+                  <Label className="text-[10px]">العدد</Label>
+                  <Input type="number" value={indCount} onChange={(e) => setIndCount(Number(e.target.value) || 0)} className="mt-1 h-7 text-xs" />
+                </div>
+                <div className="flex items-end gap-1">
+                  <div className="flex-1">
+                    <Label className="text-[10px]">المعدل الشهري</Label>
+                    <Input type="number" value={indMonthlyRate} onChange={(e) => setIndMonthlyRate(Number(e.target.value) || 0)} className="mt-1 h-7 text-xs" />
+                  </div>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => {
+                      const totalCost = calculateTimePhasedHistogramCost([
+                        { label: indTitle, months: indMonths, count: indCount, monthlyRate: indMonthlyRate },
+                      ]);
+                      setLocalIndirectLines((prev) => [
+                        ...prev,
+                        {
+                          id: crypto.randomUUID(),
+                          costScopeId: `${indScopeId}-${prev.length + 1}`,
+                          title_ar: indTitle,
+                          recovery_mode: indRecoveryMode,
+                          totalCost,
+                        },
+                      ]);
+                      setIndScopeId("site_staff");
+                      toast.success(`أُضيف بند تكلفة غير مباشرة بقيمة ${fmtSAR(totalCost)}`);
+                    }}
+                  >
+                    إضافة
+                  </Button>
+                </div>
+              </div>
+
+              {indirectAudit.hasDoubleCounting && (
+                <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-destructive space-y-1">
+                  {indirectAudit.warnings.map((w) => (
+                    <div key={w}>{w}</div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between rounded bg-muted/30 p-2.5">
+                <span>إجمالي وعاء التكاليف غير المباشرة: <strong className="font-mono text-primary">{fmtSAR(indirectPoolTotal)}</strong></span>
+                <span>مجموع التوزيع المطابق على البنود المؤهلة: <strong className="font-mono">{fmtSAR(indirectAllocations.reduce((s, a) => s + a.allocatedAmount, 0))}</strong></span>
               </div>
             </CardContent>
           </Card>

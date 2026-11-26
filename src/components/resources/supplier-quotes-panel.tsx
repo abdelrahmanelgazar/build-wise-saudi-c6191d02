@@ -31,6 +31,7 @@ import {
   type QuoteStatus,
 } from "@/lib/csi-assemblies-engine";
 import { syncBoqItemBreakdownFromPa } from "@/lib/pa-sync";
+import { uploadQuoteDocumentAttachment } from "@/lib/submission-storage";
 import type { Database } from "@/integrations/supabase/types";
 
 type SupplierQuote = Database["public"]["Tables"]["supplier_quotes"]["Row"];
@@ -55,6 +56,7 @@ export function SupplierQuotesPanel({
   const [vatIncluded, setVatIncluded] = useState(false);
   const [transportIncluded, setTransportIncluded] = useState(true);
   const [deliveryTerms, setDeliveryTerms] = useState("تسليم موقع المشروع");
+  const [quoteAttachmentFile, setQuoteAttachmentFile] = useState<File | null>(null);
 
   // New line item modal state
   const [addItemForQuoteId, setAddItemForQuoteId] = useState<string | null>(null);
@@ -105,7 +107,19 @@ export function SupplierQuotesPanel({
       const userId = u.user?.id;
       if (!userId) throw new Error("غير مسجل دخول");
 
+      const quoteId = crypto.randomUUID();
+      let attachmentNote = "";
+      if (quoteAttachmentFile) {
+        const stored = await uploadQuoteDocumentAttachment({
+          projectId,
+          quoteId,
+          file: quoteAttachmentFile,
+        });
+        attachmentNote = ` | مرفق: ${stored.storagePath} (${stored.sha256.slice(0, 10)})`;
+      }
+
       const { error } = await estimationClient.from("supplier_quotes").insert({
+        id: quoteId,
         workspace_id: userId,
         project_id: projectId,
         supplier_name: supplierName.trim(),
@@ -116,11 +130,12 @@ export function SupplierQuotesPanel({
         status,
         vat_included: vatIncluded,
         transport_included: transportIncluded,
-        delivery_terms: deliveryTerms.trim() || null,
+        delivery_terms: (deliveryTerms.trim() || "تسليم موقع المشروع") + attachmentNote,
         created_by: userId,
         version_no: 1,
       });
       if (error) throw error;
+      setQuoteAttachmentFile(null);
     },
     onSuccess: () => {
       toast.success("تم تسجيل عرض المورد بنجاح");
@@ -374,6 +389,15 @@ export function SupplierQuotesPanel({
               <div>
                 <Label>شروط التوريد والتسليم</Label>
                 <Input value={deliveryTerms} onChange={(e) => setDeliveryTerms(e.target.value)} className="mt-1 h-8 text-xs" />
+              </div>
+              <div>
+                <Label>مرفق مستند عرض المورد (PDF / Excel)</Label>
+                <Input
+                  type="file"
+                  accept=".pdf,.xlsx,.xls,.png,.jpg"
+                  onChange={(e) => setQuoteAttachmentFile(e.target.files?.[0] ?? null)}
+                  className="mt-1 h-8 text-xs"
+                />
               </div>
               <div className="flex items-center gap-4 pt-1">
                 <label className="flex items-center gap-1.5 cursor-pointer">

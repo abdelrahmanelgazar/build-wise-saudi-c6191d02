@@ -41,6 +41,9 @@ jobs:
       - name: TypeScript typecheck & unit tests
         run: npx tsc --noEmit && npm test
 
+      - name: Run cloud release preflight check
+        run: node scripts/cloud-release-check.mjs
+
       - name: Build project
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL || 'https://desjchcthsjaeiplhuls.supabase.co' }}

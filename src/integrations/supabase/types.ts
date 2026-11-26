@@ -1264,6 +1264,11 @@ export type Database = {
           p_vat_amount?: number
           p_grand_total_with_vat?: number
           p_items_snapshot?: Json
+          p_readiness_run_id?: string | null
+          p_export_sha256?: string | null
+          p_export_reconciliation?: Json | null
+          p_holds_snapshot?: Json
+          p_qualifications?: Json
         }
         Returns: Database["public"]["Tables"]["tender_submissions"]["Row"]
       }
