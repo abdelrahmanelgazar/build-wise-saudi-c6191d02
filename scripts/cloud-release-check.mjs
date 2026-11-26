@@ -101,6 +101,7 @@ const requiredFiles = [
   "supabase/migrations/20261126000004_rls_completeness_and_atomic_submit_rpc.sql",
   "supabase/migrations/20261126000005_tender_knowledge_and_assurance_v3.sql",
   "supabase/migrations/20261126000006_server_recompute_submit_rpc.sql",
+  "supabase/migrations/20261126000007_assurance_hardening_and_staging.sql",
 ];
 for (const rel of requiredFiles) {
   if (!fs.existsSync(path.join(root, rel))) {

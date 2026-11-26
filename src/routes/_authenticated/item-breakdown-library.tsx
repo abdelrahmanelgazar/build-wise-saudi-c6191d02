@@ -76,6 +76,7 @@ import {
 import {
   queryKnowledgeTemplatesTree,
   reviewKnowledgeTemplateVersion,
+  syncKnowledgeFromDatabase,
   type KnowledgeTemplateCategory,
 } from "@/lib/knowledge-library-service";
 import {
@@ -208,6 +209,16 @@ function ItemBreakdownLibraryPage() {
   );
 
   const activeTenderId = useActiveTenderId();
+
+  // Sync saved templates from database when session opens
+  useQuery({
+    queryKey: ["knowledge_templates_db_sync", projectId],
+    queryFn: async () => {
+      const res = await syncKnowledgeFromDatabase();
+      if (res.templatesLoaded > 0) setTemplates(getAllBreakdownTemplates());
+      return res;
+    },
+  });
 
   // Fetch project BOQ items for apply modal and Coverage Registry
   const { data: allBoqItems = [] } = useQuery({

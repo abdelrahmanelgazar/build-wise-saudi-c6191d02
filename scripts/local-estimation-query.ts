@@ -59,6 +59,8 @@ const defaults = {
   comparison_packages: { work_quantity: 1, scope_baseline: {}, offers_snapshot: [], status: "draft", version_no: 1 },
   boq_diff_runs: { mappings: [], summary: {}, status: "draft" },
   knowledge_audit_logs: { metadata: {} },
+  knowledge_template_components: { waste_pct: 0, sort_order: 0 },
+  submission_stagings: { estimate_version_no: 1, workbook_mode: "taqdiri_standard", byte_size: 0, reconciliation_report: {}, server_pricing_summary: {}, status: "staged" },
 };
 export type Table = keyof typeof defaults;
 export type LocalQueryRequest = {

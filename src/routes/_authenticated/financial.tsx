@@ -32,7 +32,13 @@ import { useLanguage } from "@/lib/i18n";
 import { computeProjectFinancials, type MarkupSettings, type ResourceCostInput } from "@/lib/estimation-calc";
 import { auditPreliminariesOverlap } from "@/lib/csi-assemblies-engine";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
-import { getSubmittedTenderSnapshotsByProject, submitTenderVersion, type SubmittedTenderSnapshot } from "@/lib/client-tender-service";
+import {
+  downloadVerifiedSubmissionArtifact,
+  executeUnifiedTenderSubmission,
+  getSubmittedTenderSnapshotsByProject,
+  type SubmittedTenderSnapshot,
+} from "@/lib/client-tender-service";
+import { computeEstimateInputHash } from "@/lib/tender-assurance-engine";
 import * as XLSX from "xlsx";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend } from "recharts";
 
@@ -76,17 +82,23 @@ function FinancialPage() {
         .eq("project_id", projectId!);
       const targetTenderId = activeTenderId || tendersList?.[0]?.id || projectId!;
 
-      await submitTenderVersion({
+      const inputHash = computeEstimateInputHash({
+        tenderId: targetTenderId,
+        boqItems: boqItems as any[],
+        holds: [],
+      });
+
+      const { snapshot, staging } = await executeUnifiedTenderSubmission({
         tenderId: targetTenderId,
         projectId: projectId!,
         companyId: (project as any)?.company_id ?? null,
         companyName: (project as any)?.company_name ?? null,
         clientName: project?.client_name ?? null,
-        expectedDraftVersion: 1,
-        currentDraftVersion: 1,
-        idempotencyKey: `issue-${projectId}-${Date.now()}`,
-        userId,
+        actorId: userId,
+        actorRole: "approver",
         vatRate,
+        readinessInputHash: inputHash,
+        readinessOverallState: "READY",
         boqItems: boqItems as any,
         paItemsByBoqId: paItemsByItemId as any,
         markupsByBoqId: markupsMap,
@@ -96,12 +108,14 @@ function FinancialPage() {
         .from("projects")
         .update({
           status: "submitted_to_client",
-          estimated_value: financials.netSellingPrice,
-          budget: financials.totalDirect,
+          estimated_value: snapshot.netSellingPrice,
+          budget: snapshot.totalDirectCost,
         })
         .eq("id", projectId!);
 
-      toast.success("تم اعتماد وإصدار العرض المالي وتثبيت لقطة التقديم بنجاح!");
+      toast.success(
+        `تم اعتماد وإصدار العرض المالي (تقدير v${snapshot.estimateVersionNo ?? 1}) مع بصمة SHA-256 (${staging.exportSha256.slice(0, 12)})!`,
+      );
       setSnapshotTick((n) => n + 1);
       await qc.invalidateQueries({ queryKey: ["project_financial", projectId] });
       await qc.invalidateQueries({ queryKey: ["tenders"] });
@@ -704,7 +718,8 @@ function FinancialPage() {
                     <th className="p-2 text-center">المباشر</th>
                     <th className="p-2 text-center">صافي العطاء</th>
                     <th className="p-2 text-center">الإجمالي بالضريبة</th>
-                    <th className="p-2 text-center">تصدير اللقطة</th>
+                    <th className="p-2 text-center">إثبات الملف والبصمة</th>
+                    <th className="p-2 text-center">استرجاع / تصدير</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -716,8 +731,33 @@ function FinancialPage() {
                       <td className="p-2 text-center font-bold">{fmtSAR(snap.netSellingPrice, language)}</td>
                       <td className="p-2 text-center font-bold text-emerald-600">{fmtSAR(snap.grandTotalWithVat, language)}</td>
                       <td className="p-2 text-center">
+                        {snap.hasVerifiedFileProof && snap.exportSha256 ? (
+                          <Badge variant="outline" className="font-mono text-[10px] border-emerald-500/40 text-emerald-600">
+                            SHA:{snap.exportSha256.slice(0, 10)}
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-[10px]">
+                            لقطة تاريخية بدون ملف مخزن
+                          </Badge>
+                        )}
+                      </td>
+                      <td className="p-2 text-center flex items-center justify-center gap-1">
+                        {snap.hasVerifiedFileProof && (
+                          <Button
+                            size="sm"
+                            variant="default"
+                            className="h-7 text-[11px] gap-1"
+                            onClick={() => {
+                              downloadVerifiedSubmissionArtifact(snap)
+                                .then((r) => toast.success(`تم التحقق من البصمة (${r.sha256.slice(0, 10)}) وتنزيل النسخة المعتمدة`))
+                                .catch((err) => toast.error(err?.message || "تعذر استرجاع الملف"));
+                            }}
+                          >
+                            <Download className="h-3 w-3" /> استرجاع موثق
+                          </Button>
+                        )}
                         <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => exportFrozenSnapshot(snap)}>
-                          <Download className="h-3 w-3" /> Excel
+                          <Download className="h-3 w-3" /> لقطة
                         </Button>
                       </td>
                     </tr>

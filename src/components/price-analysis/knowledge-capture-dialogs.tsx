@@ -57,10 +57,12 @@ export function SaveAnalysisTemplateDialog({
   const [assumptions, setAssumptions] = useState("");
   const [targetTemplateId, setTargetTemplateId] = useState<string>("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open || !projectId) return;
+  const loadPreview = () => {
+    if (!projectId) return;
     setLoadingPreview(true);
+    setSaveError(null);
     previewSaveAnalysisAsTemplate({
       boqItemId: boqItem.id,
       projectId,
@@ -75,8 +77,17 @@ export function SaveAnalysisTemplateDialog({
         setCategoryType(res.csiDivision === "01" ? "indirect_cost" : "project_item");
         setTargetTemplateId("");
       })
-      .catch((err) => toast.error(err?.message || "تعذر معاينة بيانات النموذج"))
+      .catch((err) => {
+        const msg = err?.message || "تعذر معاينة بيانات النموذج";
+        setSaveError(msg);
+        toast.error(msg);
+      })
       .finally(() => setLoadingPreview(false));
+  };
+
+  useEffect(() => {
+    if (!open || !projectId) return;
+    loadPreview();
   }, [open, boqItem.id, boqItem.item_no, boqItem.tender_id, projectId]);
 
   const handleSave = async () => {
@@ -86,6 +97,7 @@ export function SaveAnalysisTemplateDialog({
       return;
     }
     setSaving(true);
+    setSaveError(null);
     try {
       const { data: u } = await estimationClient.auth.getUser();
       const userId = u.user?.id || "local-estimator";
@@ -100,6 +112,7 @@ export function SaveAnalysisTemplateDialog({
         assumptions,
         resources: preview.resources,
         sourceContext: preview.sourceContext,
+        ...(preview.boqUpdatedAt ? { expectedBoqUpdatedAt: preview.boqUpdatedAt } : {}),
         ...(targetTemplateId ? { targetTemplateId } : {}),
         userId,
         workspaceId: userId,
@@ -110,7 +123,9 @@ export function SaveAnalysisTemplateDialog({
       onSaved?.();
       onOpenChange(false);
     } catch (err: any) {
-      toast.error(err?.message || "تعذر حفظ النموذج في المكتبة");
+      const msg = err?.message || "تعذر حفظ النموذج في المكتبة";
+      setSaveError(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
@@ -133,6 +148,20 @@ export function SaveAnalysisTemplateDialog({
           <div className="py-8 text-center text-xs text-muted-foreground">جاري فحص سطور التحليل والتكرار…</div>
         ) : preview ? (
           <div className="space-y-3 text-xs py-1">
+            {saveError && (
+              <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-destructive space-y-1.5">
+                <div className="font-semibold">تعذر تأكيد الحفظ: {saveError}</div>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant="outline" className="h-6 text-[11px]" onClick={loadPreview}>
+                    إعادة قراءة التحليل ومقارنة الفروق
+                  </Button>
+                  <Button type="button" size="sm" variant="default" className="h-6 text-[11px]" onClick={handleSave}>
+                    إعادة المحاولة
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {preview.validationErrors.length > 0 && (
               <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2.5 text-destructive space-y-1">
                 {preview.validationErrors.map((err) => (

@@ -1238,6 +1238,18 @@ export type Database = {
         Update: Record<string, any>
         Relationships: []
       }
+      knowledge_template_components: {
+        Row: Record<string, any> & { id: string; template_version_id: string; workspace_id: string; resource_type: string; quantity: number; unit_price: number }
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
+      submission_stagings: {
+        Row: Record<string, any> & { id: string; workspace_id: string; project_id: string; tender_id: string; estimate_version_id: string; estimate_version_no: number; readiness_input_hash: string; workbook_mode: string; storage_path: string; export_sha256: string; status: string }
+        Insert: Record<string, any>
+        Update: Record<string, any>
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -1250,25 +1262,43 @@ export type Database = {
         }
         Returns: boolean
       }
+      save_knowledge_template_atomic: {
+        Args: {
+          p_project_id: string
+          p_boq_item_id: string
+          p_code: string
+          p_csi_section_code: string
+          p_category_type: string
+          p_scope: string
+          p_title_ar: string
+          p_title_en: string
+          p_unit: string
+          p_assumptions?: string | null
+          p_included_scopes?: Json
+          p_excluded_scopes?: Json
+          p_idempotency_key?: string | null
+          p_expected_boq_updated_at?: string | null
+          p_target_template_id?: string | null
+        }
+        Returns: Database["public"]["Tables"]["knowledge_template_versions"]["Row"]
+      }
       submit_tender_version: {
         Args: {
           p_tender_id: string
           p_project_id: string
           p_idempotency_key: string
+          p_request_hash?: string | null
+          p_estimate_version_id?: string | null
+          p_staging_id?: string | null
+          p_readiness_run_id?: string | null
+          p_expected_row_version?: number | null
           p_currency?: string
           p_pricing_policy?: string
           p_document_ref?: string | null
-          p_total_direct_cost?: number
-          p_net_selling_price?: number
           p_vat_rate?: number
-          p_vat_amount?: number
-          p_grand_total_with_vat?: number
-          p_items_snapshot?: Json
-          p_readiness_run_id?: string | null
-          p_export_sha256?: string | null
-          p_export_reconciliation?: Json | null
           p_holds_snapshot?: Json
           p_qualifications?: Json
+          p_fallback_items_snapshot?: Json
         }
         Returns: Database["public"]["Tables"]["tender_submissions"]["Row"]
       }

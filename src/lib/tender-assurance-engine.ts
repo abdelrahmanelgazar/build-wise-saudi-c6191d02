@@ -6,7 +6,11 @@
 
 import { estimationClient } from "@/lib/estimation-client";
 import { computePricingPhase2, resolveBoqItemPricing, roundTo, type MarkupSettings, type ResourceCostInput } from "@/lib/estimation-calc";
-import { submitTenderVersion, type SubmittedTenderSnapshot } from "@/lib/client-tender-service";
+import {
+  executeUnifiedTenderSubmission,
+  submitTenderVersion,
+  type SubmittedTenderSnapshot,
+} from "@/lib/client-tender-service";
 import type { WorkspaceGovernanceRole } from "@/lib/knowledge-library-service";
 
 // ── 1. Hold State Machine & Impact Consolidation (DEV-308) ────────────────────
@@ -854,10 +858,11 @@ export async function approveAndLockTenderSubmission(params: {
   currentDraftVersion: number;
   readiness: ReadinessEvaluationResult;
   currentEstimateInputHash: string;
-  exportReconciled: boolean;
-  exportSha256: string;
+  exportReconciled?: boolean;
+  exportSha256?: string;
   idempotencyKey: string;
   vatRate?: number;
+  useOriginalWorkbook?: boolean;
   boqItems: Array<Record<string, any>>;
   paItemsByBoqId?: Map<string, ResourceCostInput[]>;
   markupsByBoqId?: Map<string, MarkupSettings>;
@@ -868,29 +873,62 @@ export async function approveAndLockTenderSubmission(params: {
   if (params.readiness.inputHash !== params.currentEstimateInputHash) {
     throw new Error("STALE_VERSION: تغيّرت أسعار أو بيانات التقدير بعد آخر فحص جاهزية؛ أعد فحص الجاهزية أولاً (TC-343).");
   }
+  if (params.expectedDraftVersion !== params.currentDraftVersion) {
+    throw new Error(
+      `STALE_VERSION: تعارض في إصدار المسودة (${params.expectedDraftVersion} مقابل ${params.currentDraftVersion}).`,
+    );
+  }
   if (params.readiness.overallState === "NOT_READY") {
     throw new Error("READINESS_BLOCKED: توجد موانع جاهزية لم تُغلق بعد؛ لا يمكن اعتماد التقديم.");
   }
-  if (!params.exportReconciled || !params.exportSha256) {
+  if (params.exportReconciled === false) {
     throw new Error("EXPORT_MISMATCH: يجب مطابقة ملف Excel وتثبيت بصمته قبل اعتماد التقديم (TC-341).");
   }
 
-  const snap = await submitTenderVersion({
-    tenderId: params.tenderId,
-    projectId: params.projectId,
-    companyId: params.companyId ?? null,
-    companyName: params.companyName ?? null,
-    clientName: params.clientName ?? null,
-    expectedDraftVersion: params.expectedDraftVersion,
-    currentDraftVersion: params.currentDraftVersion,
-    idempotencyKey: params.idempotencyKey,
-    userId: params.actorId,
-    documentRef: `SHA256:${params.exportSha256}`,
-    vatRate: params.vatRate ?? 15,
-    boqItems: params.boqItems as any,
-    ...(params.paItemsByBoqId ? { paItemsByBoqId: params.paItemsByBoqId } : {}),
-    ...(params.markupsByBoqId ? { markupsByBoqId: params.markupsByBoqId } : {}),
-  });
+  let snap: SubmittedTenderSnapshot;
+  let resolvedSha = params.exportSha256 ?? "";
+
+  if (!params.exportSha256) {
+    const unified = await executeUnifiedTenderSubmission({
+      tenderId: params.tenderId,
+      projectId: params.projectId,
+      companyId: params.companyId ?? null,
+      companyName: params.companyName ?? null,
+      clientName: params.clientName ?? null,
+      actorId: params.actorId,
+      actorRole: params.actorRole,
+      ...(params.vatRate !== undefined ? { vatRate: params.vatRate } : {}),
+      idempotencyKey: params.idempotencyKey,
+      readinessInputHash: params.readiness.inputHash,
+      readinessOverallState: params.readiness.overallState,
+      boqItems: params.boqItems,
+      ...(params.paItemsByBoqId ? { paItemsByBoqId: params.paItemsByBoqId } : {}),
+      ...(params.markupsByBoqId ? { markupsByBoqId: params.markupsByBoqId } : {}),
+      ...(params.useOriginalWorkbook !== undefined ? { useOriginalWorkbook: params.useOriginalWorkbook } : {}),
+    });
+    snap = unified.snapshot;
+    resolvedSha = unified.staging.exportSha256;
+  } else {
+    snap = await submitTenderVersion({
+      tenderId: params.tenderId,
+      projectId: params.projectId,
+      companyId: params.companyId ?? null,
+      companyName: params.companyName ?? null,
+      clientName: params.clientName ?? null,
+      expectedDraftVersion: params.expectedDraftVersion,
+      currentDraftVersion: params.currentDraftVersion,
+      idempotencyKey: params.idempotencyKey,
+      userId: params.actorId,
+      actorRole: params.actorRole,
+      readinessInputHash: params.readiness.inputHash,
+      exportSha256: params.exportSha256,
+      documentRef: `SHA256:${params.exportSha256}`,
+      vatRate: params.vatRate ?? 15,
+      boqItems: params.boqItems as any,
+      ...(params.paItemsByBoqId ? { paItemsByBoqId: params.paItemsByBoqId } : {}),
+      ...(params.markupsByBoqId ? { markupsByBoqId: params.markupsByBoqId } : {}),
+    });
+  }
 
   try {
     await (estimationClient as any).from("knowledge_audit_logs").insert({
@@ -903,7 +941,7 @@ export async function approveAndLockTenderSubmission(params: {
       metadata: {
         tenderId: params.tenderId,
         versionNo: snap.versionNo,
-        exportSha256: params.exportSha256,
+        exportSha256: resolvedSha,
         readinessInputHash: params.readiness.inputHash,
         netSellingPrice: snap.netSellingPrice,
       },
@@ -914,7 +952,7 @@ export async function approveAndLockTenderSubmission(params: {
 
   return {
     ...snap,
-    exportSha256: params.exportSha256,
+    exportSha256: resolvedSha,
     readinessInputHash: params.readiness.inputHash,
   };
 }

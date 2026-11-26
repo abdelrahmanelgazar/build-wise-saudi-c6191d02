@@ -10,6 +10,7 @@
 | 4 | — (جديد لتغطية فحص §2) | `20261126000004_rls_completeness_and_atomic_submit_rpc.sql` | يستكمل سياسات RLS للجداول الأربعة ويضيف دالة التقديم الذرية `submit_tender_version` |
 | 5 | — (جديد للمرحلة V3.0) | `20261126000005_tender_knowledge_and_assurance_v3.sql` | مكتبة المعرفة، أدلة الأسعار، التعليقات، فحوص الجاهزية، المقارنات الموحدة، فروق BOQ، وسجل التدقيق |
 | 6 | — (جديد للتحقق الخادمي) | `20261126000006_server_recompute_submit_rpc.sql` | إعادة حساب إجماليات `submit_tender_version` داخل PostgreSQL والتحقق من الجاهزية وبصمة ملف التقديم + Storage bucket |
+| 7 | — (جديد للتصليد وتجهيز التقديم) | `20261126000007_assurance_hardening_and_staging.sql` | جدول تجهيز التقديم `submission_stagings`، توحيد توقيع `submit_tender_version`، حماية الإصدار المقفل، وRPC حفظ المكتبة الذري |
 
 ## أوامر التنفيذ في بيئة التجربة ثم الإنتاج
 

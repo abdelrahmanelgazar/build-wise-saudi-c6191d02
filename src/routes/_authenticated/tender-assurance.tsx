@@ -50,7 +50,11 @@ import {
   calculateTimePhasedHistogramCost,
   detectIndirectDoubleCounting,
 } from "@/lib/assemblies-and-indirect-engine";
-import { uploadSubmissionArtifact } from "@/lib/submission-storage";
+import {
+  downloadVerifiedSubmissionArtifact,
+  executeUnifiedTenderSubmission,
+  getSubmittedTenderSnapshots,
+} from "@/lib/client-tender-service";
 import type { Database } from "@/integrations/supabase/types";
 
 type BoqRow = Database["public"]["Tables"]["boq_items"]["Row"];
@@ -105,6 +109,7 @@ function TenderAssurancePage() {
   const [uploadedRevName, setUploadedRevName] = useState<string>("");
   const [diffDecisionMap, setDiffDecisionMap] = useState<Record<string, "approved_transfer" | "new_analysis">>({});
   const [isLocking, setIsLocking] = useState(false);
+  const [submissionTick, setSubmissionTick] = useState(0);
 
   // Indirect Cost Builder State (DEV-306)
   const [indTitle, setIndTitle] = useState("طاقم الإشراف الهندسي للموقع");
@@ -401,6 +406,11 @@ function TenderAssurancePage() {
     }
   };
 
+  const submittedSnapshots = useMemo(
+    () => getSubmittedTenderSnapshots(effectiveTenderId),
+    [effectiveTenderId, submissionTick],
+  );
+
   const handleVerifyExcelAndSubmit = async () => {
     if (!projectId) return;
     setIsLocking(true);
@@ -408,75 +418,39 @@ function TenderAssurancePage() {
       const { data: u } = await estimationClient.auth.getUser();
       const actorId = u.user?.id || "approver-1";
 
-      const leaf = boqItems.filter((b) => !b.is_group);
-      const exportPayload = leaf.map((b) => {
-        const resolved = resolveBoqItemPricing({
-          item: b as any,
-          ...(paByBoq.get(b.id) ? { paLines: paByBoq.get(b.id)! } : {}),
-          hasAnalysisFlag: paByBoq.has(b.id) || b.rate_source === "analysis",
-          ...(markupsByBoq.get(b.id) ? { markup: markupsByBoq.get(b.id)! } : {}),
-        });
-        return {
-          item_no: b.item_no,
-          description: sanitizeExcelTextCell(b.description_ar),
-          quantity: Number(b.quantity ?? 0),
-          unitRate: resolved.approvedUnitRate,
-          lineTotal: resolved.lineSellingPrice,
-          approvedUnitRate: resolved.approvedUnitRate,
-          lineSellingPrice: resolved.lineSellingPrice,
-        };
-      });
-
-      const reconciliation = reconcileExcelAgainstBoq({
-        boqItems: exportPayload,
-        excelRows: exportPayload,
-      });
-      if (!reconciliation.matched) {
-        throw new Error(reconciliation.mismatches[0]?.reason || "EXPORT_MISMATCH");
-      }
-
-      const wb = XLSX.utils.book_new();
-      const ws = XLSX.utils.json_to_sheet(
-        exportPayload.map((r) => ({
-          "رقم البند": r.item_no,
-          "التوصيف": r.description,
-          "الكمية": r.quantity,
-          "فئة الوحدة": r.unitRate,
-          "الإجمالي": r.lineTotal,
-        })),
-      );
-      XLSX.utils.book_append_sheet(wb, ws, "Submission_BOQ");
-      const wbArray = XLSX.write(wb, { type: "array", bookType: "xlsx" }) as ArrayBuffer;
-      const storedDoc = await uploadSubmissionArtifact({
-        projectId,
-        tenderId: effectiveTenderId,
-        versionNo: 1,
-        fileName: `Taqdiri_Approved_${effectiveTenderId.slice(0, 8)}.xlsx`,
-        bytes: new Uint8Array(wbArray),
-      });
-
-      const snap = await approveAndLockTenderSubmission({
+      const { snapshot, estimateVersion, staging } = await executeUnifiedTenderSubmission({
         tenderId: effectiveTenderId,
         projectId,
+        companyId: (project as any)?.company_id ?? null,
         companyName: (project as any)?.company_name ?? null,
         clientName: project?.client_name ?? null,
         actorId,
         actorRole: "approver",
-        expectedDraftVersion: 1,
-        currentDraftVersion: 1,
-        readiness,
-        currentEstimateInputHash: readiness.inputHash,
-        exportReconciled: true,
-        exportSha256: storedDoc.sha256,
-        idempotencyKey: `lock-${effectiveTenderId}-${readiness.inputHash}`,
+        readinessInputHash: readiness.inputHash,
+        readinessOverallState: readiness.overallState,
+        holdsSnapshot: holds.filter((h) => h.status === "AcceptedRisk" || h.status === "Open"),
+        qualifications: holds.filter((h) => h.status === "AcceptedRisk").map((h) => h.approval_reason || h.subject),
         boqItems: boqItems as any[],
         paItemsByBoqId: paByBoq,
         markupsByBoqId: markupsByBoq,
       });
 
-      XLSX.writeFile(wb, `Taqdiri_Approved_v${snap.versionNo}.xlsx`);
+      const cleanBytes = new Uint8Array(staging.bytes.byteLength);
+      cleanBytes.set(staging.bytes);
+      const blob = new Blob([cleanBytes.buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Taqdiri_Approved_v${snapshot.versionNo}_${staging.exportSha256.slice(0, 8)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      setSubmissionTick((n) => n + 1);
+      await qc.invalidateQueries({ queryKey: ["assurance_boq", projectId, activeTenderId] });
       toast.success(
-        `تم اعتماد وقفل نسخة التقديم #${snap.versionNo} (${fmtSAR(snap.netSellingPrice)}) مع بصمة SHA-256 (${storedDoc.sha256.slice(0, 12)}) وحفظ المرجع (${storedDoc.storagePath})!`,
+        `تم اعتماد وقفل تقديم #${snapshot.versionNo} (إصدار تقدير v${estimateVersion.version_no}، ${fmtSAR(snapshot.netSellingPrice)}) ومطابقة ${staging.verification.totalRowsChecked} سطر وبصمة SHA-256 (${staging.exportSha256.slice(0, 12)})!`,
       );
     } catch (err: any) {
       toast.error(err?.message || "تعذر قفل واعتماد التقديم");
@@ -990,6 +964,55 @@ function TenderAssurancePage() {
                 <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-destructive flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4 shrink-0" />
                   <span>يوجد ({readiness.blockersCount}) مانع في تبويب الجاهزية يجب إغلاقه قبل تفعيل الاعتماد النهائي.</span>
+                </div>
+              )}
+
+              {submittedSnapshots.length > 0 && (
+                <div className="rounded-md border border-border overflow-x-auto">
+                  <table className="w-full text-xs tabular-nums">
+                    <thead className="bg-muted/40">
+                      <tr>
+                        <th className="p-2 text-start">التقديم</th>
+                        <th className="p-2 text-center">إصدار التقدير</th>
+                        <th className="p-2 text-center">صافي العطاء</th>
+                        <th className="p-2 text-center">SHA-256 ودليل التخزين</th>
+                        <th className="p-2 text-center">استرجاع</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {submittedSnapshots.map((snap) => (
+                        <tr key={snap.id}>
+                          <td className="p-2 font-mono font-bold text-primary">v{snap.versionNo}</td>
+                          <td className="p-2 text-center font-mono">est v{snap.estimateVersionNo ?? 1}</td>
+                          <td className="p-2 text-center font-semibold">{fmtSAR(snap.netSellingPrice)}</td>
+                          <td className="p-2 text-center">
+                            {snap.hasVerifiedFileProof && snap.exportSha256 ? (
+                              <Badge variant="outline" className="font-mono text-[10px]">
+                                {snap.exportSha256.slice(0, 12)}
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-[10px]">قديم بدون ملف مخزن</Badge>
+                            )}
+                          </td>
+                          <td className="p-2 text-center">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={!snap.hasVerifiedFileProof}
+                              className="h-6 text-[10px]"
+                              onClick={() => {
+                                downloadVerifiedSubmissionArtifact(snap)
+                                  .then((r) => toast.success(`تم تنزيل الملف الموثق ومطابقة SHA-256 (${r.sha256.slice(0, 10)})`))
+                                  .catch((err) => toast.error(err?.message || "تعذر الاسترجاع"));
+                              }}
+                            >
+                              تنزيل ومطابقة البصمة
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </CardContent>

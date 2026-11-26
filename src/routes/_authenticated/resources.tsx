@@ -1,9 +1,9 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, useMemo } from "react";
 import { z } from "zod";
 import { estimationClient } from "@/lib/estimation-client";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +19,10 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -34,7 +37,7 @@ import { CSI_DIVISIONS, csiDivisionCode, csiDivisionLabel } from "@/lib/csi-divi
 import { useLanguage } from "@/lib/i18n";
 import { useRegisterPageActions } from "@/lib/workspace-page-actions";
 import { SupplierQuotesPanel } from "@/components/resources/supplier-quotes-panel";
-import { listAllPriceEvidence } from "@/lib/knowledge-library-service";
+import { listAllPriceEvidence, syncKnowledgeFromDatabase } from "@/lib/knowledge-library-service";
 import { ProjectHierarchyTree, type HierarchySelection } from "@/components/knowledge/project-hierarchy-tree";
 
 type ResourceRow = Database["public"]["Tables"]["resources"]["Row"] & {
@@ -54,21 +57,28 @@ type QuotationTab =
   | "material"
   | "general_requirements";
 
+const VALID_QUOTATION_TABS: readonly QuotationTab[] = [
+  "all",
+  "supplier_quotes",
+  "price_evidence",
+  "by_project",
+  "typical_assembly_offers",
+  "subcontractor",
+  "equipment",
+  "labor",
+  "material",
+  "general_requirements",
+];
+
+export function normalizeQuotationTab(value: unknown): QuotationTab {
+  if (typeof value === "string" && (VALID_QUOTATION_TABS as readonly string[]).includes(value)) {
+    return value as QuotationTab;
+  }
+  return "all";
+}
+
 const resourcesSearchSchema = z.object({
-  tab: z
-    .enum([
-      "all",
-      "supplier_quotes",
-      "price_evidence",
-      "by_project",
-      "typical_assembly_offers",
-      "subcontractor",
-      "equipment",
-      "labor",
-      "material",
-      "general_requirements",
-    ])
-    .optional(),
+  tab: z.string().optional().catch(undefined),
 });
 
 export const Route = createFileRoute("/_authenticated/resources")({
@@ -76,6 +86,28 @@ export const Route = createFileRoute("/_authenticated/resources")({
   validateSearch: resourcesSearchSchema,
   component: ResourcesPage,
 });
+
+const TAB_GROUPS: Array<{
+  groupKey: string;
+  defaultGroupLabel: string;
+  items: QuotationTab[];
+}> = [
+  {
+    groupKey: "resources.groupGeneral",
+    defaultGroupLabel: "عام",
+    items: ["all"],
+  },
+  {
+    groupKey: "resources.groupQuotationViews",
+    defaultGroupLabel: "طرق عرض الأسعار",
+    items: ["supplier_quotes", "price_evidence", "by_project", "typical_assembly_offers"],
+  },
+  {
+    groupKey: "resources.groupResourceCategories",
+    defaultGroupLabel: "فئات الموارد",
+    items: ["material", "labor", "equipment", "subcontractor", "general_requirements"],
+  },
+];
 
 const TAB_CONFIG: Record<QuotationTab, { labelKey: string; defaultLabel: string; icon: typeof Boxes; color: string; resourceType: ResourceType }> = {
   all: { labelKey: "resources.tabAll", defaultLabel: "عام (الكل)", icon: Boxes, color: "text-foreground", resourceType: "material" },
@@ -92,26 +124,55 @@ const TAB_CONFIG: Record<QuotationTab, { labelKey: string; defaultLabel: string;
 
 function ResourcesPage() {
   const { t, language } = useLanguage();
-  const { tab: searchTab } = Route.useSearch();
-  const [tab, setTab] = useState<QuotationTab>(searchTab ?? "all");
+  const navigate = useNavigate({ from: Route.fullPath });
+  const { tab: rawSearchTab } = Route.useSearch();
+  const activeTab = normalizeQuotationTab(rawSearchTab);
+  const [tab, setTab] = useState<QuotationTab>(activeTab);
   const [search, setSearch] = useState("");
   const [selectedDivisionFilter, setSelectedDivisionFilter] = useState<string>("all");
+  const [hasDirtyForm, setHasDirtyForm] = useState(false);
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
   const { divisions, rename, remove, labelFor } = useDivisions(projectId);
 
   useEffect(() => {
-    if (searchTab) setTab(searchTab);
-  }, [searchTab]);
+    setTab(normalizeQuotationTab(rawSearchTab));
+  }, [rawSearchTab]);
 
   useRegisterPageActions({
     pageKey: "resources",
     hasEditableState: true,
-    queryKeys: [["resources", projectId]],
+    isDirty: hasDirtyForm,
+    queryKeys: [
+      ["resources", projectId],
+      ["supplier_quotes_project", projectId],
+      ["knowledge_price_evidence_view", projectId],
+    ],
     onSave: async () => {
-      await qc.invalidateQueries({ queryKey: ["resources", projectId] });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["resources", projectId] }),
+        qc.invalidateQueries({ queryKey: ["supplier_quotes_project", projectId] }),
+        qc.invalidateQueries({ queryKey: ["knowledge_price_evidence_view", projectId] }),
+      ]);
     },
   });
+
+  const handleCategoryChange = (nextRaw: string) => {
+    const nextTab = normalizeQuotationTab(nextRaw);
+    if (nextTab === tab) return;
+    if (hasDirtyForm && typeof window !== "undefined") {
+      const ok = window.confirm(
+        t("common.unsavedConfirm", "توجد تعديلات غير محفوظة. هل تريد المتابعة وتغيير الفئة؟"),
+      );
+      if (!ok) return;
+      setHasDirtyForm(false);
+    }
+    setTab(nextTab);
+    void navigate({
+      search: (prev) => ({ ...prev, tab: nextTab }),
+      replace: false,
+    });
+  };
 
   const { data: resources = [], isLoading } = useQuery({
     queryKey: ["resources", projectId],
@@ -200,10 +261,73 @@ function ResourcesPage() {
     );
   }
 
+  const { data: supplierQuotesMeta = [] } = useQuery({
+    queryKey: ["supplier_quotes_counts", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      try {
+        const { data } = await estimationClient
+          .from("supplier_quotes")
+          .select("id, scope")
+          .eq("project_id", projectId!);
+        return (data as Array<{ id: string; scope?: string | null }>) ?? [];
+      } catch {
+        return [] as Array<{ id: string; scope?: string | null }>;
+      }
+    },
+  });
+
+  const { data: dbEvidenceRows = [] } = useQuery({
+    queryKey: ["knowledge_price_evidence_view", projectId],
+    enabled: !!projectId,
+    queryFn: async () => {
+      try {
+        await syncKnowledgeFromDatabase();
+        const { data } = await (estimationClient as any)
+          .from("knowledge_price_evidence")
+          .select("id, scope, source_type, project_id");
+        return (data as Array<{ id: string; scope?: string | null; source_type?: string | null; project_id?: string | null }>) ?? [];
+      } catch {
+        return [] as Array<{ id: string; scope?: string | null; source_type?: string | null; project_id?: string | null }>;
+      }
+    },
+  });
+
+  const countsByTab = useMemo((): Record<QuotationTab, number> => {
+    const localEvidence = listAllPriceEvidence();
+    const seenIds = new Set<string>(localEvidence.map((e) => e.id));
+    const combinedEvidence = [
+      ...localEvidence.map((e) => ({ id: e.id, scope: e.scope, project_id: e.project_id ?? null })),
+      ...dbEvidenceRows
+        .filter((d) => !seenIds.has(d.id))
+        .map((d) => ({ id: d.id, scope: d.scope ?? "project", project_id: d.project_id ?? null })),
+    ];
+
+    return {
+      all: resources.length,
+      supplier_quotes: supplierQuotesMeta.length,
+      price_evidence: combinedEvidence.length,
+      by_project:
+        combinedEvidence.filter((e) => e.scope === "project" || e.project_id === projectId).length +
+        supplierQuotesMeta.filter((q) => (q.scope ?? "project") === "project").length,
+      typical_assembly_offers:
+        combinedEvidence.filter((e) => e.scope === "typical_assembly").length +
+        supplierQuotesMeta.filter((q) => q.scope === "typical_assembly").length,
+      material: resources.filter((r) => r.type === "material").length,
+      labor: resources.filter((r) => r.type === "labor").length,
+      equipment: resources.filter((r) => r.type === "equipment").length,
+      subcontractor: resources.filter((r) => r.type === "subcontractor").length,
+      general_requirements: resources.filter(
+        (r) => csiDivisionCode(r.division) === "01" || r.code?.startsWith("01-"),
+      ).length,
+    };
+  }, [resources, supplierQuotesMeta, dbEvidenceRows, projectId]);
+
   const currentTabConfig = TAB_CONFIG[tab];
+  const dir = language === "en" ? "ltr" : "rtl";
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6" dir={dir}>
       <PageHeader
         title={t("resources.title", "عروض الأسعار")}
         subtitle={t("resources.subtitle", "إدارة عروض أسعار الموردين ومقاولي الباطن وتصنيف CSI MasterFormat — تستخدم في تسعير البنود.")}
@@ -211,40 +335,59 @@ function ResourcesPage() {
           <NewResourceDialog
             defaultType={currentTabConfig.resourceType}
             defaultDivision={tab === "general_requirements" ? "01" : undefined}
+            onDirtyChange={setHasDirtyForm}
           />
         }
       />
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as QuotationTab)} className="space-y-4">
+      <Tabs value={tab} onValueChange={handleCategoryChange} className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <TabsList className="bg-muted/50 p-1">
-            {(Object.keys(TAB_CONFIG) as QuotationTab[]).map((tKey) => {
-              const cfg = TAB_CONFIG[tKey];
-              const Icon = cfg.icon;
-              const count = tKey === "all"
-                ? resources.length
-                : tKey === "supplier_quotes"
-                  ? "عروض"
-                  : tKey === "general_requirements"
-                    ? resources.filter((r) => r.division === "01" || r.code?.startsWith("01-")).length
-                    : resources.filter((r) => r.type === tKey).length;
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2 bg-card border border-border rounded-md px-2.5 py-1 w-full sm:w-auto">
+              <Label htmlFor="resources-category-select" className="text-xs text-muted-foreground whitespace-nowrap font-medium">
+                {t("resources.viewCategory", "عرض الفئة")}:
+              </Label>
+              <Select value={tab} onValueChange={handleCategoryChange} dir={dir}>
+                <SelectTrigger
+                  id="resources-category-select"
+                  aria-label={t("resources.viewCategory", "عرض الفئة")}
+                  className="h-7 min-w-[220px] flex-1 sm:flex-initial border-0 bg-transparent px-1 text-xs font-medium focus:ring-0"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="max-h-80 text-xs" dir={dir}>
+                  {TAB_GROUPS.map((group, gIdx) => (
+                    <div key={group.groupKey}>
+                      {gIdx > 0 && <SelectSeparator />}
+                      <SelectGroup>
+                        <SelectLabel className="text-[11px] text-muted-foreground font-semibold">
+                          {t(group.groupKey as any, group.defaultGroupLabel)}
+                        </SelectLabel>
+                        {group.items.map((tKey) => {
+                          const cfg = TAB_CONFIG[tKey];
+                          return (
+                            <SelectItem key={tKey} value={tKey} className="text-xs">
+                              <span className="flex items-center justify-between gap-3 w-full">
+                                <span>{t(cfg.labelKey as any, cfg.defaultLabel)}</span>
+                                <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-mono">
+                                  {countsByTab[tKey]}
+                                </Badge>
+                              </span>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectGroup>
+                    </div>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-mono">
+                {countsByTab[tab]}
+              </Badge>
+            </div>
+          </div>
 
-              return (
-                <TabsTrigger key={tKey} value={tKey} className="gap-2 text-xs font-medium">
-                  <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />
-                  {t(cfg.labelKey as any, cfg.defaultLabel)}
-                  <Badge
-                    variant="secondary"
-                    className="h-4 bg-background/80 px-1 text-[10px] font-mono"
-                  >
-                    {count}
-                  </Badge>
-                </TabsTrigger>
-              );
-            })}
-          </TabsList>
-
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <div className="flex items-center gap-1.5 bg-card border border-border rounded-md px-2 py-1">
               <Filter className="h-3.5 w-3.5 text-muted-foreground" />
               <span className="text-xs text-muted-foreground whitespace-nowrap font-medium">CSI:</span>
@@ -518,8 +661,16 @@ function PriceEvidenceLibraryView({
   );
 }
 
-function NewResourceDialog({ defaultType, defaultDivision }: { defaultType: ResourceType; defaultDivision?: string | undefined }) {
-  return <ResourceFormDialog mode="create" defaultType={defaultType} defaultDivision={defaultDivision} />;
+function NewResourceDialog({
+  defaultType,
+  defaultDivision,
+  onDirtyChange,
+}: {
+  defaultType: ResourceType;
+  defaultDivision?: string | undefined;
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
+  return <ResourceFormDialog mode="create" defaultType={defaultType} defaultDivision={defaultDivision} onDirtyChange={onDirtyChange} />;
 }
 
 function EditResourceDialog({ resource }: { resource: ResourceRow }) {
@@ -531,11 +682,13 @@ function ResourceFormDialog({
   resource,
   defaultType,
   defaultDivision,
+  onDirtyChange,
 }: {
   mode: "create" | "edit";
   resource?: ResourceRow;
   defaultType?: ResourceType;
   defaultDivision?: string | undefined;
+  onDirtyChange?: ((dirty: boolean) => void) | undefined;
 }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<ResourceType>(resource?.type ?? defaultType ?? "material");
@@ -546,6 +699,10 @@ function ResourceFormDialog({
   const [price, setPrice] = useState<string>(String(resource?.unit_price ?? ""));
   const qc = useQueryClient();
   const projectId = useActiveProjectId();
+
+  useEffect(() => {
+    onDirtyChange?.(open && (Boolean(name.trim()) || Boolean(unit.trim()) || Number(price) > 0));
+  }, [open, name, unit, price, onDirtyChange]);
 
   const mut = useMutation({
     mutationFn: async () => {

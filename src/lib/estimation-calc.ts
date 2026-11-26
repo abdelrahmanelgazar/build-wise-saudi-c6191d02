@@ -918,3 +918,101 @@ export function computeProjectFinancials(params: {
     canIssueTender,
   };
 }
+
+/** Canonical Pricing Policy Metadata persisted on Estimate Versions & Submissions (§2) */
+export const CANONICAL_PRICING_POLICY = {
+  policyCode: "additive_v2" as const,
+  roundingPolicy: "roundup_integer_sar" as const,
+  directCostDecimals: 4,
+  currencyDecimals: 2,
+  vatDefaultPct: 15,
+};
+
+export interface CanonicalReferenceCaseResult {
+  caseKey: string;
+  label_ar: string;
+  pricing: CanonicalBoqItemPricing;
+}
+
+/**
+ * Chief Estimator Calibration Suite (§2 & Ordering Matrix):
+ * Produces deterministic reference evaluations covering lump-sum, fractional quantity,
+ * manual selling override (direct 4, manual 6.25, qty 2.5 -> direct 10.00, rate 7, sell 17.50),
+ * included-elsewhere zero, last-resource deleted (unpriced), steel ton->kg conversion,
+ * and concrete with pump included. Identical math runs in SQL `submit_tender_version` and Excel verifier.
+ */
+export function evaluateCanonicalReferenceCases(): CanonicalReferenceCaseResult[] {
+  const mk10: MarkupSettings = {
+    indirect_pct: 10,
+    pricing_policy: "additive_v2",
+    round_up_rate: true,
+  };
+
+  return [
+    {
+      caseKey: "lump_sum",
+      label_ar: "بند مقطوع (LS)",
+      pricing: resolveBoqItemPricing({
+        item: { id: "ref-ls", quantity: 1, rate_source: "analysis" },
+        paLines: [{ resource_type: "subcontractor", quantity: 1, unit_price: 25000 }],
+        markup: { indirect_pct: 5, profit_pct: 10, pricing_policy: "additive_v2", round_up_rate: true },
+      }),
+    },
+    {
+      caseKey: "manual_fractional",
+      label_ar: "سعر يدوي وكمية كسرية (4 -> يدوي 6.25 × 2.5 = 17.50)",
+      pricing: resolveBoqItemPricing({
+        item: { id: "ref-man", quantity: 2.5, manual_unit_price: 6.25, rate_source: "analysis" },
+        paLines: [{ resource_type: "material", quantity: 1, unit_price: 4 }],
+        markup: mk10,
+      }),
+    },
+    {
+      caseKey: "included_elsewhere",
+      label_ar: "بند مشمول في غيره",
+      pricing: resolveBoqItemPricing({
+        item: { id: "ref-inc", quantity: 50, is_included_elsewhere: true, manual_unit_price: 99 },
+        markup: mk10,
+      }),
+    },
+    {
+      caseKey: "deleted_last_resource",
+      label_ar: "حذف آخر مورد من التحليل (يجب أن يعود 0 غير مسعّر)",
+      pricing: resolveBoqItemPricing({
+        item: {
+          id: "ref-del",
+          quantity: 10,
+          rate_source: "analysis",
+          material_cost: 500,
+        },
+        paLines: [],
+        hasAnalysisFlag: true,
+        markup: mk10,
+      }),
+    },
+    {
+      caseKey: "steel_ton_to_kg",
+      label_ar: "حديد توريد بالطن واستهلاك بالكيلوجرام + هالك 5%",
+      pricing: resolveBoqItemPricing({
+        item: { id: "ref-steel", quantity: 120, rate_source: "analysis" },
+        paLines: [
+          // 120 kg/m3 consumption sourced from 2,850 SAR/ton -> 2.85 SAR/kg with 5% waste
+          { resource_type: "material", quantity: 120, waste_pct: 5, unit_price: 2850 / 1000 },
+        ],
+        markup: mk10,
+      }),
+    },
+    {
+      caseKey: "concrete_with_pump",
+      label_ar: "خرسانة جاهزة شامل الضخ (بلا ازدواج)",
+      pricing: resolveBoqItemPricing({
+        item: { id: "ref-conc", quantity: 800, rate_source: "analysis" },
+        paLines: [
+          { resource_type: "material", quantity: 1.03, unit_price: 260 },
+          { resource_type: "labor", quantity: 1, productivity: 40, unit_price: 600 },
+        ],
+        markup: mk10,
+      }),
+    },
+  ];
+}
