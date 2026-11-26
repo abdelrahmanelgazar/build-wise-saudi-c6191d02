@@ -327,7 +327,7 @@ function ResourcesPage() {
   const dir = language === "en" ? "ltr" : "rtl";
 
   return (
-    <div className="p-6 space-y-6" dir={dir}>
+    <div className="p-4 sm:p-6 space-y-6 overflow-x-hidden" dir={dir}>
       <PageHeader
         title={t("resources.title", "عروض الأسعار")}
         subtitle={t("resources.subtitle", "إدارة عروض أسعار الموردين ومقاولي الباطن وتصنيف CSI MasterFormat — تستخدم في تسعير البنود.")}
@@ -342,8 +342,8 @@ function ResourcesPage() {
 
       <Tabs value={tab} onValueChange={handleCategoryChange} className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-            <div className="flex items-center gap-2 bg-card border border-border rounded-md px-2.5 py-1 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto min-w-0">
+            <div className="flex items-center gap-2 bg-card border border-border rounded-md px-2.5 py-1 w-full sm:w-auto min-w-0">
               <Label htmlFor="resources-category-select" className="text-xs text-muted-foreground whitespace-nowrap font-medium">
                 {t("resources.viewCategory", "عرض الفئة")}:
               </Label>
@@ -351,11 +351,11 @@ function ResourcesPage() {
                 <SelectTrigger
                   id="resources-category-select"
                   aria-label={t("resources.viewCategory", "عرض الفئة")}
-                  className="h-7 min-w-[220px] flex-1 sm:flex-initial border-0 bg-transparent px-1 text-xs font-medium focus:ring-0"
+                  className="h-7 min-w-0 flex-1 sm:min-w-[220px] sm:flex-initial border-0 bg-transparent px-1 text-xs font-medium focus:ring-0"
                 >
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="max-h-80 text-xs" dir={dir}>
+                <SelectContent className="max-h-80 text-xs max-w-[calc(100vw-2rem)]" dir={dir}>
                   {TAB_GROUPS.map((group, gIdx) => (
                     <div key={group.groupKey}>
                       {gIdx > 0 && <SelectSeparator />}

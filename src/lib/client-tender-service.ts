@@ -581,19 +581,19 @@ export async function submitTenderVersion(params: {
           }),
           ...(estimateVersionId
             ? [
-                (estimationClient as any)
-                  .from("estimate_versions")
-                  .update({ state: "submitted", updated_at: persistedAt })
-                  .eq("id", estimateVersionId),
-              ]
+              (estimationClient as any)
+                .from("estimate_versions")
+                .update({ state: "submitted", updated_at: persistedAt })
+                .eq("id", estimateVersionId),
+            ]
             : []),
           ...(stagingId
             ? [
-                (estimationClient as any)
-                  .from("submission_stagings")
-                  .update({ status: "committed", updated_at: persistedAt })
-                  .eq("id", stagingId),
-              ]
+              (estimationClient as any)
+                .from("submission_stagings")
+                .update({ status: "committed", updated_at: persistedAt })
+                .eq("id", stagingId),
+            ]
             : []),
           (estimationClient as any)
             .from("tenders")
@@ -709,166 +709,166 @@ export async function executeUnifiedTenderSubmission(params: {
     staging: SubmissionStagingRecord;
   }> = (async () => {
 
-  // Check idempotency BEFORE generating XLSX zip timestamps so concurrent retries return identical staged snapshot
-  if (params.idempotencyKey) {
-    const preExisting = getSubmittedTenderSnapshots(params.tenderId).find(
-      (s) => s.idempotencyKey === params.idempotencyKey,
-    );
-    if (preExisting) {
-      const ev = await ensureActiveEstimateVersion({
-        projectId: params.projectId,
-        tenderId: params.tenderId,
-        workspaceId: params.actorId,
-        readinessHash: params.readinessInputHash,
-      });
-      const dummyVerification: Awaited<ReturnType<typeof stageSubmissionPreparation>>["verification"] = {
-        matched: true,
-        workbookMode: "taqdiri_standard",
-        sheetNames: ["Submission_BOQ"],
-        totalRowsChecked: preExisting.items.length,
-        mismatches: [],
-        boqDirectTotal: preExisting.totalDirectCost,
-        boqNetTotal: preExisting.netSellingPrice,
-        excelNetTotal: preExisting.netSellingPrice,
-        vatRate: preExisting.vatRate,
-        vatAmount: preExisting.vatAmount,
-        grandTotalWithVat: preExisting.grandTotalWithVat,
-        sha256: preExisting.exportSha256 ?? "",
-      };
-      return {
-        snapshot: preExisting,
-        estimateVersion: ev,
-        staging: {
-          id: preExisting.stagingId ?? preExisting.id,
+    // Check idempotency BEFORE generating XLSX zip timestamps so concurrent retries return identical staged snapshot
+    if (params.idempotencyKey) {
+      const preExisting = getSubmittedTenderSnapshots(params.tenderId).find(
+        (s) => s.idempotencyKey === params.idempotencyKey,
+      );
+      if (preExisting) {
+        const ev = await ensureActiveEstimateVersion({
           projectId: params.projectId,
           tenderId: params.tenderId,
-          estimateVersionId: preExisting.estimateVersionId ?? ev.id,
-          estimateVersionNo: preExisting.estimateVersionNo ?? ev.version_no,
-          expectedRowVersion: ev.row_version,
-          readinessRunId: preExisting.readinessRunId ?? null,
-          readinessInputHash: preExisting.readinessInputHash ?? params.readinessInputHash,
+          workspaceId: params.actorId,
+          readinessHash: params.readinessInputHash,
+        });
+        const dummyVerification: Awaited<ReturnType<typeof stageSubmissionPreparation>>["verification"] = {
+          matched: true,
           workbookMode: "taqdiri_standard",
-          storagePath: preExisting.storagePath ?? "",
-          exportSha256: preExisting.exportSha256 ?? "",
-          byteSize: 0,
-          bytes: new Uint8Array(),
-          verification: dummyVerification,
-          status: "committed",
-          createdAt: preExisting.submittedAt,
-        },
-      };
-    }
-  }
-
-  // 1. Resolve active Estimate Version (version_no & optimistic row_version)
-  const estimateVersion = await ensureActiveEstimateVersion({
-    projectId: params.projectId,
-    tenderId: params.tenderId,
-    workspaceId: params.actorId,
-    readinessHash: params.readinessInputHash,
-  });
-
-  // 2. Persist readiness run if not already recorded so server RPC can verify hash & state
-  let readinessRunId = params.readinessRunId ?? null;
-  if (!readinessRunId) {
-    readinessRunId = crypto.randomUUID();
-    try {
-      await (estimationClient as any).from("readiness_runs").insert({
-        id: readinessRunId,
-        workspace_id: params.actorId,
-        project_id: params.projectId,
-        tender_id: params.tenderId,
-        estimate_version_id: estimateVersion.id,
-        input_hash: params.readinessInputHash,
-        overall_state: params.readinessOverallState,
-        blockers_count: 0,
-        warnings_count: params.readinessOverallState === "READY_WITH_APPROVED_QUALIFICATIONS" ? 1 : 0,
-        findings: [],
-        evaluated_by: params.actorId,
-      });
-    } catch {
-      // Offline unit tests preserve local readinessRunId
-    }
-  }
-
-  // 3. Load latest uploaded original client workbook if available
-  let originalWorkbookB64: string | null = null;
-  let expectedSheetNames: string[] | undefined;
-  if (params.useOriginalWorkbook !== false) {
-    try {
-      const { data: excelVers } = await estimationClient
-        .from("boq_excel_versions")
-        .select("*")
-        .eq("project_id", params.projectId)
-        .order("created_at", { ascending: false })
-        .limit(5);
-      const matched = ((excelVers as any[]) ?? []).find(
-        (v) => v.original_workbook_b64 && (!v.tender_id || v.tender_id === params.tenderId),
-      );
-      if (matched?.original_workbook_b64) {
-        originalWorkbookB64 = String(matched.original_workbook_b64);
-        if (Array.isArray(matched.sheet_names)) {
-          expectedSheetNames = matched.sheet_names.map(String);
-        }
+          sheetNames: ["Submission_BOQ"],
+          totalRowsChecked: preExisting.items.length,
+          mismatches: [],
+          boqDirectTotal: preExisting.totalDirectCost,
+          boqNetTotal: preExisting.netSellingPrice,
+          excelNetTotal: preExisting.netSellingPrice,
+          vatRate: preExisting.vatRate,
+          vatAmount: preExisting.vatAmount,
+          grandTotalWithVat: preExisting.grandTotalWithVat,
+          sha256: preExisting.exportSha256 ?? "",
+        };
+        return {
+          snapshot: preExisting,
+          estimateVersion: ev,
+          staging: {
+            id: preExisting.stagingId ?? preExisting.id,
+            projectId: params.projectId,
+            tenderId: params.tenderId,
+            estimateVersionId: preExisting.estimateVersionId ?? ev.id,
+            estimateVersionNo: preExisting.estimateVersionNo ?? ev.version_no,
+            expectedRowVersion: ev.row_version,
+            readinessRunId: preExisting.readinessRunId ?? null,
+            readinessInputHash: preExisting.readinessInputHash ?? params.readinessInputHash,
+            workbookMode: "taqdiri_standard",
+            storagePath: preExisting.storagePath ?? "",
+            exportSha256: preExisting.exportSha256 ?? "",
+            byteSize: 0,
+            bytes: new Uint8Array(),
+            verification: dummyVerification,
+            status: "committed",
+            createdAt: preExisting.submittedAt,
+          },
+        };
       }
-    } catch {
-      // Fallback to standard submission sheet cleanly
     }
-  }
 
-  // 4. Generate binary Excel, verify cells/sheets/formulas via binary XLSX.read, and upload to `staging/`
-  const staging = await stageSubmissionPreparation({
-    projectId: params.projectId,
-    tenderId: params.tenderId,
-    workspaceId: params.actorId,
-    estimateVersion,
-    readinessRunId,
-    readinessInputHash: params.readinessInputHash,
-    rows: params.boqItems as any[],
-    ...(params.paItemsByBoqId ? { paItemsByBoqId: params.paItemsByBoqId } : {}),
-    ...(params.markupsByBoqId ? { markupsByBoqId: params.markupsByBoqId } : {}),
-    originalWorkbookB64,
-    ...(expectedSheetNames ? { expectedSheetNames } : {}),
-    ...(params.vatRate !== undefined ? { vatRate: params.vatRate } : {}),
-    ...(params.simulateUploadFailure !== undefined ? { simulateUploadFailure: params.simulateUploadFailure } : {}),
-    ...(params.simulateReadbackMismatch !== undefined ? { simulateReadbackMismatch: params.simulateReadbackMismatch } : {}),
-  });
+    // 1. Resolve active Estimate Version (version_no & optimistic row_version)
+    const estimateVersion = await ensureActiveEstimateVersion({
+      projectId: params.projectId,
+      tenderId: params.tenderId,
+      workspaceId: params.actorId,
+      readinessHash: params.readinessInputHash,
+    });
 
-  // 5. Commit atomic submission lock tied to estimateVersion, stagingId, and readinessRunId
-  const idempotencyKey =
-    params.idempotencyKey ?? `submit-${params.tenderId}-v${estimateVersion.version_no}-${params.readinessInputHash}`;
+    // 2. Persist readiness run if not already recorded so server RPC can verify hash & state
+    let readinessRunId = params.readinessRunId ?? null;
+    if (!readinessRunId) {
+      readinessRunId = crypto.randomUUID();
+      try {
+        await (estimationClient as any).from("readiness_runs").insert({
+          id: readinessRunId,
+          workspace_id: params.actorId,
+          project_id: params.projectId,
+          tender_id: params.tenderId,
+          estimate_version_id: estimateVersion.id,
+          input_hash: params.readinessInputHash,
+          overall_state: params.readinessOverallState,
+          blockers_count: 0,
+          warnings_count: params.readinessOverallState === "READY_WITH_APPROVED_QUALIFICATIONS" ? 1 : 0,
+          findings: [],
+          evaluated_by: params.actorId,
+        });
+      } catch {
+        // Offline unit tests preserve local readinessRunId
+      }
+    }
 
-  const snapshot = await submitTenderVersion({
-    tenderId: params.tenderId,
-    projectId: params.projectId,
-    companyId: params.companyId ?? null,
-    companyName: params.companyName ?? null,
-    clientName: params.clientName ?? null,
-    estimateVersionId: estimateVersion.id,
-    estimateVersionNo: estimateVersion.version_no,
-    expectedRowVersion: estimateVersion.row_version,
-    stagingId: staging.id,
-    readinessRunId,
-    readinessInputHash: params.readinessInputHash,
-    storagePath: staging.storagePath,
-    exportSha256: staging.exportSha256,
-    expectedDraftVersion: estimateVersion.version_no,
-    currentDraftVersion: estimateVersion.version_no,
-    idempotencyKey,
-    userId: params.actorId,
-    ...(params.actorRole ? { actorRole: params.actorRole } : {}),
-    documentRef: `SHA256:${staging.exportSha256}`,
-    ...(params.currency ? { currency: params.currency } : {}),
-    ...(params.vatRate !== undefined ? { vatRate: params.vatRate } : {}),
-    ...(params.holdsSnapshot ? { holdsSnapshot: params.holdsSnapshot } : {}),
-    ...(params.qualifications ? { qualifications: params.qualifications } : {}),
-    boqItems: params.boqItems as any[],
-    ...(params.paItemsByBoqId ? { paItemsByBoqId: params.paItemsByBoqId } : {}),
-    ...(params.markupsByBoqId ? { markupsByBoqId: params.markupsByBoqId } : {}),
-    ...(params.simulateSubmitFailure !== undefined ? { simulateFailure: params.simulateSubmitFailure } : {}),
-  });
+    // 3. Load latest uploaded original client workbook if available
+    let originalWorkbookB64: string | null = null;
+    let expectedSheetNames: string[] | undefined;
+    if (params.useOriginalWorkbook !== false) {
+      try {
+        const { data: excelVers } = await estimationClient
+          .from("boq_excel_versions")
+          .select("*")
+          .eq("project_id", params.projectId)
+          .order("created_at", { ascending: false })
+          .limit(5);
+        const matched = ((excelVers as any[]) ?? []).find(
+          (v) => v.original_workbook_b64 && (!v.tender_id || v.tender_id === params.tenderId),
+        );
+        if (matched?.original_workbook_b64) {
+          originalWorkbookB64 = String(matched.original_workbook_b64);
+          if (Array.isArray(matched.sheet_names)) {
+            expectedSheetNames = matched.sheet_names.map(String);
+          }
+        }
+      } catch {
+        // Fallback to standard submission sheet cleanly
+      }
+    }
 
-  return { snapshot, estimateVersion, staging };
+    // 4. Generate binary Excel, verify cells/sheets/formulas via binary XLSX.read, and upload to `staging/`
+    const staging = await stageSubmissionPreparation({
+      projectId: params.projectId,
+      tenderId: params.tenderId,
+      workspaceId: params.actorId,
+      estimateVersion,
+      readinessRunId,
+      readinessInputHash: params.readinessInputHash,
+      rows: params.boqItems as any[],
+      ...(params.paItemsByBoqId ? { paItemsByBoqId: params.paItemsByBoqId } : {}),
+      ...(params.markupsByBoqId ? { markupsByBoqId: params.markupsByBoqId } : {}),
+      originalWorkbookB64,
+      ...(expectedSheetNames ? { expectedSheetNames } : {}),
+      ...(params.vatRate !== undefined ? { vatRate: params.vatRate } : {}),
+      ...(params.simulateUploadFailure !== undefined ? { simulateUploadFailure: params.simulateUploadFailure } : {}),
+      ...(params.simulateReadbackMismatch !== undefined ? { simulateReadbackMismatch: params.simulateReadbackMismatch } : {}),
+    });
+
+    // 5. Commit atomic submission lock tied to estimateVersion, stagingId, and readinessRunId
+    const idempotencyKey =
+      params.idempotencyKey ?? `submit-${params.tenderId}-v${estimateVersion.version_no}-${params.readinessInputHash}`;
+
+    const snapshot = await submitTenderVersion({
+      tenderId: params.tenderId,
+      projectId: params.projectId,
+      companyId: params.companyId ?? null,
+      companyName: params.companyName ?? null,
+      clientName: params.clientName ?? null,
+      estimateVersionId: estimateVersion.id,
+      estimateVersionNo: estimateVersion.version_no,
+      expectedRowVersion: estimateVersion.row_version,
+      stagingId: staging.id,
+      readinessRunId,
+      readinessInputHash: params.readinessInputHash,
+      storagePath: staging.storagePath,
+      exportSha256: staging.exportSha256,
+      expectedDraftVersion: estimateVersion.version_no,
+      currentDraftVersion: estimateVersion.version_no,
+      idempotencyKey,
+      userId: params.actorId,
+      ...(params.actorRole ? { actorRole: params.actorRole } : {}),
+      documentRef: `SHA256:${staging.exportSha256}`,
+      ...(params.currency ? { currency: params.currency } : {}),
+      ...(params.vatRate !== undefined ? { vatRate: params.vatRate } : {}),
+      ...(params.holdsSnapshot ? { holdsSnapshot: params.holdsSnapshot } : {}),
+      ...(params.qualifications ? { qualifications: params.qualifications } : {}),
+      boqItems: params.boqItems as any[],
+      ...(params.paItemsByBoqId ? { paItemsByBoqId: params.paItemsByBoqId } : {}),
+      ...(params.markupsByBoqId ? { markupsByBoqId: params.markupsByBoqId } : {}),
+      ...(params.simulateSubmitFailure !== undefined ? { simulateFailure: params.simulateSubmitFailure } : {}),
+    });
+
+    return { snapshot, estimateVersion, staging };
   })();
 
   if (flightKey) {

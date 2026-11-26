@@ -1138,9 +1138,9 @@ function AppShellInner({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main area */}
-      <div dir={direction} className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-3 border-b border-border bg-background/80 px-4 md:px-6 backdrop-blur">
-          <div className="flex items-center gap-2 flex-1 max-w-md">
+      <div dir={direction} className="flex min-w-0 flex-1 flex-col overflow-x-hidden">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b border-border bg-background/80 px-3 sm:px-6 backdrop-blur min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0 max-w-md">
             <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon" className="md:hidden shrink-0" aria-label="فتح القائمة">
@@ -1295,7 +1295,7 @@ function AppShellInner({ children }: { children: ReactNode }) {
                   title="حفظ تعديلات الصفحة الحالية"
                 >
                   <Save className="h-3.5 w-3.5" />
-                  <span>{actions.isSaving ? "جاري الحفظ…" : "حفظ"}</span>
+                  <span className="hidden sm:inline">{actions.isSaving ? "جاري الحفظ…" : "حفظ"}</span>
                 </Button>
                 <Button
                   size="sm"
@@ -1306,7 +1306,7 @@ function AppShellInner({ children }: { children: ReactNode }) {
                   title="تحديث بيانات الصفحة الحالية"
                 >
                   <RefreshCw className={cn("h-3.5 w-3.5", actions.isRefreshing && "animate-spin")} />
-                  <span>{actions.isRefreshing ? "جاري التحديث…" : "تحديث"}</span>
+                  <span className="hidden sm:inline">{actions.isRefreshing ? "جاري التحديث…" : "تحديث"}</span>
                 </Button>
               </div>
             )}
@@ -1318,7 +1318,7 @@ function AppShellInner({ children }: { children: ReactNode }) {
               <Sparkles className="h-3 w-3" />
               {t("nav.aiAssistant", "مساعد الذكاء الاصطناعي")}
             </Badge>
-            <Badge variant="outline" className="h-7 gap-1.5 border-border/60">
+            <Badge variant="outline" className="hidden h-7 gap-1.5 border-border/60 sm:flex">
               <Building2 className="h-3 w-3" />
               {t("nav.saudiMarket", "السوق السعودي")}
             </Badge>
