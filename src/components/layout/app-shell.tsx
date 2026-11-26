@@ -32,7 +32,13 @@ import {
   Pencil,
   Menu,
 } from "lucide-react";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { supabase } from "@/integrations/supabase/client";
 import { estimationClient } from "@/lib/estimation-client";
 import { isLocalDevelopment } from "@/lib/local-development";
@@ -1146,6 +1152,8 @@ function AppShellInner({ children }: { children: ReactNode }) {
                 dir={direction}
                 className="w-72 p-3 overflow-y-auto"
               >
+                <SheetTitle className="sr-only">{t("nav.brand", "تقديري")}</SheetTitle>
+                <SheetDescription className="sr-only">{t("nav.dashboard", "لوحة التحكم")}</SheetDescription>
                 <div className="mb-3 flex items-center gap-2 border-b border-border pb-3">
                   <img src={taqdiriMark} alt="" width={28} height={28} />
                   <span className="font-bold text-sm">{t("nav.brand", "تقديري")}</span>
@@ -1182,13 +1190,30 @@ function AppShellInner({ children }: { children: ReactNode }) {
                   >
                     <FileText className="h-4 w-4" /> <span>{t("nav.projects", "المشاريع")}</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => { setMobileNavOpen(false); guardedNavigate("/resources", "عروض الأسعار"); }}
-                    className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-start hover:bg-accent"
-                  >
-                    <Database className="h-4 w-4" /> <span>{t("nav.resources", "عروض الأسعار")}</span>
-                  </button>
+                  <div className="space-y-0.5 rounded-md border border-border/60 p-1.5">
+                    <button
+                      type="button"
+                      onClick={() => { setMobileNavOpen(false); guardedNavigate("/resources", "عروض الأسعار"); }}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-start font-medium hover:bg-accent"
+                    >
+                      <Database className="h-4 w-4 text-primary" /> <span>{t("nav.resources", "عروض الأسعار")}</span>
+                    </button>
+                    <div className="ms-3 space-y-0.5 border-s border-border/60 ps-2">
+                      {RESOURCE_SUB_ITEMS.slice(0, 5).map((sub) => (
+                        <button
+                          key={`mob-res-${sub.tab}`}
+                          type="button"
+                          onClick={() => {
+                            setMobileNavOpen(false);
+                            guardedNavigate(`/resources?tab=${sub.tab}`, sub.label);
+                          }}
+                          className="flex w-full items-center gap-2 rounded px-2 py-1 text-start text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
+                        >
+                          <span className="truncate">{sub.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <div className="space-y-0.5 rounded-md border border-border/60 p-1.5">
                     <button
                       type="button"
